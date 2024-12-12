@@ -1,11 +1,14 @@
+#include <algorithm>
 #include <iostream>
 #include <readline/history.h>
 #include <readline/readline.h>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <vector>
 
 namespace {
 /// Launches and attaches to the given program name or PID.
@@ -50,8 +53,50 @@ pid_t attach(int argc, const char **argv) {
   }
   return pid;
 }
+std::vector<std::string> split(std::string_view str, char delimiter) {
+  std::vector<std::string> out{};
+  std::stringstream ss{std::string{str}};
+  std::string item;
 
-void handle_command(pid_t pid, std::string_view line);
+  while (std::getline(ss, item, delimiter)) {
+    out.push_back(item);
+  }
+  return out;
+}
+
+bool is_prefix(std::string_view str, std::string_view of) {
+  if (str.size() > of.size())
+    return false;
+  return std::equal(str.begin(), str.end(), of.begin());
+}
+
+/// Resume the execution of the process.
+void resume(pid_t pid) {
+  if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) < 0) {
+    std::cerr << "Couldn't continue\n";
+    std::exit(-1);
+  }
+}
+void wait_on_signal(pid_t pid) {
+  int wait_status;
+  int options = 0;
+  if (waitpid(pid, &wait_status, options) < 0) {
+    std::perror("Waitpid failed");
+    std::exit(-1);
+  }
+}
+
+void handle_command(pid_t pid, std::string_view line) {
+  auto args = split(line, ' ');
+  auto command = args[0];
+
+  if (is_prefix(command, "continue")) {
+    resume(pid);
+    wait_on_signal(pid);
+  } else {
+    std::cerr << "Unknown command\n";
+  }
+}
 } // namespace
 
 int main(int argc, const char **argv) {
@@ -60,11 +105,8 @@ int main(int argc, const char **argv) {
     return -1;
   }
   auto pid = attach(argc, argv);
-  int wait_status;
-  int options = 0;
-  if (waitpid(pid, &wait_status, options) < 0) {
-    std::perror("Waitpid failed");
-  }
+
+  wait_on_signal(pid);
 
   char *line = nullptr;
   // Reading input from user.
