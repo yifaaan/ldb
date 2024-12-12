@@ -56,3 +56,10 @@ ldb::process::~process() {
     }
   }
 }
+
+void ldb::process::resume() {
+  if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0) {
+    error::send_errno("Could not resume");
+  }
+  state_ = process_state::running;
+}
