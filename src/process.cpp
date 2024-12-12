@@ -1,3 +1,4 @@
+#include <csignal>
 #include <libldb/error.hpp>
 #include <libldb/process.hpp>
 #include <sys/ptrace.h>
@@ -37,4 +38,21 @@ std::unique_ptr<ldb::process> ldb::process::attach(pid_t pid) {
   proc->wait_on_signal();
 
   return proc;
+}
+
+ldb::process::~process() {
+  if (pid_ != 0) {
+    int status;
+    if (state_ == process_state::running) {
+      kill(pid_, SIGSTOP);
+      waitpid(pid_, &status, 0);
+    }
+    ptrace(PTRACE_DETACH, pid_, nullptr, nullptr);
+    kill(pid_, SIGCONT);
+
+    if (terminate_on_end_) {
+      kill(pid_, SIGKILL);
+      waitpid(pid_, &status, 0);
+    }
+  }
 }
