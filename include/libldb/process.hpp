@@ -13,6 +13,13 @@ enum class process_state {
   terminated,
 };
 
+struct stop_reason {
+  stop_reason(int wait_status);
+
+  process_state reason;
+  std::uint8_t info;
+};
+
 class process {
 public:
   static std::unique_ptr<process> launch(std::filesystem::path path);
@@ -23,7 +30,7 @@ public:
   process &operator=(const process &) = delete;
   ~process();
   void resume();
-  void wait_on_signal();
+  stop_reason wait_on_signal();
 
   pid_t pid() const { return pid_; }
   process_state state() const { return state_; }

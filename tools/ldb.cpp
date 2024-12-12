@@ -1,5 +1,8 @@
+#include "libldb/error.hpp"
 #include <algorithm>
+#include <cstring>
 #include <iostream>
+#include <libldb/process.hpp>
 #include <readline/history.h>
 #include <readline/readline.h>
 #include <sstream>
@@ -11,47 +14,21 @@
 #include <vector>
 
 namespace {
+
 /// Launches and attaches to the given program name or PID.
 /// Returns the PID of the inferior.
-pid_t attach(int argc, const char **argv) {
+std::unique_ptr<ldb::process> attach(int argc, const char **argv) {
   pid_t pid = 0;
   // Passing PID.
   if (argc == 3 && argv[1] == std::string_view("-p")) {
     pid = std::atoi(argv[2]);
-    if (pid <= 0) {
-      std::cerr << "Invalid pid\n";
-      return -1;
-    }
-    // Attache to the process.
-    // It will send the process a SIGSTOP to pause its execution.
-    if (ptrace(PTRACE_ATTACH, pid, /*addr=*/nullptr, /*data=*/nullptr) < 0) {
-      std::perror("Could not attach");
-      return -1;
-    }
+    return ldb::process::attach(pid);
   }
   // Passing program name.
   else {
     const char *program_path = argv[1];
-    if ((pid = fork()) < 0) {
-      std::perror("Fork failed");
-      return -1;
-    }
-    if (pid == 0) {
-      // In the child process. Execute debugee.
-
-      // Allow us to send more ptrace requests in the future
-      if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
-        std::perror("Tracing failed");
-        return -1;
-      }
-      // Execute the program we want to debug.
-      if (execlp(program_path, program_path, nullptr) < 0) {
-        std::perror("Exec failed");
-        return -1;
-      }
-    }
+    return ldb::process::launch(program_path);
   }
-  return pid;
 }
 std::vector<std::string> split(std::string_view str, char delimiter) {
   std::vector<std::string> out{};
@@ -86,28 +63,42 @@ void wait_on_signal(pid_t pid) {
   }
 }
 
-void handle_command(pid_t pid, std::string_view line) {
+void print_stop_reason(const ldb::process &process, ldb::stop_reason reason) {
+  // Print out the inferior's PID.
+  std::cout << std::format("Process {} ", process.pid());
+
+  switch (reason.reason) {
+  case ldb::process_state::exited:
+    std::cout << std::format("exited with status {}",
+                             static_cast<int>(reason.info));
+    break;
+  case ldb::process_state::terminated:
+    std::cout << std::format("terminated with signal {}",
+                             sigabbrev_np(reason.info));
+    break;
+  case ldb::process_state::stopped:
+    std::cout << std::format("stopped with signal {}",
+                             sigabbrev_np(reason.info));
+    break;
+  }
+  std::cout << std::endl;
+}
+
+void handle_command(std::unique_ptr<ldb::process> &process,
+                    std::string_view line) {
   auto args = split(line, ' ');
   auto command = args[0];
 
   if (is_prefix(command, "continue")) {
-    resume(pid);
-    wait_on_signal(pid);
+    process->resume();
+    auto reason = process->wait_on_signal();
+    print_stop_reason(*process, reason);
   } else {
     std::cerr << "Unknown command\n";
   }
 }
-} // namespace
 
-int main(int argc, const char **argv) {
-  if (argc == 1) {
-    std::cerr << "No arguments given\n";
-    return -1;
-  }
-  auto pid = attach(argc, argv);
-
-  wait_on_signal(pid);
-
+void main_loop(std::unique_ptr<ldb::process> &process) {
   char *line = nullptr;
   // Reading input from user.
   while ((line = readline("ldb> ")) != nullptr) {
@@ -125,7 +116,25 @@ int main(int argc, const char **argv) {
       free(line);
     }
     if (!line_str.empty()) {
-      handle_command(pid, line_str);
+      try {
+        handle_command(process, line_str);
+      } catch (const ldb::error &err) {
+        std::cout << err.what() << '\n';
+      }
     }
+  }
+}
+} // namespace
+
+int main(int argc, const char **argv) {
+  if (argc == 1) {
+    std::cerr << "No arguments given\n";
+    return -1;
+  }
+  try {
+    auto process = attach(argc, argv);
+    main_loop(process);
+  } catch (const ldb::error &err) {
+    std::cout << err.what() << '\n';
   }
 }

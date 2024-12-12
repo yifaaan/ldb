@@ -1,4 +1,5 @@
 #include <csignal>
+#include <cstdlib>
 #include <libldb/error.hpp>
 #include <libldb/process.hpp>
 #include <sys/ptrace.h>
@@ -62,4 +63,28 @@ void ldb::process::resume() {
     error::send_errno("Could not resume");
   }
   state_ = process_state::running;
+}
+
+ldb::stop_reason ldb::process::wait_on_signal() {
+  int wait_status;
+  int options = 0;
+  if (waitpid(pid_, &wait_status, options) < 0) {
+    error::send_errno("waitpid failed");
+  }
+  stop_reason reason(wait_status);
+  state_ = reason.reason;
+  return reason;
+}
+
+ldb::stop_reason::stop_reason(int wait_status) {
+  if (WIFEXITED(wait_status)) {
+    reason = process_state::exited;
+    info = WEXITSTATUS(wait_status);
+  } else if (WIFSIGNALED(wait_status)) {
+    reason = process_state::terminated;
+    info = WTERMSIG(wait_status);
+  } else if (WIFSTOPPED(wait_status)) {
+    reason = process_state::stopped;
+    info = WSTOPSIG(wait_status);
+  }
 }
