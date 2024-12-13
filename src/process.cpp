@@ -10,7 +10,7 @@
 std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path) {
   pid_t pid;
   if ((pid = fork()) < 0) {
-    // Error: fork failed
+    error::send_errno("Fork failed");
   }
 
   if (pid == 0) {
@@ -18,7 +18,9 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path) {
       error::send_errno("Tracing failed");
     }
     if (execlp(path.c_str(), path.c_str(), nullptr) < 0) {
-      error::send_errno("exec failed");
+      // TODO: Child process throws the exception bud does not send this to the
+      // parent.
+      error::send_errno("Exec failed");
     }
   }
 
