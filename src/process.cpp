@@ -1,13 +1,25 @@
+#include <cerrno>
 #include <csignal>
 #include <cstdlib>
 #include <libldb/error.hpp>
+#include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+namespace {
+void exit_with_perror(ldb::pipe &channel, const std::string &prefix) {
+  auto message = std::format("{}: {}", prefix, std::strerror(errno));
+  channel.write(reinterpret_cast<std::byte *>(message.data()), message.size());
+  exit(-1);
+}
+} // namespace
 std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path) {
+  // Child auto close channel when exec succeed,
+  // because of close_on_exec.
+  ldb::pipe channel(/*close_on_exec=*/true);
   pid_t pid;
   if ((pid = fork()) < 0) {
     error::send_errno("Fork failed");
@@ -15,15 +27,22 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path) {
 
   if (pid == 0) {
     if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
-      error::send_errno("Tracing failed");
+      exit_with_perror(channel, "Tracing failed");
     }
     if (execlp(path.c_str(), path.c_str(), nullptr) < 0) {
-      // TODO: Child process throws the exception bud does not send this to the
-      // parent.
-      error::send_errno("Exec failed");
+      exit_with_perror(channel, "Exec failed");
     }
   }
+  // Parent close the write side of the pipe.
+  channel.close_write();
+  auto data = channel.read();
+  channel.close_read();
 
+  if (data.size() > 0) {
+    waitpid(pid, nullptr, 0);
+    auto chars = reinterpret_cast<char *>(data.data());
+    error::send(std::string(chars, chars + data.size()));
+  }
   std::unique_ptr<process> proc(new process(pid, /*terminate_on_end=*/true));
   proc->wait_on_signal();
   return proc;
