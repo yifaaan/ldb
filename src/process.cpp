@@ -1,6 +1,7 @@
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
+#include <iostream>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
@@ -30,6 +31,7 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path,
     if (debug and ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
       exit_with_perror(channel, "Tracing failed");
     }
+    std::cout << std::format("In child pid: {}\n", getpid());
     if (execlp(path.c_str(), path.c_str(), nullptr) < 0) {
       exit_with_perror(channel, "Exec failed");
     }
@@ -87,9 +89,12 @@ ldb::process::~process() {
 }
 
 void ldb::process::resume() {
+  // auto a = ptrace(PTRACE_CONT, pid_, nullptr, nullptr);
+  // std::cout << std::format("ptrace ret: {}\n", a);
   if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0) {
     error::send_errno("Could not resume");
   }
+
   state_ = process_state::running;
 }
 
