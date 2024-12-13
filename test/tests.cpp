@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <csignal>
+#include <fstream>
+
 #include <libldb/error.hpp>
 #include <libldb/process.hpp>
 
@@ -11,6 +13,16 @@ bool process_exists(pid_t pid) {
   auto ret = kill(pid, 0);
   return ret != -1 && errno != ESRCH;
 }
+
+char get_process_status(pid_t pid) {
+  auto stat_path = std::format("/proc/{}/stat", std::to_string(pid));
+  std::fstream stat{stat_path};
+  std::string data;
+  std::getline(stat, data);
+  auto index_of_last_parenthesis = data.rfind(')');
+  auto index_of_status_indicator = index_of_last_parenthesis + 2;
+  return data[index_of_status_indicator];
+}
 } // namespace
 
 TEST_CASE("process::launch success", "[process]") {
@@ -20,4 +32,15 @@ TEST_CASE("process::launch success", "[process]") {
 
 TEST_CASE("process::launch no such program", "[process]") {
   REQUIRE_THROWS_AS(process::launch("you_do_not_have_to_be_good"), error);
+}
+
+TEST_CASE("process::attach success", "[process]") {
+  auto target = process::launch(
+      "/home/ubuntu/ldb/build/test/targets/run_endlessly", false);
+  auto proc = process::attach(target->pid());
+  REQUIRE(get_process_status(target->pid()) == 't');
+}
+
+TEST_CASE("process::attach invalid PID", "[process]") {
+  REQUIRE_THROWS_AS(process::attach(0), error);
 }

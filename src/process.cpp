@@ -16,7 +16,8 @@ void exit_with_perror(ldb::pipe &channel, const std::string &prefix) {
   exit(-1);
 }
 } // namespace
-std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path) {
+std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path,
+                                                   bool debug) {
   // Child auto close channel when exec succeed,
   // because of close_on_exec.
   ldb::pipe channel(/*close_on_exec=*/true);
@@ -26,7 +27,7 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path) {
   }
 
   if (pid == 0) {
-    if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
+    if (debug and ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
       exit_with_perror(channel, "Tracing failed");
     }
     if (execlp(path.c_str(), path.c_str(), nullptr) < 0) {
@@ -43,8 +44,11 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path) {
     auto chars = reinterpret_cast<char *>(data.data());
     error::send(std::string(chars, chars + data.size()));
   }
-  std::unique_ptr<process> proc(new process(pid, /*terminate_on_end=*/true));
-  proc->wait_on_signal();
+  std::unique_ptr<process> proc(
+      new process(pid, /*terminate_on_end=*/true, debug));
+  if (debug) {
+    proc->wait_on_signal();
+  }
   return proc;
 }
 
@@ -56,7 +60,8 @@ std::unique_ptr<ldb::process> ldb::process::attach(pid_t pid) {
     error::send_errno("Could not attach");
   }
 
-  std::unique_ptr<process> proc(new process(pid, /*terminate_on_end=*/false));
+  std::unique_ptr<process> proc(
+      new process(pid, /*terminate_on_end=*/false, true));
   proc->wait_on_signal();
 
   return proc;
@@ -65,12 +70,14 @@ std::unique_ptr<ldb::process> ldb::process::attach(pid_t pid) {
 ldb::process::~process() {
   if (pid_ != 0) {
     int status;
-    if (state_ == process_state::running) {
-      kill(pid_, SIGSTOP);
-      waitpid(pid_, &status, 0);
+    if (is_attached_) {
+      if (state_ == process_state::running) {
+        kill(pid_, SIGSTOP);
+        waitpid(pid_, &status, 0);
+      }
+      ptrace(PTRACE_DETACH, pid_, nullptr, nullptr);
+      kill(pid_, SIGCONT);
     }
-    ptrace(PTRACE_DETACH, pid_, nullptr, nullptr);
-    kill(pid_, SIGCONT);
 
     if (terminate_on_end_) {
       kill(pid_, SIGKILL);
