@@ -17,7 +17,7 @@ namespace {
 
 /// Launches and attaches to the given program name or PID.
 /// Returns the PID of the inferior.
-std::unique_ptr<ldb::process> attach(int argc, const char **argv) {
+std::unique_ptr<ldb::process> attach(int argc, const char** argv) {
   pid_t pid = 0;
   // Passing PID.
   if (argc == 3 && argv[1] == std::string_view("-p")) {
@@ -26,7 +26,7 @@ std::unique_ptr<ldb::process> attach(int argc, const char **argv) {
   }
   // Passing program name.
   else {
-    const char *program_path = argv[1];
+    const char* program_path = argv[1];
     return ldb::process::launch(program_path);
   }
 }
@@ -63,28 +63,22 @@ void wait_on_signal(pid_t pid) {
   }
 }
 
-void print_stop_reason(const ldb::process &process, ldb::stop_reason reason) {
-  // Print out the inferior's PID.
-  std::cout << std::format("Process {} ", process.pid());
-
+void print_stop_reason(const ldb::process& process, ldb::stop_reason reason) {
   switch (reason.reason) {
   case ldb::process_state::exited:
-    std::cout << std::format("exited with status {}",
-                             static_cast<int>(reason.info));
+    std::cout << "exited with status " << static_cast<int>(reason.info);
     break;
   case ldb::process_state::terminated:
-    std::cout << std::format("terminated with signal {}",
-                             sigabbrev_np(reason.info));
+    std::cout << "terminated with signal " << sigabbrev_np(reason.info);
     break;
   case ldb::process_state::stopped:
-    std::cout << std::format("stopped with signal {}",
-                             sigabbrev_np(reason.info));
+    std::cout << "stopped with signal " << sigabbrev_np(reason.info);
     break;
   }
   std::cout << std::endl;
 }
 
-void handle_command(std::unique_ptr<ldb::process> &process,
+void handle_command(std::unique_ptr<ldb::process>& process,
                     std::string_view line) {
   auto args = split(line, ' ');
   auto command = args[0];
@@ -98,8 +92,8 @@ void handle_command(std::unique_ptr<ldb::process> &process,
   }
 }
 
-void main_loop(std::unique_ptr<ldb::process> &process) {
-  char *line = nullptr;
+void main_loop(std::unique_ptr<ldb::process>& process) {
+  char* line = nullptr;
   // Reading input from user.
   while ((line = readline("ldb> ")) != nullptr) {
     std::string line_str;
@@ -118,7 +112,7 @@ void main_loop(std::unique_ptr<ldb::process> &process) {
     if (!line_str.empty()) {
       try {
         handle_command(process, line_str);
-      } catch (const ldb::error &err) {
+      } catch (const ldb::error& err) {
         std::cout << err.what() << '\n';
       }
     }
@@ -126,7 +120,7 @@ void main_loop(std::unique_ptr<ldb::process> &process) {
 }
 } // namespace
 
-int main(int argc, const char **argv) {
+int main(int argc, const char** argv) {
   if (argc == 1) {
     std::cerr << "No arguments given\n";
     return -1;
@@ -134,7 +128,7 @@ int main(int argc, const char **argv) {
   try {
     auto process = attach(argc, argv);
     main_loop(process);
-  } catch (const ldb::error &err) {
+  } catch (const ldb::error& err) {
     std::cout << err.what() << '\n';
   }
 }

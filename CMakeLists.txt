@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.19)
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_COMPILER clang++-19)
+
+
 project(ldb LANGUAGES CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 

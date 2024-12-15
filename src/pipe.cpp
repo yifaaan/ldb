@@ -40,11 +40,11 @@ std::vector<std::byte> ldb::pipe::read() {
     error::send_errno("Could not read from pipe");
   }
 
-  auto bytes = reinterpret_cast<std::byte *>(buf);
+  auto bytes = reinterpret_cast<std::byte*>(buf);
   return std::vector<std::byte>(bytes, bytes + chars_read);
 }
 
-void ldb::pipe::write(std::byte *from, std::size_t bytes) {
+void ldb::pipe::write(std::byte* from, std::size_t bytes) {
   if (::write(fds_[write_fd], from, bytes) < 0) {
     error::send_errno("Could not write to pipe");
   }

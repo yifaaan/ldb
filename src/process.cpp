@@ -11,9 +11,9 @@
 #include <unistd.h>
 
 namespace {
-void exit_with_perror(ldb::pipe &channel, const std::string &prefix) {
-  auto message = std::format("{}: {}", prefix, std::strerror(errno));
-  channel.write(reinterpret_cast<std::byte *>(message.data()), message.size());
+void exit_with_perror(ldb::pipe& channel, const std::string& prefix) {
+  auto message = prefix + std::string(": ") + std::strerror(errno);
+  channel.write(reinterpret_cast<std::byte*>(message.data()), message.size());
   exit(-1);
 }
 } // namespace
@@ -31,7 +31,6 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path,
     if (debug and ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
       exit_with_perror(channel, "Tracing failed");
     }
-    std::cout << std::format("In child pid: {}\n", getpid());
     if (execlp(path.c_str(), path.c_str(), nullptr) < 0) {
       exit_with_perror(channel, "Exec failed");
     }
@@ -43,7 +42,7 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path,
 
   if (data.size() > 0) {
     waitpid(pid, nullptr, 0);
-    auto chars = reinterpret_cast<char *>(data.data());
+    auto chars = reinterpret_cast<char*>(data.data());
     error::send(std::string(chars, chars + data.size()));
   }
   std::unique_ptr<process> proc(

@@ -27,8 +27,8 @@ public:
   static std::unique_ptr<process> attach(pid_t pid);
 
   process() = delete;
-  process(const process &) = delete;
-  process &operator=(const process &) = delete;
+  process(const process&) = delete;
+  process& operator=(const process&) = delete;
   ~process();
   void resume();
   stop_reason wait_on_signal();
