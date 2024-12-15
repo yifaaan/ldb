@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <libldb/error.hpp>
 #include <string_view>
 #include <sys/user.h>
 
@@ -48,7 +49,7 @@ template <typename F> const register_info& register_info_by(F f) {
   if (auto it = std::find_if(std::begin(g_register_infos),
                              std::end(g_register_infos), f);
       it == std::end(g_register_infos)) {
-    error::send("Can't find register info");
+    ldb::error::send("Can't find register info");
   } else {
     return *it;
   }

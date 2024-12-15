@@ -1,6 +1,7 @@
 #ifndef LDB_PROCESS_HPP
 #define LDB_PROCESS_HPP
 
+#include "libldb/registers.hpp"
 #include <filesystem>
 #include <memory>
 #include <sys/types.h>
@@ -36,17 +37,26 @@ public:
   pid_t pid() const { return pid_; }
   process_state state() const { return state_; }
 
+  registers& get_registers() { return *registers_; }
+  const registers& get_registers() const { return *registers_; }
+  /// With the register value offset and the data.
+  /// We just wrote into our own user struct.
+  void write_user_area(std::size_t offset, std::uint64_t data);
+
 private:
   /// For static member fn to construct a process
   process(pid_t pid, bool terminate_on_end, bool is_attached)
       : pid_(pid), terminate_on_end_(terminate_on_end),
-        is_attached_(is_attached) {}
+        is_attached_(is_attached), registers_(new registers(*this)) {}
+
+  void read_all_registers();
 
 private:
   pid_t pid_ = 0;
   bool terminate_on_end_ = true;
   bool is_attached_ = true;
   process_state state_ = process_state::stopped;
+  std::unique_ptr<registers> registers_;
 };
 
 } // namespace ldb

@@ -105,6 +105,10 @@ ldb::stop_reason ldb::process::wait_on_signal() {
   }
   stop_reason reason(wait_status);
   state_ = reason.reason;
+
+  if (is_attached_ and state_ == process_state::stopped) {
+    read_all_registers();
+  }
   return reason;
 }
 
@@ -118,5 +122,36 @@ ldb::stop_reason::stop_reason(int wait_status) {
   } else if (WIFSTOPPED(wait_status)) {
     reason = process_state::stopped;
     info = WSTOPSIG(wait_status);
+  }
+}
+
+void ldb::process::read_all_registers() {
+  // Read the GPRs using PTRACE_GETREGS
+  if (ptrace(PTRACE_GETREGS, pid_, nullptr, &get_registers().data_.regs) < 0) {
+    error::send_errno("Could not read GPR registers");
+  }
+  if (ptrace(PTRACE_GETFPREGS, pid_, nullptr, &get_registers().data_.i387) <
+      0) {
+    error::send_errno("Could not read FPR registers");
+  }
+  for (int i = 0; i < 8; i++) {
+    // Read debug registers
+    auto id = static_cast<int>(register_id::dr0) + i;
+    auto info = register_info_by_id(static_cast<register_id>(id));
+
+    errno = 0;
+    std::int64_t data = ptrace(PTRACE_PEEKUSER, pid_, info.offset, nullptr);
+    if (errno != 0)
+      error::send_errno("Could not read debug register");
+
+    get_registers().data_.u_debugreg[i] = data;
+  }
+}
+
+/// Call PTRACE_POKEUSER to write the given data to the user area at the given
+/// offset.
+void ldb::process::write_user_area(std::size_t offset, std::uint64_t data) {
+  if (ptrace(PTRACE_POKEUSER, pid_, offset, data) < 0) {
+    error::send_errno("Could not write to user area");
   }
 }

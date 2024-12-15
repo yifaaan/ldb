@@ -14,6 +14,10 @@ template <typename To> To from_bytes(const std::byte* bytes) {
   return ret;
 }
 /// Casts its argument into a pointer to std::bytes.
+template <typename From> std::byte* as_bytes(From& from) {
+  return reinterpret_cast<std::byte*>(&from);
+}
+
 template <typename From> const std::byte* as_bytes(const From& from) {
   return reinterpret_cast<const std::byte*>(&from);
 }
