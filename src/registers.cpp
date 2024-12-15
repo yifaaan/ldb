@@ -1,6 +1,7 @@
 #include <iostream>
 #include <libldb/bit.hpp>
 #include <libldb/error.hpp>
+#include <libldb/process.hpp>
 #include <libldb/registers.hpp>
 
 ldb::registers::value ldb::registers::read(const register_info& info) const {
@@ -29,6 +30,8 @@ ldb::registers::value ldb::registers::read(const register_info& info) const {
     return from_bytes<byte128>(bytes + info.offset);
   }
 }
+
+extern void write_user_area(std::size_t offset, std::uint64_t data);
 
 void ldb::registers::write(const register_info& info, value val) {
   auto bytes = as_bytes(data_);

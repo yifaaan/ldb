@@ -1,8 +1,8 @@
 #ifndef LDB_REGISTERS_HPP
 #define LDB_REGISTERS_HPP
 
-#include "libldb/types.hpp"
 #include <libldb/register_info.hpp>
+#include <libldb/types.hpp>
 #include <sys/user.h>
 #include <variant>
 
