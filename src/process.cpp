@@ -7,6 +7,7 @@
 #include <libldb/process.hpp>
 #include <sys/ptrace.h>
 #include <sys/types.h>
+#include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -153,5 +154,17 @@ void ldb::process::read_all_registers() {
 void ldb::process::write_user_area(std::size_t offset, std::uint64_t data) {
   if (ptrace(PTRACE_POKEUSER, pid_, offset, data) < 0) {
     error::send_errno("Could not write to user area");
+  }
+}
+
+void ldb::process::write_fprs(const user_fpregs_struct& fprs) {
+  if (ptrace(PTRACE_SETFPREGS, pid_, nullptr, &fprs) < 0) {
+    error::send_errno("Could not write floating point registers");
+  }
+}
+
+void ldb::process::write_gprs(const user_regs_struct& gprs) {
+  if (ptrace(PTRACE_SETREGS, pid_, nullptr, &gprs) < 0) {
+    error::send_errno("Could not write general point registers");
   }
 }

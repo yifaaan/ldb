@@ -5,6 +5,7 @@
 #include <libldb/registers.hpp>
 #include <memory>
 #include <sys/types.h>
+#include <sys/user.h>
 
 namespace ldb {
 enum class process_state {
@@ -42,6 +43,9 @@ public:
   /// With the register value offset and the data.
   /// We just wrote into our own user struct.
   void write_user_area(std::size_t offset, std::uint64_t data);
+
+  void write_fprs(const user_fpregs_struct& fprs);
+  void write_gprs(const user_regs_struct& gprs);
 
 private:
   /// For static member fn to construct a process
