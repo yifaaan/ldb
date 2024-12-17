@@ -42,8 +42,18 @@ main:
     movq    $0, %rdi
     call    fflush@plt
 
-    trap
+    trap  
     
+    # Print contents of mm0
+    movq    %mm0, %rsi
+    leaq    hex_format(%rip), %rdi
+    movq    $0, %rax
+    call    printf@plt
+    movq    $0, %rdi
+    call    fflush@plt
+
+    trap
+
     # 恢复旧的栈帧基址
     popq %rbp
     # 设置返回值
