@@ -97,7 +97,7 @@ namespace
                 fmt::format("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), process.get_pc().addr());
             break;
         }
-        std::print("Process {} {}\n", process.pid(), message);
+        fmt::print("Process {} {}\n", process.pid(), message);
     }
 
     void print_help(const std::vector<std::string>& args)
