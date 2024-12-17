@@ -1,22 +1,23 @@
+#include <algorithm>
 #include <cstdio>
-#include <fmt/format.h>
-#include <fmt/ranges.h>
-#include <readline/history.h>
-#include <readline/readline.h>
+#include <cstring>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <string_view>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
 #include <type_traits>
 #include <unistd.h>
-
-#include <algorithm>
-#include <cstring>
-#include <iostream>
-#include <libldb/error.hpp>
-#include <libldb/process.hpp>
-#include <sstream>
-#include <string>
-#include <string_view>
 #include <vector>
+
+#include <fmt/format.h>
+#include <fmt/ranges.h>
+#include <libldb/error.hpp>
+#include <libldb/parse.hpp>
+#include <libldb/process.hpp>
+#include <readline/history.h>
+#include <readline/readline.h>
 namespace
 {
 
@@ -82,19 +83,21 @@ namespace
 
     void print_stop_reason(const ldb::process& process, ldb::stop_reason reason)
     {
+        std::string message;
         switch (reason.reason)
         {
         case ldb::process_state::exited:
-            std::cout << "exited with status " << static_cast<int>(reason.info);
+            message = fmt::format("exited with status {}", static_cast<int>(reason.info));
             break;
         case ldb::process_state::terminated:
-            std::cout << "terminated with signal " << sigabbrev_np(reason.info);
+            message = fmt::format("terminated with signal {}", sigabbrev_np(reason.info));
             break;
         case ldb::process_state::stopped:
-            std::cout << "stopped with signal " << sigabbrev_np(reason.info);
+            message =
+                fmt::format("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), process.get_pc().addr());
             break;
         }
-        std::cout << std::endl;
+        std::print("Process {} {}\n", process.pid(), message);
     }
 
     void print_help(const std::vector<std::string>& args)
