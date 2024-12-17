@@ -6,6 +6,8 @@
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
 
+#include "libldb/register_info.hpp"
+
 using namespace ldb;
 
 namespace {
@@ -103,6 +105,14 @@ TEST_CASE("Write register works", "[register]") {
   REQUIRE(to_string_view(output) == "0xba5eba11");
   // Write SSE's XMM
   regs.write_by_id(register_id::xmm0, 42.24);
+  proc->resume();
+  proc->wait_on_signal();
+  output = channel.read();
+  REQUIRE(to_string_view(output) == "42.24");
+  /// x87
+  regs.write_by_id(register_id::st0, 42.24l);
+  regs.write_by_id(register_id::fsw, std::uint16_t{0b0011100000000000});
+  regs.write_by_id(register_id::ftw, std::uint16_t{0b0011111111111111});
   proc->resume();
   proc->wait_on_signal();
   output = channel.read();
