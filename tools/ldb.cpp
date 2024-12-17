@@ -1,18 +1,19 @@
-#include "libldb/error.hpp"
-#include <algorithm>
-#include <cstring>
-#include <iostream>
-#include <libldb/process.hpp>
+#include <cstdio>
 #include <readline/history.h>
 #include <readline/readline.h>
-#include <sstream>
-#include <string>
-#include <string_view>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <vector>
 
+#include <algorithm>
+#include <cstring>
+#include <iostream>
+#include <libldb/error.hpp>
+#include <libldb/process.hpp>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <vector>
 namespace {
 
 /// Launches and attaches to the given program name or PID.
@@ -42,8 +43,7 @@ std::vector<std::string> split(std::string_view str, char delimiter) {
 }
 
 bool is_prefix(std::string_view str, std::string_view of) {
-  if (str.size() > of.size())
-    return false;
+  if (str.size() > of.size()) return false;
   return std::equal(str.begin(), str.end(), of.begin());
 }
 
@@ -65,17 +65,35 @@ void wait_on_signal(pid_t pid) {
 
 void print_stop_reason(const ldb::process& process, ldb::stop_reason reason) {
   switch (reason.reason) {
-  case ldb::process_state::exited:
-    std::cout << "exited with status " << static_cast<int>(reason.info);
-    break;
-  case ldb::process_state::terminated:
-    std::cout << "terminated with signal " << sigabbrev_np(reason.info);
-    break;
-  case ldb::process_state::stopped:
-    std::cout << "stopped with signal " << sigabbrev_np(reason.info);
-    break;
+    case ldb::process_state::exited:
+      std::cout << "exited with status " << static_cast<int>(reason.info);
+      break;
+    case ldb::process_state::terminated:
+      std::cout << "terminated with signal " << sigabbrev_np(reason.info);
+      break;
+    case ldb::process_state::stopped:
+      std::cout << "stopped with signal " << sigabbrev_np(reason.info);
+      break;
   }
   std::cout << std::endl;
+}
+
+void print_help(const std::vector<std::string>& args) {
+  if (args.size() == 1) {
+    std::cerr << R"(Available commands:
+continue    - Resume the process
+register    - Commands for operating on registers
+)";
+  } else if (is_prefix(args[1], "register")) {
+    std::cerr << R"(Available commands:
+read
+read <register>
+read all
+write <register> <value>    
+)";
+  } else {
+    std::cerr << "No help available on that\n";
+  }
 }
 
 void handle_command(std::unique_ptr<ldb::process>& process,
@@ -87,6 +105,8 @@ void handle_command(std::unique_ptr<ldb::process>& process,
     process->resume();
     auto reason = process->wait_on_signal();
     print_stop_reason(*process, reason);
+  } else if (is_prefix(command, "help")) {
+    print_help(args);
   } else {
     std::cerr << "Unknown command\n";
   }
@@ -118,7 +138,7 @@ void main_loop(std::unique_ptr<ldb::process>& process) {
     }
   }
 }
-} // namespace
+}  // namespace
 
 int main(int argc, const char** argv) {
   if (argc == 1) {
