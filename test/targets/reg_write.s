@@ -3,32 +3,33 @@
 .section .data
 
 hex_format: .asciz "%#x"
+float_format: .asciz "%.2f"
 
 .section .text
 
 .macro trap
     # 62 for sys_kill
-    movq $62, %rax
+    movq    $62, %rax
     # sys_kill’s argument
     # first argument: pid
-    movq %r12, %rdi
+    movq    %r12, %rdi
     # second argument: SIGTRAP
-    movq $5, %rsi
+    movq    $5, %rsi
     # execute sys_kill
     syscall
 .endm
 
 main:
     # 保存旧的栈帧基址
-    push %rbp
+    push    %rbp
     # 将rsp栈指针的值复制到rbp寄存器，设置新的栈帧基址
-    movq %rsp, %rbp
+    movq    %rsp, %rbp
 
     # sys_getpid
-    movq $39, %rax
+    movq    $39, %rax
     syscall
     # Save the sys_getpid's return value into r12
-    movq %rax, %r12
+    movq    %rax, %r12
     
     # 当前进程发送一个SIGTRAP信号,这通常会导致程序暂停
     trap
@@ -54,8 +55,17 @@ main:
 
     trap
 
+    # Print contents of xmm0
+    leaq    float_format(%rip), %rdi
+    movq    $1, %rax
+    call    printf@plt
+    movq    $0, %rdi
+    call    fflush@plt
+
+    trap
+    
     # 恢复旧的栈帧基址
-    popq %rbp
+    popq    %rbp
     # 设置返回值
-    movq $0, %rax
+    movq    $0, %rax
     ret
