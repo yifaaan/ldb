@@ -5,9 +5,11 @@
 #include <sys/user.h>
 
 #include <filesystem>
+#include <libldb/breakpoint_site.hpp>
 #include <libldb/registers.hpp>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace ldb
 {
@@ -70,6 +72,8 @@ namespace ldb
         void write_fprs(const user_fpregs_struct& fprs);
         void write_gprs(const user_regs_struct& gprs);
 
+        breakpoint_site& create_breakpoint_site(virt_addr address);
+
     private:
         /// For static member fn to construct a process
         process(pid_t pid, bool terminate_on_end, bool is_attached)
@@ -86,6 +90,10 @@ namespace ldb
         bool is_attached_ = true;
         process_state state_ = process_state::stopped;
         std::unique_ptr<registers> registers_;
+        /// We can’t store a std::vector<breakpoint_site> because we can’t copy or move a breakpoint site,
+        /// but we get around this by
+        /// dynamically allocating them and storing std::unique_ptr values instead
+        std::vector<std::unique_ptr<breakpoint_site>> breakpoint_sites_;
     };
 
 } // namespace ldb

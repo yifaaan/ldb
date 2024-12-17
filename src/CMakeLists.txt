@@ -1,4 +1,4 @@
-add_library(libldb process.cpp pipe.cpp registers.cpp)
+add_library(libldb process.cpp pipe.cpp registers.cpp breakpoint_site.cpp)
 add_library(ldb::libldb ALIAS libldb)
 
 set_target_properties(

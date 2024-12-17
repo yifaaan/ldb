@@ -29,13 +29,18 @@ namespace ldb
         {
             return is_enabled_;
         }
+        /// Get the address on which it's set inline
         virt_addr address() const
         {
-            return addr_;
+            return address_;
         }
         bool at_address(virt_addr addr) const
         {
-            reurn addr_ == addr;
+            return address_ == addr;
+        }
+        bool is_range(virt_addr low, virt_addr high) const
+        {
+            return low <= address_ and address_ < high;
         }
 
     private:
