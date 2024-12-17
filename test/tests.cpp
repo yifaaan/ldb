@@ -1,7 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <csignal>
 #include <fstream>
+#include <libldb/bit.hpp>
 #include <libldb/error.hpp>
+#include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
 
 using namespace ldb;
@@ -22,7 +24,7 @@ char get_process_status(pid_t pid) {
   auto index_of_status_indicator = index_of_last_parenthesis + 2;
   return data[index_of_status_indicator];
 }
-} // namespace
+}  // namespace
 
 TEST_CASE("process::launch success", "[process]") {
   auto proc = process::launch("yes");
@@ -72,4 +74,26 @@ TEST_CASE("process::resume already terminated", "[process]") {
   proc->resume();
   proc->wait_on_signal();
   REQUIRE_THROWS_AS(proc->resume(), error);
+}
+
+TEST_CASE("Write register works", "[register]") {
+  bool close_on_exec = false;
+  ldb::pipe channel(close_on_exec);
+
+  auto proc =
+      process::launch("/root/workspace/ldb/build/test/targets/reg_write", true,
+                      channel.get_write());
+  channel.close_write();
+
+  proc->resume();
+  proc->wait_on_signal();
+
+  auto& regs = proc->get_registers();
+  regs.write_by_id(register_id::rsi, 0xabcdabcd);
+
+  proc->resume();
+  proc->wait_on_signal();
+
+  auto output = channel.read();
+  REQUIRE(to_string_view(output) == "0xabcdabcd");
 }

@@ -1,15 +1,16 @@
 #ifndef LDB_REGISTERS_HPP
 #define LDB_REGISTERS_HPP
 
+#include <sys/user.h>
+
 #include <libldb/register_info.hpp>
 #include <libldb/types.hpp>
-#include <sys/user.h>
 #include <variant>
 
 namespace ldb {
 class process;
 class registers {
-public:
+ public:
   registers() = delete;
   registers(const registers&) = delete;
   registers& operator=(const registers&) = delete;
@@ -22,7 +23,8 @@ public:
   void write(const register_info& info, value val);
 
   /// Using an ID to retrieve the register value as a specific type.
-  template <typename T> T read_by_id_as(register_id id) const {
+  template <typename T>
+  T read_by_id_as(register_id id) const {
     return std::get<T>(read(register_info_by_id(id)));
   }
   /// Writing to a register given its ID.
@@ -30,12 +32,12 @@ public:
     write(register_info_by_id(id), val);
   }
 
-private:
+ private:
   friend process;
   registers(process& proc) : proc_(&proc) {}
   user data_;
   process* proc_;
 };
-} // namespace ldb
+}  // namespace ldb
 
 #endif

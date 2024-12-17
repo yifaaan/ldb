@@ -6,7 +6,7 @@
 
 namespace ldb {
 class pipe {
-public:
+ public:
   explicit pipe(bool close_on_exec);
   ~pipe();
 
@@ -20,11 +20,11 @@ public:
   std::vector<std::byte> read();
   void write(std::byte* from, std::size_t bytes);
 
-private:
+ private:
   static constexpr unsigned read_fd = 0;
   static constexpr unsigned write_fd = 1;
   int fds_[2];
 };
-} // namespace ldb
+}  // namespace ldb
 
 #endif

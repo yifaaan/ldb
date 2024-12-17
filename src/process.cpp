@@ -1,3 +1,9 @@
+#include <sys/ptrace.h>
+#include <sys/types.h>
+#include <sys/user.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
@@ -5,11 +11,6 @@
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
-#include <sys/ptrace.h>
-#include <sys/types.h>
-#include <sys/user.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 namespace {
 void exit_with_perror(ldb::pipe& channel, const std::string& prefix) {
@@ -17,10 +18,10 @@ void exit_with_perror(ldb::pipe& channel, const std::string& prefix) {
   channel.write(reinterpret_cast<std::byte*>(message.data()), message.size());
   exit(-1);
 }
-} // namespace
-std::unique_ptr<ldb::process>
-ldb::process::launch(std::filesystem::path path, bool debug,
-                     std::optional<int> stdout_replacement) {
+}  // namespace
+std::unique_ptr<ldb::process> ldb::process::launch(
+    std::filesystem::path path, bool debug,
+    std::optional<int> stdout_replacement) {
   // Child auto close channel when exec succeed,
   // because of close_on_exec.
   ldb::pipe channel(/*close_on_exec=*/true);
@@ -33,6 +34,7 @@ ldb::process::launch(std::filesystem::path path, bool debug,
     channel.close_read();
 
     if (stdout_replacement) {
+      close(STDOUT_FILENO);
       // Anything that goes to stdout now goes through whatever
       // *stdout_replacement points to, which could be a file or a pipe.
       if (dup2(*stdout_replacement, STDOUT_FILENO) < 0) {
@@ -104,7 +106,6 @@ void ldb::process::resume() {
   if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0) {
     error::send_errno("Could not resume");
   }
-
   state_ = process_state::running;
 }
 
@@ -152,8 +153,7 @@ void ldb::process::read_all_registers() {
 
     errno = 0;
     std::int64_t data = ptrace(PTRACE_PEEKUSER, pid_, info.offset, nullptr);
-    if (errno != 0)
-      error::send_errno("Could not read debug register");
+    if (errno != 0) error::send_errno("Could not read debug register");
 
     get_registers().data_.u_debugreg[i] = data;
   }
@@ -175,6 +175,6 @@ void ldb::process::write_fprs(const user_fpregs_struct& fprs) {
 
 void ldb::process::write_gprs(const user_regs_struct& gprs) {
   if (ptrace(PTRACE_SETREGS, pid_, nullptr, &gprs) < 0) {
-    error::send_errno("Could not write general point registers");
+    error::send_errno("Could not write general purpose registers");
   }
 }

@@ -1,7 +1,8 @@
 #include <fcntl.h>
+#include <unistd.h>
+
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
-#include <unistd.h>
 #include <utility>
 
 ldb::pipe::pipe(bool close_on_exec) {

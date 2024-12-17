@@ -1,11 +1,12 @@
 #ifndef LDB_REGISTER_INFO_HPP
 #define LDB_REGISTER_INFO_HPP
 
+#include <sys/user.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <libldb/error.hpp>
 #include <string_view>
-#include <sys/user.h>
 
 namespace ldb {
 enum class register_id {
@@ -38,14 +39,15 @@ struct register_info {
 
 /// Every register in the system.
 inline constexpr const register_info g_register_infos[] = {
-#define DEFINE_REGISTER(name, dwarf_id, size, offset, type, format)            \
+#define DEFINE_REGISTER(name, dwarf_id, size, offset, type, format) \
   {register_id::name, #name, dwarf_id, size, offset, type, format}
 #include <libldb/detail/register.inc>
 #undef DEFINE_REGISTER
 };
 
 /// To find a specific register info entry.
-template <typename F> const register_info& register_info_by(F f) {
+template <typename F>
+const register_info& register_info_by(F f) {
   if (auto it = std::find_if(std::begin(g_register_infos),
                              std::end(g_register_infos), f);
       it == std::end(g_register_infos)) {
@@ -65,6 +67,6 @@ inline const register_info& register_info_by_dwarf(std::int32_t dwarf_id) {
   return register_info_by(
       [dwarf_id](auto& i) { return i.dwarf_id == dwarf_id; });
 }
-} // namespace ldb
+}  // namespace ldb
 
 #endif

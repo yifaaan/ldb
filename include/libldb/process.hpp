@@ -1,12 +1,13 @@
 #ifndef LDB_PROCESS_HPP
 #define LDB_PROCESS_HPP
 
+#include <sys/types.h>
+#include <sys/user.h>
+
 #include <filesystem>
 #include <libldb/registers.hpp>
 #include <memory>
 #include <optional>
-#include <sys/types.h>
-#include <sys/user.h>
 
 namespace ldb {
 enum class process_state {
@@ -24,10 +25,10 @@ struct stop_reason {
 };
 
 class process {
-public:
-  static std::unique_ptr<process>
-  launch(std::filesystem::path path, bool debug = true,
-         std::optional<int> stdout_replacement = std::nullopt);
+ public:
+  static std::unique_ptr<process> launch(
+      std::filesystem::path path, bool debug = true,
+      std::optional<int> stdout_replacement = std::nullopt);
   static std::unique_ptr<process> attach(pid_t pid);
 
   process() = delete;
@@ -49,15 +50,17 @@ public:
   void write_fprs(const user_fpregs_struct& fprs);
   void write_gprs(const user_regs_struct& gprs);
 
-private:
+ private:
   /// For static member fn to construct a process
   process(pid_t pid, bool terminate_on_end, bool is_attached)
-      : pid_(pid), terminate_on_end_(terminate_on_end),
-        is_attached_(is_attached), registers_(new registers(*this)) {}
+      : pid_(pid),
+        terminate_on_end_(terminate_on_end),
+        is_attached_(is_attached),
+        registers_(new registers(*this)) {}
 
   void read_all_registers();
 
-private:
+ private:
   pid_t pid_ = 0;
   bool terminate_on_end_ = true;
   bool is_attached_ = true;
@@ -65,6 +68,6 @@ private:
   std::unique_ptr<registers> registers_;
 };
 
-} // namespace ldb
+}  // namespace ldb
 
 #endif

@@ -31,6 +31,7 @@ template <typename T> ldb::byte128 widen(const ldb::register_info& info, T t) {
       }
     }
   }
+
   return to_byte128(t);
 }
 } // namespace
@@ -64,17 +65,16 @@ ldb::registers::value ldb::registers::read(const register_info& info) const {
 
 void ldb::registers::write(const register_info& info, value val) {
   auto bytes = as_bytes(data_);
-
   std::visit(
       [&](auto& v) {
+        // To support smaller-sized values into registers safely
         if (sizeof(v) <= info.size) {
-          // To support smaller-sized values into registers safely
           auto wide = widen(info, v);
           auto val_bytes = as_bytes(wide);
           std::copy(val_bytes, val_bytes + info.size, bytes + info.offset);
         } else {
-          std::cerr << "ldb::register:: write called with "
-                       "mismatched register and value sizes";
+          std::cerr << "ldb::register::write called with mismatched"
+                       "register and value sizes";
           std::terminate();
         }
       },
