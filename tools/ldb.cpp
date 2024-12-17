@@ -197,10 +197,12 @@ write <register> <value>
             }
             else if (info.format == ldb::register_format::double_float)
             {
+                // fmt::print("in double_float");
                 return ldb::to_float<double>(text).value();
             }
             else if (info.format == ldb::register_format::vector)
             {
+                // fmt::print("in vector");
                 if (info.size == 8)
                 {
                     return ldb::parse_vector<8>(text);
