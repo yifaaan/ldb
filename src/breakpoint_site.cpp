@@ -45,3 +45,26 @@ void ldb::breakpoint_site::enable()
     }
     is_enabled_ = true;
 }
+
+void ldb::breakpoint_site::disable()
+{
+    if (!is_enabled_)
+    {
+        return;
+    }
+
+    errno = 0;
+    std::uint64_t data = ptrace(PTRACE_PEEKDATA, process_->pid(), address_, nullptr);
+    if (errno != 0)
+    {
+        ldb::error::send_errno("Disabling breakpoint site failed");
+    }
+
+    // replace the first 8 bits(int3) with saved_data_
+    auto restored_data = ((data & ~0xff) | static_cast<std::uint8_t>(saved_data_));
+    if (ptrace(PTRACE_POKEDATA, process_->pid(), address_, restored_data) < 0)
+    {
+        ldb::error::send_errno("Disabling breakpoint site failed");
+    }
+    is_enabled_ = false;
+}
