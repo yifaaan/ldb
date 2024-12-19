@@ -316,6 +316,19 @@ write <register> <value>
             std::cerr << "Command expects breakpoint id";
             return;
         }
+
+        if (is_prefix(command, "enable"))
+        {
+            process.breakpoint_sites().get_by_id(*id).enable();
+        }
+        else if (is_prefix(command, "disable"))
+        {
+            process.breakpoint_sites().get_by_id(*id).disable();
+        }
+        else if (is_prefix(command, "delete"))
+        {
+            process.breakpoint_sites().remove_by_id(*id);
+        }
     }
 
     void handle_command(std::unique_ptr<ldb::process>& process, std::string_view line)
