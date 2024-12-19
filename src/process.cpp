@@ -1,3 +1,4 @@
+#include <sys/personality.h>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/user.h>
@@ -7,7 +8,6 @@
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
-#include <iostream>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
@@ -35,6 +35,8 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path, b
 
     if (pid == 0)
     {
+        // Disable ASLR
+        personality(ADDR_NO_RANDOMIZE);
         channel.close_read();
 
         if (stdout_replacement)
@@ -120,6 +122,22 @@ void ldb::process::resume()
 {
     // auto a = ptrace(PTRACE_CONT, pid_, nullptr, nullptr);
     // std::cout << std::format("ptrace ret: {}\n", a);
+    auto pc = get_pc();
+    if (breakpoint_sites_.enabled_stoppoint_at_address(pc))
+    {
+        auto& bp = breakpoint_sites_.get_by_address(pc);
+        bp.disable();
+        if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0)
+        {
+            error::send_errno("Failed to single step");
+        }
+        int wait_status;
+        if (waitpid(pid_, &wait_status, 0) < 0)
+        {
+            error::send_errno("waitpid failed");
+        }
+        bp.enable();
+    }
     if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0)
     {
         error::send_errno("Could not resume");
@@ -141,6 +159,12 @@ ldb::stop_reason ldb::process::wait_on_signal()
     if (is_attached_ and state_ == process_state::stopped)
     {
         read_all_registers();
+
+        auto instr_begin = get_pc() - 1;
+        if (reason.info == SIGTRAP and breakpoint_sites_.enabled_stoppoint_at_address(instr_begin))
+        {
+            set_pc(instr_begin);
+        }
     }
     return reason;
 }
@@ -225,4 +249,27 @@ ldb::breakpoint_site& ldb::process::create_breakpoint_site(virt_addr address)
         error::send("Breakpoint site already created at address " + std::to_string(address.addr()));
     }
     return breakpoint_sites_.push(std::unique_ptr<breakpoint_site>(new breakpoint_site(*this, address)));
+}
+
+ldb::stop_reason ldb::process::step_instruction()
+{
+    std::optional<breakpoint_site*> to_reenable;
+    auto pc = get_pc();
+    if (breakpoint_sites_.enabled_stoppoint_at_address(pc))
+    {
+        auto& bp = breakpoint_sites_.get_by_address(pc);
+        bp.disable();
+        to_reenable = &bp;
+    }
+
+    if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0)
+    {
+        error::send_errno("Could not single step");
+    }
+    auto reason = wait_on_signal();
+    if (to_reenable)
+    {
+        to_reenable.value()->enable();
+    }
+    return reason;
 }

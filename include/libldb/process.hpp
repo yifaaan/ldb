@@ -82,6 +82,13 @@ namespace ldb
             return breakpoint_sites_;
         }
 
+        void set_pc(virt_addr address)
+        {
+            get_registers().write_by_id(register_id::rip, address.addr());
+        }
+
+        ldb::stop_reason step_instruction();
+
     private:
         /// For static member fn to construct a process
         process(pid_t pid, bool terminate_on_end, bool is_attached)
