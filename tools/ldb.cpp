@@ -105,6 +105,7 @@ namespace
         if (args.size() == 1)
         {
             std::cerr << R"(Available commands:
+breakpoint  - Commands for operating on breakpoints
 continue    - Resume the process
 register    - Commands for operating on registers
 )";
@@ -116,6 +117,16 @@ read
 read <register>
 read all
 write <register> <value>    
+)";
+        }
+        else if (is_prefix(args[1], "breakpoint"))
+        {
+            std::cerr << R"(Available commands:
+list
+delete <id>
+disable <id>
+enable <id>
+set <address>
 )";
         }
         else
