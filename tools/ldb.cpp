@@ -288,6 +288,34 @@ write <register> <value>
             }
             return;
         }
+
+        if (args.size() < 3)
+        {
+            print_help({"help", "breakpoint"});
+            return;
+        }
+
+        if (is_prefix(command, "set"))
+        {
+            auto address = ldb::to_integral<std::uint64_t>(args[2], 16);
+
+            if (!address)
+            {
+                fmt::print(stderr, "Breakpoint command expects address in "
+                                   "hexadecimal, prefixed with '0x'\n");
+                return;
+            }
+
+            process.create_breakpoint_site(ldb::virt_addr{*address}).enable();
+            return;
+        }
+
+        auto id = ldb::to_integral<ldb::breakpoint_site::id_type>(args[2]);
+        if (!id)
+        {
+            std::cerr << "Command expects breakpoint id";
+            return;
+        }
     }
 
     void handle_command(std::unique_ptr<ldb::process>& process, std::string_view line)
