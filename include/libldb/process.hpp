@@ -1,6 +1,8 @@
 #ifndef LDB_PROCESS_HPP
 #define LDB_PROCESS_HPP
 
+#include "libldb/bit.hpp"
+#include "libldb/types.hpp"
 #include <filesystem>
 #include <libldb/breakpoint_site.hpp>
 #include <libldb/registers.hpp>
@@ -32,8 +34,7 @@ namespace ldb
     class process
     {
     public:
-        static std::unique_ptr<process> launch(std::filesystem::path path, bool debug = true,
-                                               std::optional<int> stdout_replacement = std::nullopt);
+        static std::unique_ptr<process> launch(std::filesystem::path path, bool debug = true, std::optional<int> stdout_replacement = std::nullopt);
         static std::unique_ptr<process> attach(pid_t pid);
 
         process() = delete;
@@ -47,6 +48,7 @@ namespace ldb
         {
             return pid_;
         }
+
         process_state state() const
         {
             return state_;
@@ -56,15 +58,18 @@ namespace ldb
         {
             return *registers_;
         }
+
         const registers& get_registers() const
         {
             return *registers_;
         }
+
         // Get PC register
         virt_addr get_pc() const
         {
             return virt_addr{get_registers().read_by_id_as<std::uint64_t>(register_id::rip)};
         }
+
         /// With the register value offset and the data.
         /// We just wrote into our own user struct.
         void write_user_area(std::size_t offset, std::uint64_t data);
@@ -73,10 +78,12 @@ namespace ldb
         void write_gprs(const user_regs_struct& gprs);
 
         breakpoint_site& create_breakpoint_site(virt_addr address);
+
         stoppoint_collection<breakpoint_site>& breakpoint_sites()
         {
             return breakpoint_sites_;
         }
+
         const stoppoint_collection<breakpoint_site>& breakpoint_sites() const
         {
             return breakpoint_sites_;
@@ -89,13 +96,33 @@ namespace ldb
 
         ldb::stop_reason step_instruction();
 
+        /**
+         * @brief takes a virtual address to read from and a number of bytes to read.
+         * returns the requested memory in a std::vector.
+         * @param address
+         * @param amount
+         * @return std::vector<std::byte>
+         */
+        std::vector<std::byte> read_memory(virt_addr address, std::size_t amount) const;
+        void write_memory(virt_addr address, span<const std::byte> data);
+
+        /**
+         * @brief Read a block of memory as an object of a given type.
+         *
+         * @tparam T
+         * @param address
+         * @return T
+         */
+        template<typename T>
+        T read_memory_as(virt_addr address) const
+        {
+            auto data = read_memory(address, sizeof(T));
+            return from_bytes<T>(data.data());
+        }
+
     private:
         /// For static member fn to construct a process
-        process(pid_t pid, bool terminate_on_end, bool is_attached)
-            : pid_(pid), terminate_on_end_(terminate_on_end), is_attached_(is_attached),
-              registers_(new registers(*this))
-        {
-        }
+        process(pid_t pid, bool terminate_on_end, bool is_attached) : pid_(pid), terminate_on_end_(terminate_on_end), is_attached_(is_attached), registers_(new registers(*this)) {}
 
         void read_all_registers();
 
