@@ -3,6 +3,7 @@
 
 #include <sys/user.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <libldb/error.hpp>
@@ -56,11 +57,10 @@ namespace ldb
     };
 
     /// To find a specific register info entry.
-    template<typename F>
+    template <typename F>
     const register_info& register_info_by(F f)
     {
-        if (auto it = std::find_if(std::begin(g_register_infos), std::end(g_register_infos), f);
-            it == std::end(g_register_infos))
+        if (auto it = std::find_if(std::begin(g_register_infos), std::end(g_register_infos), f); it == std::end(g_register_infos))
         {
             ldb::error::send("Can't find register info");
         }
@@ -72,15 +72,29 @@ namespace ldb
 
     inline const register_info& register_info_by_id(register_id id)
     {
-        return register_info_by([id](auto& i) { return i.id == id; });
+        return register_info_by(
+            [id](auto& i)
+            {
+                return i.id == id;
+            });
     }
+
     inline const register_info& register_info_by_name(std::string_view name)
     {
-        return register_info_by([name](auto& i) { return i.name == name; });
+        return register_info_by(
+            [name](auto& i)
+            {
+                return i.name == name;
+            });
     }
+
     inline const register_info& register_info_by_dwarf(std::int32_t dwarf_id)
     {
-        return register_info_by([dwarf_id](auto& i) { return i.dwarf_id == dwarf_id; });
+        return register_info_by(
+            [dwarf_id](auto& i)
+            {
+                return i.dwarf_id == dwarf_id;
+            });
     }
 } // namespace ldb
 
