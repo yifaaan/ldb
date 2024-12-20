@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <csignal>
+#include <elf.h>
 #include <fstream>
 #include <libldb/bit.hpp>
 #include <libldb/error.hpp>
@@ -7,6 +8,8 @@
 #include <libldb/process.hpp>
 #include <libldb/register_info.hpp>
 #include <libldb/types.hpp>
+#include <regex>
+#include <string>
 
 using namespace ldb;
 
@@ -28,6 +31,70 @@ namespace
         auto index_of_last_parenthesis = data.rfind(')');
         auto index_of_status_indicator = index_of_last_parenthesis + 2;
         return data[index_of_status_indicator];
+    }
+
+    /// Find the section load bias for a given file address.
+    std::int64_t get_section_load_bias(std::filesystem::path path, Elf64_Addr file_address)
+    {
+        auto command = std::string{"readelf -WS "} + path.string();
+        auto pipe = popen(command.c_str(), "r");
+
+        std::regex text_regex(R"(PROGBITS\s+(\w+)\s+(\w+)\s+(\w+))");
+        char* line = nullptr;
+        std::size_t len = 0;
+        while (getline(&line, &len, pipe) != -1)
+        {
+            std::cmatch groups;
+            if (std::regex_search(line, groups, text_regex))
+            {
+                auto address = std::stol(groups[1], nullptr, 16);
+                auto offset = std::stol(groups[2], nullptr, 16);
+                auto size = std::stol(groups[3], nullptr, 16);
+                if (address <= file_address and file_address < (address + size))
+                {
+                    free(line);
+                    pclose(pipe);
+                    return address - offset;
+                }
+            }
+            free(line);
+            line = nullptr;
+        }
+        pclose(pipe);
+        ldb::error::send("Could not find section load bias");
+    }
+
+    std::int64_t get_entry_point_offset(std::filesystem::path path)
+    {
+        std::ifstream elf_file{path};
+
+        Elf64_Ehdr header;
+        elf_file.read(reinterpret_cast<char*>(&header), sizeof(header));
+        // gives us the entry point file address for the object file
+        auto entry_file_address = header.e_entry;
+        return entry_file_address - get_section_load_bias(path, entry_file_address);
+    }
+
+    virt_addr get_load_address(pid_t pid, std::int64_t offset)
+    {
+        std::ifstream maps{"/proc/" + std::to_string(pid) + "/maps"};
+        // 555555555000-555555556000 r-xp 00001000
+        std::regex map_regex{R"((\w+)-\w+ ..(.). (\w+))"};
+
+        std::string data;
+        while (std::getline(maps, data))
+        {
+            std::cmatch groups;
+            std::regex_search(data.data(), groups, map_regex);
+
+            if (groups[2] == 'x')
+            {
+                auto low_range = std::stol(groups[1], nullptr, 16);
+                auto file_offset = std::stol(groups[3], nullptr, 16);
+                return virt_addr(offset - file_offset + low_range);
+            }
+        }
+        ldb::error::send("Could not find load address");
     }
 } // namespace
 
@@ -247,4 +314,33 @@ TEST_CASE("Can iterate breakpoint sites", "[breakpoint]")
 
     proc->breakpoint_sites().for_each([addr = 42](auto& site) mutable { REQUIRE(site.address().addr() == addr++); });
     cproc->breakpoint_sites().for_each([addr = 42](auto& site) mutable { REQUIRE(site.address().addr() == addr++); });
+}
+
+TEST_CASE("Breakpoint on address works", "[breakpoint]")
+{
+    bool close_on_exec = false;
+    ldb::pipe channel(close_on_exec);
+
+    auto proc = process::launch("/root/workspace/ldb/build/test/targets/hello_ldb", true, channel.get_write());
+    channel.close_write();
+
+    auto offset = get_entry_point_offset("/root/workspace/ldb/build/test/targets/hello_ldb");
+    auto load_address = get_load_address(proc->pid(), offset);
+
+    proc->create_breakpoint_site(load_address).enable();
+    proc->resume();
+    auto reason = proc->wait_on_signal();
+
+    REQUIRE(reason.reason == process_state::stopped);
+    REQUIRE(reason.info == SIGTRAP);
+    REQUIRE(proc->get_pc() == load_address);
+
+    proc->resume();
+    reason = proc->wait_on_signal();
+
+    REQUIRE(reason.reason == process_state::exited);
+    REQUIRE(reason.info == 0);
+
+    auto data = channel.read();
+    REQUIRE(to_string_view(data) == "Hello, ldb!\n");
 }
