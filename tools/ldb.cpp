@@ -18,6 +18,7 @@
 #include <libldb/process.hpp>
 #include <readline/history.h>
 #include <readline/readline.h>
+
 namespace
 {
 
@@ -41,6 +42,7 @@ namespace
             return proc;
         }
     }
+
     std::vector<std::string> split(std::string_view str, char delimiter)
     {
         std::vector<std::string> out{};
@@ -72,6 +74,7 @@ namespace
             std::exit(-1);
         }
     }
+
     void wait_on_signal(pid_t pid)
     {
         int wait_status;
@@ -95,8 +98,7 @@ namespace
             message = fmt::format("terminated with signal {}", sigabbrev_np(reason.info));
             break;
         case ldb::process_state::stopped:
-            message =
-                fmt::format("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), process.get_pc().addr());
+            message = fmt::format("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), process.get_pc().addr());
             break;
         }
         fmt::print("Process {} {}\n", process.pid(), message);
@@ -160,8 +162,7 @@ set <address>
         {
             for (auto& info : ldb::g_register_infos)
             {
-                auto should_print =
-                    (args.size() == 3 or info.type == ldb::register_type::gpr) and info.name != "orig_rax";
+                auto should_print = (args.size() == 3 or info.type == ldb::register_type::gpr) and info.name != "orig_rax";
                 if (!should_print)
                 {
                     continue;
@@ -294,11 +295,11 @@ set <address>
             else
             {
                 fmt::print("Current breakpoints:\n");
-                process.breakpoint_sites().for_each([](auto& site)
-                {
-                    fmt::print("{}: address = {:#x}, {}\n", site.id(), site.address().addr(),
-                               site.is_enabled() ? "enabled" : "disabled");
-                });
+                process.breakpoint_sites().for_each(
+                    [](auto& site)
+                    {
+                        fmt::print("{}: address = {:#x}, {}\n", site.id(), site.address().addr(), site.is_enabled() ? "enabled" : "disabled");
+                    });
             }
             return;
         }
@@ -315,8 +316,7 @@ set <address>
 
             if (!address)
             {
-                fmt::print(stderr, "Breakpoint command expects address in "
-                                   "hexadecimal, prefixed with '0x'\n");
+                fmt::print(stderr, "Breakpoint command expects address in " "hexadecimal, prefixed with '0x'\n");
                 return;
             }
 
@@ -342,6 +342,62 @@ set <address>
         else if (is_prefix(command, "delete"))
         {
             process.breakpoint_sites().remove_by_id(*id);
+        }
+    }
+
+    /**
+     * @brief memory read <address>
+     * default to 32 bytes
+     * @param process
+     * @param args
+     */
+    void handle_memory_read_command(ldb::process& process, const std::vector<std::string>& args)
+    {
+        auto address = ldb::to_integral<std::uint64_t>(args[2], 16);
+        if (!address)
+            ldb::error::send("Invalid address format");
+
+        auto n_bytes = 32;
+        if (args.size() == 4)
+        {
+            auto bytes_arg = ldb::to_integral<std::size_t>(args[3]);
+            if (!bytes_arg)
+                ldb::error::send("Invalid number of bytes");
+            n_bytes = *bytes_arg;
+        }
+        auto data = process.read_memory(ldb::virt_addr{*address}, n_bytes);
+        for (std::size_t i = 0; i < data.size(); i += 16)
+        {
+            auto start = data.begin() + i;
+            auto end = data.begin() + std::min(i + 16, data.size());
+            fmt::print("{:#016x}: {:02x}\n", *address + i, fmt::join(start, end, " "));
+        }
+    }
+
+    /**
+     * @brief memory write <address> <values>,
+     * values format: [0xff, 0xff, ...]
+     * @param process
+     * @param args
+     */
+    void handle_memory_command(ldb::process& process, const std::vector<std::string>& args)
+    {
+        if (args.size() < 3)
+        {
+            print_help({"help", "memory"});
+            return;
+        }
+        if (is_prefix(args[1], "read"))
+        {
+            handle_memory_read_command(process, args);
+        }
+        else if (is_prefix(args[1], "write"))
+        {
+            handle_memory_write_command(process, args);
+        }
+        else
+        {
+            print_help({"help", "memory"});
         }
     }
 
@@ -372,6 +428,10 @@ set <address>
         {
             auto reason = process->step_instruction();
             print_stop_reason(*process, reason);
+        }
+        else if (is_prefix(command, "memory"))
+        {
+            handle_memory_command(*process, args);
         }
         else
         {
