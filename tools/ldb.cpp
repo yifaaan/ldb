@@ -111,6 +111,7 @@ namespace
             std::cerr << R"(Available commands:
 breakpoint  - Commands for operating on breakpoints
 continue    - Resume the process
+memory      - Commands for operating on memory
 register    - Commands for operating on registers
 step        - Step over a single instruction
 )";
@@ -132,6 +133,14 @@ delete <id>
 disable <id>
 enable <id>
 set <address>
+)";
+        }
+        else if (is_prefix(args[1], "memory"))
+        {
+            std::cerr << R"(Available commands:
+read <address>
+read <address> <number of bytes>
+write <address> <bytes>
 )";
         }
         else
@@ -373,6 +382,30 @@ set <address>
             fmt::print("{:#016x}: {:02x}\n", *address + i, fmt::join(start, end, " "));
         }
     }
+
+    /**
+     * @brief memory write <address> <value>
+     * 
+     * @param process 
+     * @param args 
+     */
+    void handle_memory_write_command(ldb::process& process, const std::vector<std::string>& args)
+    {
+        if (args.size() != 4)
+        {
+            print_help({"help", "memory"});
+            return;
+        }
+        auto address = ldb::to_integral<std::uint64_t>(args[2], 16);
+        if (!address)
+        {
+            ldb::error::send("Invalid address format");
+        }
+
+        auto data = ldb::parse_vector(args[3]);
+        process.write_memory(ldb::virt_addr{*address}, {data.data(), data.size()});
+    }
+
 
     /**
      * @brief memory write <address> <values>,
