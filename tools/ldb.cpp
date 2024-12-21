@@ -15,6 +15,7 @@
 #include <fmt/ranges.h>
 #include <libldb/error.hpp>
 #include <libldb/parse.hpp>
+#include <libldb/disassembler.hpp>
 #include <libldb/process.hpp>
 #include <readline/history.h>
 #include <readline/readline.h>
@@ -22,6 +23,7 @@
 namespace
 {
 
+    
     /// Launches and attaches to the given program name or PID.
     /// Returns the PID of the inferior.
     std::unique_ptr<ldb::process> attach(int argc, const char** argv)
@@ -111,6 +113,7 @@ namespace
             std::cerr << R"(Available commands:
 breakpoint  - Commands for operating on breakpoints
 continue    - Resume the process
+disassemble - Disassemble machine code to assembly
 memory      - Commands for operating on memory
 register    - Commands for operating on registers
 step        - Step over a single instruction
@@ -143,10 +146,37 @@ read <address> <number of bytes>
 write <address> <bytes>
 )";
         }
+        else if (is_prefix(args[1], "disassemble"))
+        {
+            std::cerr << R"(Available commands:
+-c <number of instructions>
+-a <start address>
+)";
+        }
         else
         {
             std::cerr << "No help available on that\n";
         }
+    }
+
+
+    void print_disassembly(ldb::process& process, ldb::virt_addr address, std::size_t n_instructions)
+    {
+        ldb::disassember dis(process);
+        auto instructions = dis.disassemble(n_instructions, address);
+        for (auto& instr : instructions)
+        {
+            fmt::print("{:#018x}: {}\n", instr.address.addr(), instr.text);
+        }
+    }
+
+    void handle_stop(ldb::process& process, ldb::stop_reason reason)
+    {
+        print_stop_reason(process, reason);
+        if (reason.reason == ldb::process_state::stopped)
+        {
+            print_disassembly(process, process.get_pc(), 5);
+        }    
     }
 
     void handle_register_read(ldb::process& process, const std::vector<std::string>& args)
@@ -407,6 +437,7 @@ write <address> <bytes>
     }
 
 
+
     /**
      * @brief memory write <address> <values>,
      * values format: [0xff, 0xff, ...]
@@ -434,6 +465,47 @@ write <address> <bytes>
         }
     }
 
+    /**
+     * @brief disassemble -c <n_instructions> -a <address>
+     * 
+     * @param process 
+     * @param args 
+     */
+    void handle_disassemble_command(ldb::process& process, const std::vector<std::string>& args)
+    {
+        auto address = process.get_pc();
+        std::size_t n_instructions = 5;
+        auto it = args.begin() + 1;
+        while (it != args.end())
+        {
+            if (*it == "-a" and it + 1 != args.end())
+            {
+                it++;
+                auto opt_addr = ldb::to_integral<std::uint64_t>(*it++, 16);
+                if (!opt_addr)
+                {
+                    ldb::error::send("Invalid address format");
+                    address = ldb::virt_addr{*opt_addr};
+                }
+            }
+            else if (*it == "-c" and it + 1 != args.end())
+            {
+                it++;
+                auto opt_n = ldb::to_integral<std::size_t>(*it++);
+                if (!opt_n)
+                {
+                    ldb::error::send("Invalid instruction count");
+                    n_instructions = *opt_n;
+                }
+            }
+            else 
+            {
+                print_help({"help", "disassemble"});
+                return;
+            }
+        }
+        print_disassembly(process, address, n_instructions);
+    }
     void handle_command(std::unique_ptr<ldb::process>& process, std::string_view line)
     {
         auto args = split(line, ' ');
@@ -443,7 +515,7 @@ write <address> <bytes>
         {
             process->resume();
             auto reason = process->wait_on_signal();
-            print_stop_reason(*process, reason);
+            handle_stop(*process, reason);
         }
         else if (is_prefix(command, "help"))
         {
@@ -460,11 +532,15 @@ write <address> <bytes>
         else if (is_prefix(command, "step"))
         {
             auto reason = process->step_instruction();
-            print_stop_reason(*process, reason);
+            handle_stop(*process, reason);
         }
         else if (is_prefix(command, "memory"))
         {
             handle_memory_command(*process, args);
+        }
+        else if (is_prefix(command, "disassemble"))
+        {
+            handle_disassemble_command(*process, args);
         }
         else
         {

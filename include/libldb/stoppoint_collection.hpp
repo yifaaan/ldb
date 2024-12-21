@@ -39,6 +39,8 @@ namespace ldb
             return stoppoints_.empty();
         }
 
+        std::vector<Stoppoint*> get_in_region(virt_addr low, virt_addr high) const;
+
     private:
         using points_t = std::vector<std::unique_ptr<Stoppoint>>;
 
@@ -174,6 +176,20 @@ namespace ldb
         {
             f(*point);
         }
+    }
+
+    template<typename Stoppoint>
+    std::vector<Stoppoint*> stoppoint_collection<Stoppoint>::get_in_region(virt_addr low, virt_addr high) const
+    {
+        std::vector<Stoppoint*> ret;
+        for (auto& site : stoppoints_)
+        {
+            if (site->is_range(low, high))
+            {
+                ret.push_back(&*site);
+            }
+        }
+        return ret;
     }
 
 } // namespace ldb

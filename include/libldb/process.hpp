@@ -104,6 +104,7 @@ namespace ldb
          * @return std::vector<std::byte>
          */
         std::vector<std::byte> read_memory(virt_addr address, std::size_t amount) const;
+        std::vector<std::byte> read_memory_without_traps(virt_addr address, std::size_t amount) const;
         void write_memory(virt_addr address, span<const std::byte> data);
 
         /**
