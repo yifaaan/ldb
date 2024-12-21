@@ -373,4 +373,15 @@ TEST_CASE("Reading and writing memory works", "[memory]")
     auto data_vec = proc->read_memory(virt_addr{a_point}, 8);
     auto data = from_bytes<std::uint64_t>(data_vec.data());
     REQUIRE(data == 0xcafecafe);
+
+    proc->resume();
+    proc->wait_on_signal();
+
+    auto b_point = from_bytes<std::uint64_t>(channel.read().data());
+    proc->write_memory(virt_addr{b_point}, {as_bytes("Hello, ldb!"), 12});
+    proc->resume();
+    proc->wait_on_signal();
+
+    auto read = channel.read();
+    REQUIRE(to_string_view(read) == "Hello, ldb!");
 }

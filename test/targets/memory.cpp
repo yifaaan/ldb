@@ -10,4 +10,12 @@ int main()
     write(STDOUT_FILENO, &a_addresss, sizeof(void*));
     fflush(stdout);
     raise(SIGTRAP);
+
+    char b[12]{};
+    auto b_address = &b;
+    write(STDOUT_FILENO, &b_address, sizeof(void*));
+    fflush(stdout);
+    raise(SIGTRAP);
+
+    printf("%s", b);
 }
