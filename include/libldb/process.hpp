@@ -32,7 +32,7 @@ namespace ldb
 
         ~Process();
 
-        static std::unique_ptr<Process> Launch(std::filesystem::path path);
+        static std::unique_ptr<Process> Launch(std::filesystem::path path, bool debug = true);
 
         static std::unique_ptr<Process> Attach(pid_t pid);
 
@@ -45,9 +45,10 @@ namespace ldb
         ProcessState State() const { return state; }
     
     private:
-        Process(pid_t _pid, bool _terminateOnEnd)
+        Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
                 :pid(_pid)
                 ,terminateOnEnd(_terminateOnEnd)
+                ,isAttached(_isAttached)
         {}
 
     private:
@@ -55,6 +56,7 @@ namespace ldb
         /// clean up the inferior process
         bool terminateOnEnd = true;
         ProcessState state = ProcessState::Stopped;
+        bool isAttached = true;
     };
 }
 

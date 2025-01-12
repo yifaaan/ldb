@@ -1,5 +1,6 @@
 
 #include <csignal>
+#include <iostream>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -41,10 +42,11 @@ ldb::StopReason::StopReason(int waitStatus)
 }
 
 
-std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path)
+std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path, bool debug)
 {
     Pipe channel(true);
     pid_t pid;
+    
     if ((pid = fork()) < 0)
     {
         Error::SendErrno("fork failed");
@@ -55,7 +57,7 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path)
         // in child
         channel.CloseRead();
         // set itself up to be traced
-        if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
+        if (debug and ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
         {
             ExitWithPerror(channel, "Tracing failed");
         }
@@ -65,6 +67,7 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path)
             ExitWithPerror(channel, "exec failed");
         }
     }
+
 
     // in parent
     channel.CloseWrite();
@@ -77,9 +80,12 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path)
         auto chars = reinterpret_cast<char*>(data.data());
         Error::Send(std::string(chars, chars + data.size()));
     }
-    
-    std::unique_ptr<Process> childProc(new Process(pid, true));
-    childProc->WaitOnSignal();
+
+    std::unique_ptr<Process> childProc(new Process(pid, true, debug));
+    if (debug)
+    {
+        childProc->WaitOnSignal();
+    }
     return childProc;
 }
 
@@ -94,7 +100,7 @@ std::unique_ptr<ldb::Process> ldb::Process::Attach(pid_t pid)
         Error::SendErrno("Could not attach");
     }
 
-    std::unique_ptr<Process> beAttachedProc(new Process(pid, false));
+    std::unique_ptr<Process> beAttachedProc(new Process(pid, false, true));
     beAttachedProc->WaitOnSignal();
     return beAttachedProc;
 }
@@ -104,14 +110,17 @@ ldb::Process::~Process()
     if (pid != 0)
     {
         int status;
-        if (state == ProcessState::Running)
+        if (isAttached)
         {
-            kill(pid, SIGSTOP);
-            waitpid(pid, &status, 0);
-        }
+            if (state == ProcessState::Running)
+            {
+                kill(pid, SIGSTOP);
+                waitpid(pid, &status, 0);
+            }
 
-        ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
-        kill(pid, SIGCONT);
+            ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+            kill(pid, SIGCONT);
+        }
 
         if (terminateOnEnd)
         {

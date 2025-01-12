@@ -10,7 +10,7 @@ namespace ldb
     {
     private:
         static constexpr unsigned readFd = 0;
-        static constexpr unsigned writeFd = 0;
+        static constexpr unsigned writeFd = 1;
         int fds[2];
 
     public:
