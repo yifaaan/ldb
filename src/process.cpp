@@ -7,7 +7,19 @@
 
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
+#include <libldb/pipe.hpp>
 
+
+namespace 
+{
+    /// writes a representation of errno to a pipe
+    void ExitWithPerror(ldb::Pipe& channel, const std::string& prefix)
+    {
+        auto message = prefix + std::string(": ") + std::strerror(errno);
+        channel.Write(reinterpret_cast<std::byte*>(message.data()), message.size());
+        exit(-1);
+    }
+}
 
 ldb::StopReason::StopReason(int waitStatus)
 {
@@ -28,8 +40,10 @@ ldb::StopReason::StopReason(int waitStatus)
     }
 }
 
+
 std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path)
 {
+    Pipe channel(true);
     pid_t pid;
     if ((pid = fork()) < 0)
     {
@@ -39,19 +53,31 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path)
     if (pid == 0)
     {
         // in child
+        channel.CloseRead();
         // set itself up to be traced
         if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
         {
-            Error::SendErrno("Tracing failed");
+            ExitWithPerror(channel, "Tracing failed");
         }
         // kernal will stop the process on a call to exec if it's being traced using ptrace
         if (execlp(path.c_str(), path.c_str(), nullptr) < 0)
         {
-            Error::SendErrno("exec failed");
+            ExitWithPerror(channel, "exec failed");
         }
     }
 
     // in parent
+    channel.CloseWrite();
+    auto data = channel.Read();
+    channel.CloseRead();
+
+    if (data.size() > 0)
+    {
+        waitpid(pid, nullptr, 0);
+        auto chars = reinterpret_cast<char*>(data.data());
+        Error::Send(std::string(chars, chars + data.size()));
+    }
+    
     std::unique_ptr<Process> childProc(new Process(pid, true));
     childProc->WaitOnSignal();
     return childProc;
