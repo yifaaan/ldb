@@ -15,6 +15,14 @@ namespace ldb
         Terminated,
     };
 
+    struct StopReason
+    {
+        StopReason(int waitStatus);
+
+        ProcessState reason;
+        std::uint8_t info;
+    };
+
     class Process
     {
     public:
@@ -30,7 +38,7 @@ namespace ldb
 
         void Resume();
 
-        void WaitOnSignal();
+        StopReason WaitOnSignal();
 
         pid_t Pid() const { return pid; }
 

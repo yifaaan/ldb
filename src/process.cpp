@@ -1,4 +1,5 @@
 
+#include <csignal>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -6,6 +7,26 @@
 
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
+
+
+ldb::StopReason::StopReason(int waitStatus)
+{
+    if (WIFEXITED(waitStatus))
+    {
+        reason = ProcessState::Exited;
+        info = WEXITSTATUS(waitStatus);
+    }
+    else if (WIFSIGNALED(waitStatus))
+    {
+        reason = ProcessState::Terminated;
+        info = WTERMSIG(waitStatus);
+    }
+    else if (WIFSTOPPED(waitStatus))
+    {
+        reason = ProcessState::Stopped;
+        info = WSTOPSIG(waitStatus);
+    }
+}
 
 std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path)
 {
@@ -50,4 +71,49 @@ std::unique_ptr<ldb::Process> ldb::Process::Attach(pid_t pid)
     std::unique_ptr<Process> beAttachedProc(new Process(pid, false));
     beAttachedProc->WaitOnSignal();
     return beAttachedProc;
+}
+
+ldb::Process::~Process()
+{
+    if (pid != 0)
+    {
+        int status;
+        if (state == ProcessState::Running)
+        {
+            kill(pid, SIGSTOP);
+            waitpid(pid, &status, 0);
+        }
+
+        ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+        kill(pid, SIGCONT);
+
+        if (terminateOnEnd)
+        {
+            kill(pid, SIGKILL);
+            waitpid(pid, &status, 0);
+        }
+    }
+}
+
+void ldb::Process::Resume()
+{
+    if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) < 0)
+    {
+        Error::SendErrno("Could not resume");
+    }
+    state = ProcessState::Running;
+}
+
+ldb::StopReason ldb::Process::WaitOnSignal()
+{
+    int waitStatus;
+    int options = 0;
+    if (waitpid(pid, &waitStatus, options) < 0)
+    {
+        Error::SendErrno("waitpid failed");
+    }
+    StopReason reason(waitStatus);
+    // update traced process's state
+    state = reason.reason;
+    return reason;
 }
