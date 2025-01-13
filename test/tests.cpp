@@ -90,17 +90,24 @@ TEST_CASE("Write register works", "[register]")
     auto proc = ldb::Process::Launch("/home/clyf/Workspace/ldb/build/test/targets/reg_write", true, channel.GetWrite());
     channel.CloseWrite();
 
+    // print rsi
     proc->Resume();
     // trap //
     proc->WaitOnSignal();
-
     auto& regs = proc->GetRegisters();
     regs.WriteById(ldb::RegisterId::rsi, 0xcafecafe);
-
     proc->Resume();
-    // call printf //
+    // call printf then trap //
     proc->WaitOnSignal();
-
     auto output = channel.Read();
     REQUIRE(ldb::ToStringView(output) == "0xcafecafe");
+
+
+    // print mm0
+    regs.WriteById(ldb::RegisterId::mm0, 0xba5eba11);
+    proc->Resume();
+    // call printf then trap
+    proc->WaitOnSignal();
+    output = channel.Read();
+    REQUIRE(ldb::ToStringView(output) == "0xba5eba11");
 }

@@ -39,6 +39,17 @@ main:
     call    fflush@plt
     trap
 
-    popq    %rbp
+    # print contents of mm0
+    movq    %mm0, %rsi
+    # printf: first argument
+    leaq    hex_format(%rip), %rdi
     movq    $0, %rax
+    call    printf@plt
+    # fflush: first argument
+    movq    $0, %rdi
+    call    fflush@plt
+    trap
+
+
+    popq    %rbp
     ret
