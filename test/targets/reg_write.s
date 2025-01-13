@@ -3,8 +3,9 @@
 
 .section .data
 
-hex_format:     .asciz "%#x"
-float_format:   .asciz "%.2f"
+hex_format:         .asciz "%#x"
+float_format:       .asciz "%.2f"
+long_float_format:  .asciz "%.2Lf"
 .section .text
 
 .macro trap
@@ -60,6 +61,17 @@ main:
     call    fflush@plt
     trap
 
-    
+
+    # print contents of st0
+    subq    $16, %rsp
+    fstpt   (%rsp)
+    leaq    long_float_format(%rip), %rdi
+    movq    $0, %rax
+    call    printf@plt
+    # fflush: first argument
+    movq    $0, %rdi
+    call    fflush@plt
+    addq    $16, %rsp
+
     popq    %rbp
     ret
