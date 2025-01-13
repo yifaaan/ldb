@@ -1,9 +1,44 @@
 #include <iostream>
+#include <type_traits>
+#include <algorithm>
 
 #include <libldb/registers.hpp>
 #include <libldb/register_info.hpp>
 #include <libldb/bit.hpp>
 #include <libldb/process.hpp>
+
+namespace
+{
+    template<typename T>
+    ldb::byte128 Widen(const ldb::RegisterInfo& info, T t)
+    {
+        using namespace ldb;
+        if constexpr (std::is_floating_point_v<T>)
+        {
+            if (info.format == RegisterFormat::DoubleFloat)
+            {
+                return ToByte128(static_cast<double>(t));
+            }
+            if (info.format == RegisterFormat::LongDouble)
+            {
+                return ToByte128(static_cast<long double>(t));
+            }
+        }
+        else if constexpr (std::is_unsigned_v<T>)
+        {
+            if (info.format == RegisterFormat::UInt)
+            {
+                switch (info.size)
+                {
+                    case 2: return ToByte128(static_cast<std::int16_t>(t));
+                    case 4: return ToByte128(static_cast<std::int32_t>(t));
+                    case 8: return ToByte128(static_cast<std::int64_t>(t));
+                }
+            }
+        }
+        return ToByte128(t);
+    }
+}
 
 ldb::Registers::value ldb::Registers::Read(const RegisterInfo& info) const
 {
@@ -44,10 +79,11 @@ void ldb::Registers::Write(const RegisterInfo& info, value val)
 
     std::visit([&](auto& v)
     {
-        if (sizeof(v) == info.size)
+        if (sizeof(v) <= info.size)
         {
-            auto valBytes = AsBytes(v);
-            std::copy(valBytes, valBytes + sizeof(v), bytes + info.offset);
+            auto wide = Widen(info, v);
+            auto valBytes = AsBytes(wide);
+            std::copy(valBytes, valBytes + info.size, bytes + info.offset);
         }
         else
         {
@@ -55,7 +91,7 @@ void ldb::Registers::Write(const RegisterInfo& info, value val)
             std::terminate();
         }
     }, val);
-    
+
     // PTRACE_POKEUSER and PTRACE_PEEKUSER don’t support writing and reading from the x87 area on x64
     // writing and reading all x87 registers at once
     if (info.type == RegisterType::Fpr)
