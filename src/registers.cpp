@@ -3,6 +3,7 @@
 #include <libldb/registers.hpp>
 #include <libldb/register_info.hpp>
 #include <libldb/bit.hpp>
+#include <libldb/process.hpp>
 
 ldb::Registers::value ldb::Registers::Read(const RegisterInfo& info) const
 {
@@ -54,7 +55,18 @@ void ldb::Registers::Write(const RegisterInfo& info, value val)
             std::terminate();
         }
     }, val);
-
-    // write into inferior's registers
-    proc->WriteUserArea(info.offset, FromBytes<std::uint64_t>(bytes + info.offset));
+    
+    // PTRACE_POKEUSER and PTRACE_PEEKUSER don’t support writing and reading from the x87 area on x64
+    // writing and reading all x87 registers at once
+    if (info.type == RegisterType::Fpr)
+    {
+        proc->WriteFprs(data.i387);
+    }
+    else
+    {
+        //  PTRACE_PEEKUSER and PTRACE_POKEUSER require the addresses to align to 8 bytes
+        auto alignedOffset = info.offset & ~0b111;
+        // write into inferior's registers
+        proc->WriteUserArea(alignedOffset, FromBytes<std::uint64_t>(bytes + alignedOffset));
+    }
 }
