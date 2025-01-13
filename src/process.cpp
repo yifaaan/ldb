@@ -43,7 +43,7 @@ ldb::StopReason::StopReason(int waitStatus)
 }
 
 
-std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path, bool debug)
+std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path, bool debug, std::optional<int> stdoutReplacement)
 {
     Pipe channel(true);
     pid_t pid;
@@ -57,6 +57,14 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path, b
     {
         // in child
         channel.CloseRead();
+
+        if (stdoutReplacement)
+        {
+            if (dup2(*stdoutReplacement, STDOUT_FILENO) < 0)
+            {
+                ExitWithPerror(channel, "stdout replacement failed");
+            }
+        }
         // set itself up to be traced
         if (debug and ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
         {

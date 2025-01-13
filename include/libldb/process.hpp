@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <filesystem>
+#include <optional>
 #include <sys/types.h>
 
 #include <libldb/registers.hpp>
@@ -34,7 +35,7 @@ namespace ldb
 
         ~Process();
 
-        static std::unique_ptr<Process> Launch(std::filesystem::path path, bool debug = true);
+        static std::unique_ptr<Process> Launch(std::filesystem::path path, bool debug = true, std::optional<int> stdoutReplacement = 1);
 
         static std::unique_ptr<Process> Attach(pid_t pid);
 

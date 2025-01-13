@@ -3,6 +3,8 @@
 
 #include <cstddef>
 #include <cstring>
+#include <vector>
+#include <sys/syscall.h>
 
 #include <libldb/types.hpp>
 
@@ -43,6 +45,16 @@ namespace ldb
         byte128 ret{};
         std::memcpy(&ret, &from, sizeof(From));
         return ret;
+    }
+
+    inline std::string_view ToStringView(const std::byte* data, std::size_t size)
+    {
+        return { reinterpret_cast<const char*>(data), size };
+    }
+
+    inline std::string_view ToStringView(const std::vector<std::byte>& data)
+    {
+        return ToStringView(data.data(), data.size());
     }
 }
 

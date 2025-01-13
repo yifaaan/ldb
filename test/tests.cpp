@@ -6,6 +6,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
+#include <libldb/pipe.hpp>
+#include <libldb/register_info.hpp>
+#include <libldb/bit.hpp>
+
 namespace
 {
     bool ProcessExists(pid_t pid)
@@ -41,7 +45,7 @@ TEST_CASE("Process::Launch no such program", "[process]")
 
 TEST_CASE("Process::Attach success", "[process]")
 {
-    auto target = ldb::Process::Launch("/home/clyf/CodeSpace/ldb/build/test/targets/run_endlessly", false);
+    auto target = ldb::Process::Launch("/home/clyf/Workspace/ldb/build/test/targets/run_endlessly", false);
     auto proc = ldb::Process::Attach(target->Pid());
     REQUIRE(GetProcessStatus(target->Pid()) == 't');
 }
@@ -54,14 +58,14 @@ TEST_CASE("Process::Attach invalid PID", "[process]")
 TEST_CASE("Process::Resume success", "[process]")
 {
     {
-        auto proc = ldb::Process::Launch("/home/clyf/CodeSpace/ldb/build/test/targets/run_endlessly");
+        auto proc = ldb::Process::Launch("/home/clyf/Workspace/ldb/build/test/targets/run_endlessly");
         proc->Resume();
         auto status = GetProcessStatus(proc->Pid());
         auto success = status == 'R' or status == 'S';
         REQUIRE(success);
     }
     {
-        auto target = ldb::Process::Launch("/home/clyf/CodeSpace/ldb/build/test/targets/run_endlessly", false);
+        auto target = ldb::Process::Launch("/home/clyf/Workspace/ldb/build/test/targets/run_endlessly", false);
         auto proc = ldb::Process::Attach(target->Pid());
         proc->Resume();
         auto status = GetProcessStatus(proc->Pid());
@@ -72,8 +76,31 @@ TEST_CASE("Process::Resume success", "[process]")
 
 TEST_CASE("Process::Resum already terminated", "[process]")
 {
-    auto proc = ldb::Process::Launch("/home/clyf/CodeSpace/ldb/build/test/targets/end_immediately");
+    auto proc = ldb::Process::Launch("/home/clyf/Workspace/ldb/build/test/targets/end_immediately");
     proc->Resume();
     proc->WaitOnSignal();
     REQUIRE_THROWS_AS(proc->Resume(), ldb::Error);
+}
+
+TEST_CASE("Write register works", "[register]")
+{
+    bool closeOnExec = false;
+    ldb::Pipe channel(closeOnExec);
+
+    auto proc = ldb::Process::Launch("/home/clyf/Workspace/ldb/build/test/targets/reg_write", true, channel.GetWrite());
+    channel.CloseWrite();
+
+    proc->Resume();
+    // trap //
+    proc->WaitOnSignal();
+
+    auto& regs = proc->GetRegisters();
+    regs.WriteById(ldb::RegisterId::rsi, 0xcafecafe);
+
+    proc->Resume();
+    // call printf //
+    proc->WaitOnSignal();
+
+    auto output = channel.Read();
+    REQUIRE(ldb::ToStringView(output) == "0xcafecafe");
 }

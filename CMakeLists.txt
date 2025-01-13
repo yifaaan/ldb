@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 set(CMAKE_CXX_STANDARD 17)
 
-project(ldb LANGUAGES CXX)
+project(ldb LANGUAGES CXX ASM)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 
