@@ -110,4 +110,12 @@ TEST_CASE("Write register works", "[register]")
     proc->WaitOnSignal();
     output = channel.Read();
     REQUIRE(ldb::ToStringView(output) == "0xba5eba11");
+
+    // print xmm0
+    regs.WriteById(ldb::RegisterId::xmm0, 42.24);
+    proc->Resume();
+    // call printf then trap
+    proc->WaitOnSignal();
+    output = channel.Read();
+    REQUIRE(ldb::ToStringView(output) == "42.24");
 }

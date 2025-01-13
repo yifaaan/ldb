@@ -3,8 +3,8 @@
 
 .section .data
 
-hex_format: .asciz "%#x"
-
+hex_format:     .asciz "%#x"
+float_format:   .asciz "%.2f"
 .section .text
 
 .macro trap
@@ -50,6 +50,16 @@ main:
     call    fflush@plt
     trap
 
+    # print contents of xmm0(sse)
+    # printf: first argument
+    leaq    float_format(%rip), %rdi
+    movq    $1, %rax
+    call    printf@plt
+    # fflush: first argument
+    movq    $0, %rdi
+    call    fflush@plt
+    trap
 
+    
     popq    %rbp
     ret
