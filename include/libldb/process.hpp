@@ -7,6 +7,7 @@
 #include <sys/types.h>
 
 #include <libldb/registers.hpp>
+#include <libldb/types.hpp>
 
 namespace ldb
 {
@@ -54,6 +55,12 @@ namespace ldb
 
         void WriteFprs(const user_fpregs_struct& fprs);
         void WriteGprs(const user_regs_struct& gprs);
+
+        VirtAddr GetPc() const 
+        {
+            return VirtAddr(GetRegisters().ReadByIdAs<std::uint64_t>(RegisterId::rip));
+        }
+        
     private:
         Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
                 :pid(_pid)

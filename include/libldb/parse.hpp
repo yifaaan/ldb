@@ -52,7 +52,7 @@ namespace ldb
     template<std::size_t N>
     auto ParseVector(std::string_view text)
     {
-        auto invalid = [] { ldb::Error::send("Invalid format"); };
+        auto invalid = [] { ldb::Error::Send("Invalid format"); };
 
         std::array<std::byte, N> bytes;
         const char* c = text.data();

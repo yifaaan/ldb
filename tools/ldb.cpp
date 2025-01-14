@@ -16,6 +16,7 @@
 
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
+#include <libldb/parse.hpp>
 
 namespace
 {
@@ -34,7 +35,7 @@ namespace
         else
         {
             const char* programPath = argv[1];
-            return ldb::Process::Launch(programPath);
+            return ldb::Process::Launch(programPath, true, std::nullopt);
         }
     }
 
@@ -79,24 +80,20 @@ namespace
 
     void PrintStopReason(const ldb::Process& process, ldb::StopReason reason)
     {
-        std::cout << "Process " << process.Pid() << ' ';
-
+        std::string message;
         switch (reason.reason)
         {
             case ldb::ProcessState::Exited:
-                std::cout << "exited with status "
-                        << static_cast<int>(reason.info);
+                message = fmt::format("exited with status {}", static_cast<int>(reason.info));
                 break;
             case ldb::ProcessState::Terminated:
-                std::cout << "terminated with signal "
-                        << sigabbrev_np(reason.info);
+                message = fmt::format("terminated with signal {}", sigabbrev_np(reason.info));
                 break;
             case ldb::ProcessState::Stopped:
-                std::cout << "stopped with signal "
-                        << sigabbrev_np(reason.info);
+                message = fmt::format("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), process.GetPc().Addr());
                 break;
         }
-        std::cout << std::endl;
+        fmt::print("Process {} {}\n", process.Pid(), message);
     }
 
     void PrintHelp(const std::vector<std::string>& args)
@@ -307,7 +304,7 @@ write <register> <value>
             std::string lineStr;
 
             
-            if (lineStr == std::string_view(""))
+            if (line == std::string_view(""))
             {
                 // empty line: re-run the last command
                 free(line);
@@ -327,7 +324,8 @@ write <register> <value>
             {
                 try
                 {
-                    HandleCommand(process, line);
+                    // fmt::print("in main cmd: {}\n", line);
+                    HandleCommand(process, lineStr);
                 }
                 catch (const ldb::Error& err)
                 {
