@@ -129,3 +129,30 @@ TEST_CASE("Write register works", "[register]")
     output = channel.Read();
     REQUIRE(ldb::ToStringView(output) == "42.24");
 }
+
+TEST_CASE("Read register works", "[register]")
+{
+    auto proc = ldb::Process::Launch("/home/clyf/Workspace/ldb/build/test/targets/reg_read");
+    auto& regs = proc->GetRegisters();
+
+    proc->Resume();
+    proc->WaitOnSignal();
+    REQUIRE(regs.ReadByIdAs<std::uint64_t>(ldb::RegisterId::r13) == 0xcafecafe);
+
+
+    proc->Resume();
+    proc->WaitOnSignal();
+    REQUIRE(regs.ReadByIdAs<std::uint8_t>(ldb::RegisterId::r13b) == 42);
+
+    proc->Resume();
+    proc->WaitOnSignal();
+    REQUIRE(regs.ReadByIdAs<ldb::byte64>(ldb::RegisterId::mm0) == ldb::ToByte64(0xba5eba11ull));
+
+    proc->Resume();
+    proc->WaitOnSignal();
+    REQUIRE(regs.ReadByIdAs<ldb::byte128>(ldb::RegisterId::xmm0) == ldb::ToByte128(64.125));
+
+    proc->Resume();
+    proc->WaitOnSignal();
+    REQUIRE(regs.ReadByIdAs<long double>(ldb::RegisterId::st0) == 64.125L);
+}
