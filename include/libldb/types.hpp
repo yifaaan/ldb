@@ -42,10 +42,7 @@ namespace ldb
             return *this;
         }
 
-        auto operator<=>(const VirtAddr& other) const
-        {
-            return addr <=> other.addr;
-        }
+        auto operator<=>(const VirtAddr& other) const = default;
 
     private:
         std::uint64_t addr = 0;

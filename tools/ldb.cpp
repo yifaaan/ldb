@@ -35,7 +35,8 @@ namespace
         else
         {
             const char* programPath = argv[1];
-            return ldb::Process::Launch(programPath, true, std::nullopt);
+            // return ldb::Process::Launch(programPath, true, std::nullopt);
+            return ldb::Process::Launch(programPath);
         }
     }
 

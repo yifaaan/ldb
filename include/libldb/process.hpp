@@ -1,13 +1,15 @@
-#ifndef LDB_PROCESS_HPP
-#define LDB_PROCESS_HPP
+#pragma once
 
 #include <memory>
 #include <filesystem>
 #include <optional>
+
 #include <sys/types.h>
 
 #include <libldb/registers.hpp>
 #include <libldb/types.hpp>
+#include <libldb/breakpoint_site.hpp>
+#include <libldb/stoppoint_collection.hpp>
 
 namespace ldb
 {
@@ -60,7 +62,12 @@ namespace ldb
         {
             return VirtAddr(GetRegisters().ReadByIdAs<std::uint64_t>(RegisterId::rip));
         }
+
+        BreakpointSite& CreateBreakpointSite(VirtAddr address);
         
+        StoppointCollection<BreakpointSite>& BreakPointSites() { return breakpointSites; }
+        const StoppointCollection<BreakpointSite>& BreakPointSites() const { return breakpointSites; }
+    
     private:
         Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
                 :pid(_pid)
@@ -78,7 +85,6 @@ namespace ldb
         ProcessState state = ProcessState::Stopped;
         bool isAttached = true;
         std::unique_ptr<Registers> registers;
+        StoppointCollection<BreakpointSite> breakpointSites;
     };
 }
-
-#endif
