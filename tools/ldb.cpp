@@ -271,6 +271,57 @@ write <register> <value>
         }
     }
 
+    void HandleBreakpointCommand(ldb::Process& process, const std::vector<std::string>& args)
+    {
+        if (args.size() < 2)
+        {
+            PrintHelp({"help", "breakpoint"});
+            return;
+        }
+
+        const auto& command = args[1];
+
+        if (IsPrefix(command, "list"))
+        {
+            if (process.BreakPointSites().Empty())
+            {
+                fmt::print("No breakpoints set\n");
+            }
+            else
+            {
+                fmt::print("Current breakpoints:\n");
+                process.BreakPointSites().ForEach([](const auto& site)
+                {
+                    fmt::print("{}: address = {:#x}, {}\n",
+                        site.Id(),
+                        site.Address().Addr(),
+                        site.isEnabled() ? "enabled" : "disabled");
+                });
+            }
+            return;
+        }
+
+        if (args.size() < 3)
+        {
+            PrintHelp({"help", "breakpoint"});
+            return;
+        }
+        if (IsPrefix(command, "set"))
+        {
+            auto address = ldb::ToIntegral<std::uint64_t>(args[2], 16);
+            if (!address)
+            {
+                fmt::print(stderr,
+                    "Breakpoint command expects address in "
+                    "hexadecimal, prefixed with '0x'\n"
+                );
+                return;
+            }
+            process.CreateBreakpointSite(ldb::VirtAddr{*address}).Enable();
+            return;
+        }
+    }
+
     void HandleCommand(std::unique_ptr<ldb::Process>& process, std::string_view line)
     {
         auto args = Split(line, ' ');
@@ -289,6 +340,10 @@ write <register> <value>
         else if (IsPrefix(command, "register"))
         {
             HandleRegisterCommand(*process, args);
+        }
+        else if (IsPrefix(command, "breakpoint"))
+        {
+            HandleBreakpointCommand(*process, args);
         }
         else
         {
