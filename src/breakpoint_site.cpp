@@ -32,7 +32,7 @@ void ldb::BreakpointSite::Enable()
     std::uint64_t data = ptrace(PTRACE_PEEKDATA, process->Pid(), address, nullptr);
     if (errno != 0)
     {
-        Error::SendErrno("Enabling breakpoint site failed");
+        Error::SendErrno("Enabling breakpoint site failed: get data");
     }
 
     savedData = static_cast<std::byte>(data & 0xff);
@@ -43,7 +43,7 @@ void ldb::BreakpointSite::Enable()
 
     if (ptrace(PTRACE_POKEDATA, process->Pid(), address, dataWithInt3) < 0)
     {
-        Error::SendErrno("Enabling breakpoint site failed");
+        Error::SendErrno("Enabling breakpoint site failed: replace data");
     }
     isEnable = true;
 }

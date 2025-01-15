@@ -36,7 +36,9 @@ namespace
         {
             const char* programPath = argv[1];
             // return ldb::Process::Launch(programPath, true, std::nullopt);
-            return ldb::Process::Launch(programPath);
+            auto proc = ldb::Process::Launch(programPath);
+            fmt::print("Launched process with PID {}\n", proc->Pid());
+            return proc;
         }
     }
 
@@ -105,7 +107,8 @@ namespace
                                 "Available commands:\n"
                                 "continue    - Resume the process\n"
                                 "register    - Commands for operating on registers\n"
-                                "breakpoint  - COmmands for operating on breakpoints\n");
+                                "breakpoint  - Commands for operating on breakpoints\n"
+                                "step        - Step over a single instruction");
         }
         else if (IsPrefix(args[1], "register"))
         {
@@ -376,6 +379,11 @@ namespace
         else if (IsPrefix(command, "breakpoint"))
         {
             HandleBreakpointCommand(*process, args);
+        }
+        else if (IsPrefix(command, "step"))
+        {
+            auto reason = process->StepInstruction();
+            PrintStopReason(*process, reason);
         }
         else
         {

@@ -63,11 +63,17 @@ namespace ldb
             return VirtAddr(GetRegisters().ReadByIdAs<std::uint64_t>(RegisterId::rip));
         }
 
+        void SetPc(VirtAddr address)
+        {
+            GetRegisters().WriteById(RegisterId::rip, address.Addr());
+        }
+
         BreakpointSite& CreateBreakpointSite(VirtAddr address);
         
         StoppointCollection<BreakpointSite>& BreakPointSites() { return breakpointSites; }
         const StoppointCollection<BreakpointSite>& BreakPointSites() const { return breakpointSites; }
     
+        ldb::StopReason StepInstruction();
     private:
         Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
                 :pid(_pid)

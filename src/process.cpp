@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <sys/user.h>
+#include <sys/personality.h>
 
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
@@ -55,6 +56,7 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path, b
 
     if (pid == 0)
     {
+        personality(ADDR_NO_RANDOMIZE);
         // in child
         channel.CloseRead();
 
@@ -141,6 +143,24 @@ ldb::Process::~Process()
 
 void ldb::Process::Resume()
 {
+    auto pc = GetPc();
+    if (breakpointSites.EnabledStoppointAtAddress(pc))
+    {
+        auto& bp = breakpointSites.GetByAddress(pc);
+        bp.Disable();
+
+        if (ptrace(PTRACE_SINGLESTEP, pid, nullptr, nullptr) < 0)
+        {
+            Error::SendErrno("Failed to single step");
+        }
+        int waitStatus;
+        if (waitpid(pid, &waitStatus, 0) < 0)
+        {
+            Error::SendErrno("waitpid failed");
+        }
+        bp.Enable();
+    }
+
     if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) < 0)
     {
         Error::SendErrno("Could not resume");
@@ -163,6 +183,13 @@ ldb::StopReason ldb::Process::WaitOnSignal()
     if (isAttached and state == ProcessState::Stopped)
     {
         ReadAllRegisters();
+
+        // get address of int3
+        auto instrBegin = GetPc() - 1;
+        if (reason.info == SIGTRAP and breakpointSites.EnabledStoppointAtAddress(instrBegin))
+        {
+            SetPc(instrBegin);
+        }
     }
     return reason;
 }
@@ -228,4 +255,28 @@ ldb::BreakpointSite& ldb::Process::CreateBreakpointSite(VirtAddr address)
         Error::Send("Breakpoint site already created at address " + std::to_string(address.Addr()));
     }
     return breakpointSites.Push(std::unique_ptr<BreakpointSite>(new BreakpointSite(*this, address)));
+}
+
+ldb::StopReason ldb::Process::StepInstruction()
+{
+    std::optional<BreakpointSite*> toReenable;
+    auto pc = GetPc();
+    if (breakpointSites.EnabledStoppointAtAddress(pc))
+    {
+        auto& bp = breakpointSites.GetByAddress(pc);
+        bp.Disable();
+        toReenable = &bp;
+    }
+
+    if (ptrace(PTRACE_SINGLESTEP, pid, nullptr, nullptr) < 0)
+    {
+        Error::SendErrno("Could not single step");
+    }
+    auto reason = WaitOnSignal();
+
+    if (toReenable)
+    {
+        toReenable.value()->Enable();
+    }
+    return reason;
 }
