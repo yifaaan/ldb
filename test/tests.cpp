@@ -382,3 +382,17 @@ TEST_CASE("Breakpoint on address works", "[breakpoint]")
     auto data = channel.Read();
     REQUIRE(ToStringView(data) == "Hello, ldb!\n");
 }
+
+TEST_CASE("Can remove breakpoint sites", "[breakpoint]")
+{
+    auto program = "/home/clyf/dev/ldb/build/test/targets/run_endlessly";
+    auto proc = Process::Launch(program);
+
+    auto& site = proc->CreateBreakpointSite(VirtAddr{42});
+    proc->CreateBreakpointSite(VirtAddr{43});
+    REQUIRE(proc->BreakPointSites().Size() == 2);
+
+    proc->BreakPointSites().RemoveById(site.Id());
+    proc->BreakPointSites().RemoveByAddress(VirtAddr{43});
+    REQUIRE(proc->BreakPointSites().Empty());
+}
