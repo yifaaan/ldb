@@ -74,6 +74,16 @@ namespace ldb
         const StoppointCollection<BreakpointSite>& BreakPointSites() const { return breakpointSites; }
     
         ldb::StopReason StepInstruction();
+
+        std::vector<std::byte> ReadMemory(VirtAddr address, std::size_t amount) const;
+        void WriteMemory(VirtAddr address, Span<const std::byte> data);
+        template<typename T>
+        T ReadMemoryAs(VirtAddr address) const
+        {
+            auto data = ReadMemory(address, sizeof(T));
+            return FromBytes<T>(data.data());
+        }
+
     private:
         Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
                 :pid(_pid)

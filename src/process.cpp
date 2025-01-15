@@ -1,17 +1,18 @@
 
 #include <csignal>
 #include <iostream>
-#include <sys/ptrace.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <sys/user.h>
 #include <sys/personality.h>
+#include <sys/uio.h>
+#include <sys/ptrace.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
-
+#include <libldb/bit.hpp>
 
 namespace 
 {
@@ -279,4 +280,54 @@ ldb::StopReason ldb::Process::StepInstruction()
         toReenable.value()->Enable();
     }
     return reason;
+}
+
+std::vector<std::byte> ldb::Process::ReadMemory(VirtAddr address, std::size_t amount) const
+{
+    std::vector<std::byte> ret(amount);
+
+    iovec localDesc{ret.data(), ret.size()};
+    std::vector<iovec> remoteDescs;
+
+    while (amount > 0)
+    {
+        // page offset: address.Addr() & 0xfff
+        auto upToNextPage = 0x1000 - (address.Addr() & 0xfff);
+        auto chunkSize = std::min(amount, upToNextPage);
+        remoteDescs.push_back({reinterpret_cast<void*>(address.Addr()), chunkSize});
+        amount -= chunkSize;
+        address += chunkSize;
+    }
+
+    if (process_vm_readv(pid, &localDesc, 1, remoteDescs.data(), remoteDescs.size(), 0) < 0)
+    {
+        Error::SendErrno("Could not read process memory");
+    }
+    return ret;
+}
+
+void ldb::Process::WriteMemory(VirtAddr address, Span<const std::byte> data)
+{
+    std::size_t written = 0;
+    while (written < data.Size())
+    {
+        auto remaining = data.Size() - written;
+        std::uint64_t word;
+        if (remaining >= 8)
+        {
+            word = FromBytes<std::uint64_t>(data.Begin() + written);
+        }
+        else
+        {
+            auto read = ReadMemory(address + written, 8);
+            auto wordData = reinterpret_cast<char*>(&word);
+            std::memcpy(wordData, data.Begin() + written, remaining);
+            std::memcpy(wordData + remaining, read.data() + remaining, 8 - remaining);
+        }
+        if (ptrace(PTRACE_POKEDATA, pid, address + written, word) < 0)
+        {
+            Error::SendErrno("Failed to write memory");
+        }
+        written += 8;
+    }
 }
