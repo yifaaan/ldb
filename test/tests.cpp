@@ -351,9 +351,34 @@ TEST_CASE("Can iterate breakpoint sites", "[breakpoint]")
     {
         REQUIRE(site.Address().Addr() == addr++);
     });
-    
-    if constexpr (std::is_const_v<decltype(cproc)>)
-    {
-        REQUIRE(false);
-    }
+}
+
+TEST_CASE("Breakpoint on address works", "[breakpoint]")
+{
+    bool closeOnExec = false;
+    Pipe channel(closeOnExec);
+
+    auto program = "/home/clyf/dev/ldb/build/test/targets/hello_ldb";
+    auto proc = Process::Launch(program, true, channel.GetWrite());
+    channel.CloseWrite();
+
+    auto offset = GetEntryPointOffset(program);
+    auto loadAddress = GetLoadAddress(proc->Pid(), offset);
+
+    proc->CreateBreakpointSite(loadAddress).Enable();
+    proc->Resume();
+    auto reason = proc->WaitOnSignal();
+
+    REQUIRE(reason.reason == ProcessState::Stopped);
+    REQUIRE(reason.info == SIGTRAP);
+    REQUIRE(proc->GetPc() == loadAddress);
+
+    proc->Resume();
+    reason = proc->WaitOnSignal();
+
+    REQUIRE(reason.reason == ProcessState::Exited);
+    REQUIRE(reason.info == 0);
+
+    auto data = channel.Read();
+    REQUIRE(ToStringView(data) == "Hello, ldb!\n");
 }
