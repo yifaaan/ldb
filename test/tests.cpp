@@ -1,14 +1,19 @@
+#include <fstream>
+#include <regex>
 #include <cerrno>
 #include <sys/types.h>
 #include <signal.h>
-#include <fstream>
+#include <elf.h>
 
 #include <catch2/catch_test_macros.hpp>
+#include <fmt/format.h>
+
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/register_info.hpp>
 #include <libldb/bit.hpp>
+
 
 namespace
 {
@@ -29,6 +34,88 @@ namespace
         auto indexOfLastParenthesis = data.rfind(')');
         auto indexOfStatusIndicator = indexOfLastParenthesis + 2;
         return data[indexOfStatusIndicator];
+    }
+
+    /// parse the out put of command: readelf -WS <program_path> 
+    std::int64_t GetSectionLoadBias(std::filesystem::path path, Elf64_Addr fileAddress)
+    {
+        auto command = fmt::format("readelf -WS {}", path.string());
+        auto pipe = popen(command.c_str(), "r");
+
+        std::regex textRegex(R"(PROGBITS\s+(\w+)\s+(\w+)\s+(\w+))");
+        char* line = nullptr;
+        std::size_t len = 0;
+
+        while (getline(&line, &len, pipe) != -1)
+        {
+            std::cmatch groups;
+            if (std::regex_search(line, groups, textRegex))
+            {
+                auto address = std::stol(groups[1], nullptr, 16);
+                auto offset = std::stol(groups[2], nullptr, 16);
+                auto size = std::stol(groups[3], nullptr, 16);
+                if (address <= fileAddress and fileAddress < (address + size))
+                {
+                    free(line);
+                    pclose(pipe);
+                    return address - offset;
+                }
+            }
+            free(line);
+            line = nullptr;
+        }
+        pclose(pipe);
+        ldb::Error::Send("Could not find section load bias");
+    }
+
+
+    /// get the offset of the entry point 
+    ///
+    /// how to calculate the offset of entry point?
+    /// for example, entry file address is 0x400080
+    /// 
+    /// Name    Type        Address     Off    Size
+    ///
+    /// .text	PROGBITS	0x400000	0x1000
+    ///
+    /// 0x400080 - (0x400000 - 0x1000) = 0x1080
+    std::int64_t GetEntryPointOffset(std::filesystem::path path)
+    {
+        std::ifstream elfFile(path);
+
+        Elf64_Ehdr header;
+        elfFile.read(reinterpret_cast<char*>(&header), sizeof(header));
+
+        auto entryFileAddress = header.e_entry;
+        return entryFileAddress - GetSectionLoadBias(path, entryFileAddress);
+    }
+
+    /// parse /proc/<pid>/maps file to get load address
+    ldb::VirtAddr GetLoadAddress(pid_t pid, std::int64_t offset)
+    {
+        std::ifstream maps(fmt::format("/proc/{}/maps", pid));
+
+        //        start-end          type fileOffset
+        // 55693cd2c000-55693cd2d000 r-xp 00001000 08:20 86486 /home/clyf/dev/ldb/build/test/targets/run_endlessly
+        std::regex mapRegex(R"((\w+)-\w+ ..(.). (\w+))");
+
+        std::string data;
+        while (std::getline(maps, data))
+        {
+            std::smatch groups;
+            std::regex_search(data, groups, mapRegex);
+
+            // executable segment
+            if (groups[2] == 'x')
+            {
+                auto lowRange = std::stol(groups[1], nullptr, 16);
+                auto fileOffset = std::stol(groups[3], nullptr, 16);
+                // entry point load virtual address = 
+                // entry point file offset - segment file offset + segment load start virtual address
+                return ldb::VirtAddr(offset - fileOffset + lowRange);
+            }
+        }
+        ldb::Error::Send("Could not find load address");
     }
 }
 
