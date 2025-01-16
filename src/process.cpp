@@ -306,6 +306,20 @@ std::vector<std::byte> ldb::Process::ReadMemory(VirtAddr address, std::size_t am
     return ret;
 }
 
+std::vector<std::byte> ldb::Process::ReadMemoryWithoutTraps(VirtAddr address, std::size_t amount) const
+{
+    auto memory = ReadMemory(address, amount);
+    auto sites = breakpointSites.GetInRegion(address, address + amount);
+
+    for (auto site : sites)
+    {
+        if (!site->isEnabled()) continue;
+        auto offset = site->Address() - address.Addr();
+        memory[offset.Addr()] = site->savedData;
+    }
+    return memory;
+}
+
 void ldb::Process::WriteMemory(VirtAddr address, Span<const std::byte> data)
 {
     std::size_t written = 0;

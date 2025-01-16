@@ -76,6 +76,7 @@ namespace ldb
         ldb::StopReason StepInstruction();
 
         std::vector<std::byte> ReadMemory(VirtAddr address, std::size_t amount) const;
+        std::vector<std::byte> ReadMemoryWithoutTraps(VirtAddr address, std::size_t amount) const;
         void WriteMemory(VirtAddr address, Span<const std::byte> data);
         template<typename T>
         T ReadMemoryAs(VirtAddr address) const

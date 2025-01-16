@@ -396,3 +396,40 @@ TEST_CASE("Can remove breakpoint sites", "[breakpoint]")
     proc->BreakPointSites().RemoveByAddress(VirtAddr{43});
     REQUIRE(proc->BreakPointSites().Empty());
 }
+
+TEST_CASE("Reading and writing memory works", "[memory]")
+{
+    bool closeOnExec = false;
+    Pipe channel(closeOnExec);
+
+    auto program = "/home/clyf/dev/ldb/build/test/targets/memory";
+    auto proc = Process::Launch(program, true, channel.GetWrite());
+    channel.CloseWrite();
+
+    proc->Resume();
+    proc->WaitOnSignal();
+
+    auto aPointer = FromBytes<std::uint64_t>(channel.Read().data());
+    auto dataVec = proc->ReadMemory(VirtAddr{aPointer}, 8);
+    auto data = FromBytes<std::uint64_t>(dataVec.data());
+    REQUIRE(data == 0xcafecafe);
+
+    proc->Resume();
+    proc->WaitOnSignal();
+
+    auto bPointer = FromBytes<std::uint64_t>(channel.Read().data());
+    dataVec = proc->ReadMemory(VirtAddr{bPointer}, 8);
+    data = FromBytes<std::uint64_t>(dataVec.data());
+    REQUIRE(data == 0xaaaaaaaa);
+
+
+    proc->Resume();
+    proc->WaitOnSignal();
+    auto cPointer = FromBytes<std::uint64_t>(channel.Read().data());
+    proc->WriteMemory(VirtAddr{cPointer}, {AsBytes("Hello, ldb!"), 12});
+    proc->Resume();
+    proc->WaitOnSignal();
+
+    auto read = channel.Read();
+    REQUIRE(ToStringView(read) == "Hello, ldb!");
+}

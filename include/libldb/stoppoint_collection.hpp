@@ -102,6 +102,19 @@ namespace ldb
         std::size_t Size() const { return stoppoints.size(); }
         bool Empty() const { return stoppoints.empty(); }
 
+        std::vector<Stoppoint*> GetInRegion(VirtAddr low, VirtAddr high) const
+        {
+            std::vector<Stoppoint*> ret;
+            for (auto& site : stoppoints)
+            {
+                if (site->InRange(low, high))
+                {
+                    ret.push_back(&*site);
+                }
+            }
+            return ret;
+        }
+
     private:
         using TPoints = std::vector<std::unique_ptr<Stoppoint>>;
 

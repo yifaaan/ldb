@@ -1,10 +1,11 @@
-add_library(libldb process.cpp pipe.cpp registers.cpp breakpoint_site.cpp)
+add_library(libldb process.cpp pipe.cpp registers.cpp breakpoint_site.cpp disassembler.cpp)
 add_library(ldb::libldb ALIAS libldb)
+
 
 set_target_properties(libldb PROPERTIES OUTPUT_NAME ldb)
 
 target_compile_features(libldb PUBLIC cxx_std_17)
-
+target_link_libraries(libldb PRIVATE Zydis::Zydis)
 target_include_directories(
     libldb 
     PUBLIC
@@ -34,6 +35,6 @@ install(
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ldb
     
 )
-message("src/{CMAKE_SOURCE_DIR}: ${CMAKE_SOURCE_DIR}")
-message("src/{CMAKE_CURRENT_SOURCE_DIR}: ${CMAKE_CURRENT_SOURCE_DIR}")
-message("src/{PROJECT_SOURCE_DIR}: ${PROJECT_SOURCE_DIR}")
+# message("src/{CMAKE_SOURCE_DIR}: ${CMAKE_SOURCE_DIR}")
+# message("src/{CMAKE_CURRENT_SOURCE_DIR}: ${CMAKE_CURRENT_SOURCE_DIR}")
+# message("src/{PROJECT_SOURCE_DIR}: ${PROJECT_SOURCE_DIR}")

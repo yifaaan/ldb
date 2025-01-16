@@ -17,6 +17,7 @@
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
 #include <libldb/parse.hpp>
+#include <libldb/disassembler.hpp>
 
 namespace
 {
@@ -107,6 +108,7 @@ namespace
                                 "Available commands:\n"
                                 "continue    - Resume the process\n"
                                 "step        - Step over a single instruction\n"
+                                "disassemble - Disassemble machine code to assembly\n"
                                 "register    - Commands for operating on registers\n"
                                 "breakpoint  - Commands for operating on breakpoints\n"
                                 "memory      - Commands for operating on memory\n");
@@ -137,6 +139,13 @@ namespace
                                 "read <address>\n"
                                 "read <address> <number of bytes>\n"
                                 "write <address>\n");
+        }
+        else if (IsPrefix(args[1], "disassemble"))
+        {
+            std::cerr << fmt::format(
+                                "Available commands:\n"
+                                "-c <number of instructions>\n"
+                                "-a <start address>\n");
         }
         else
         {
@@ -446,6 +455,65 @@ namespace
         }
     }
 
+    void PrintDisassembly(ldb::Process& process, ldb::VirtAddr address, std::size_t nInstructions)
+    {
+        ldb::Disassembler dis(process);
+
+        auto instructions = dis.Disassemble(nInstructions, address);
+        fmt::println("after dis.Disassemble");
+        for (const auto& instr : instructions)
+        {
+            fmt::print("{:#018x}: {}\n", instr.address.Addr(), instr.text);
+        }
+    }
+
+    void HandleStop(ldb::Process& process, ldb::StopReason reason)
+    {
+        PrintStopReason(process, reason);
+        if (reason.reason == ldb::ProcessState::Stopped)
+        {
+            PrintDisassembly(process, process.GetPc(), 5);
+        }
+    }
+
+    /// disassemble -c <n_instructions> -a <address>
+    void HandleDisassembleCommand(ldb::Process& process, const std::vector<std::string>& args)
+    {
+        auto address = process.GetPc();
+        std::size_t nInstructions = 5;
+
+        auto it = args.begin() + 1;
+        while (it != args.end())
+        {
+            if (*it == "-c" and it + 1 != args.end())
+            {
+                ++it;
+                auto optN = ldb::ToIntegral<std::size_t>(*it++);
+                if (!optN)
+                {
+                    ldb::Error::Send("Invalid instruction count");
+                }
+                nInstructions = *optN;
+            }
+            else if (*it == "-a" and it + 1 != args.end())
+            {
+                ++it;
+                auto optAddr = ldb::ToIntegral<std::uint64_t>(*it++, 16);
+                if (!optAddr)
+                {
+                    ldb::Error::Send("Invalid address format");
+                }
+                address = ldb::VirtAddr{*optAddr};
+            }
+            else
+            {
+                PrintHelp({"help", "disassemble"});
+                return;
+            }
+        }
+        PrintDisassembly(process, address, nInstructions);
+    }
+
     void HandleCommand(std::unique_ptr<ldb::Process>& process, std::string_view line)
     {
         auto args = Split(line, ' ');
@@ -455,7 +523,7 @@ namespace
         {
             process->Resume();
             auto reason = process->WaitOnSignal();
-            PrintStopReason(*process, reason);
+            HandleStop(*process, reason);
         }
         else if (IsPrefix(command, "help"))
         {
@@ -472,11 +540,15 @@ namespace
         else if (IsPrefix(command, "step"))
         {
             auto reason = process->StepInstruction();
-            PrintStopReason(*process, reason);
+            HandleStop(*process, reason);
         }
         else if (IsPrefix(command, "memory"))
         {
             HandleMemoryCommand(*process, args);
+        }
+        else if (IsPrefix(command, "disassemble"))
+        {
+            HandleDisassembleCommand(*process, args);
         }
         else
         {
