@@ -10,6 +10,7 @@
 #include <libldb/types.hpp>
 #include <libldb/breakpoint_site.hpp>
 #include <libldb/stoppoint_collection.hpp>
+#include <libldb/watchpoint.hpp>
 
 namespace ldb
 {
@@ -69,10 +70,13 @@ namespace ldb
         }
 
         BreakpointSite& CreateBreakpointSite(VirtAddr address, bool hardware = false, bool internal = false);
-        
         StoppointCollection<BreakpointSite>& BreakPointSites() { return breakpointSites; }
         const StoppointCollection<BreakpointSite>& BreakPointSites() const { return breakpointSites; }
-    
+
+        Watchpoint& CreateWatchpoint(VirtAddr address, StoppointMode mode, std::size_t size);
+        StoppointCollection<Watchpoint>& Watchpoints() { return watchpoints; }
+        const StoppointCollection<Watchpoint>& Watchpoinst() const { return watchpoints; }
+
         ldb::StopReason StepInstruction();
 
         std::vector<std::byte> ReadMemory(VirtAddr address, std::size_t amount) const;
@@ -87,6 +91,8 @@ namespace ldb
 
         int SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address);
         void ClearHardwareStoppoint(int index);
+
+        int SetWatchpoint(Watchpoint::IdType id, VirtAddr address, StoppointMode mode, std::size_t size);
 
     private:
         Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
@@ -108,5 +114,6 @@ namespace ldb
         bool isAttached = true;
         std::unique_ptr<Registers> registers;
         StoppointCollection<BreakpointSite> breakpointSites;
+        StoppointCollection<Watchpoint> watchpoints;
     };
 }

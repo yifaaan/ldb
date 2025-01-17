@@ -294,6 +294,15 @@ ldb::BreakpointSite& ldb::Process::CreateBreakpointSite(VirtAddr address, bool h
     return breakpointSites.Push(std::unique_ptr<BreakpointSite>(new BreakpointSite(*this, address, hardware, internal)));
 }
 
+ldb::Watchpoint& ldb::Process::CreateWatchpoint(VirtAddr address, StoppointMode mode, std::size_t size)
+{
+    if (watchpoints.ContainsAddress(address))
+    {
+        Error::Send("Watchpoint site already created at address " + std::to_string(address.Addr()));
+    }
+    return watchpoints.Push(std::unique_ptr<Watchpoint>(new Watchpoint(*this, address, mode, size)));
+}
+
 ldb::StopReason ldb::Process::StepInstruction()
 {
     std::optional<BreakpointSite*> toReenable;
@@ -491,4 +500,9 @@ void ldb::Process::ClearHardwareStoppoint(int index)
     auto masked = control & ~clearMask;
 
     GetRegisters().WriteById(RegisterId::dr7, masked);
+}
+
+int ldb::Process::SetWatchpoint(Watchpoint::IdType id, VirtAddr address, StoppointMode mode, std::size_t size)
+{
+    return SetHardwareBreakpoint(address, mode, size);
 }

@@ -38,20 +38,20 @@ namespace ldb
         bool IsInternal() const { return isInternal; }
 
     private:
-        BreakpointSite(Process& proc, VirtAddr _address, bool _isHardware = false, bool _isInternal = false);
         friend Process;
-
+        BreakpointSite(Process& proc, VirtAddr _address, bool _isHardware = false, bool _isInternal = false);
+    
     private:
-        IdType      id;
-        Process*    process;
-        VirtAddr    address;
-        bool        isEnabled;
+        Process*            process;
+        VirtAddr            address;
+        bool                isEnabled;
         /// the data replace with the int3
-        std::byte   savedData;
-        bool isHardware;
+        std::byte           savedData;
+        bool                isHardware;
         /// for debugger use
-        bool isInternal;
+        bool                isInternal;
         /// debugger register index
-        int hardwareRegisterIndex = -1;
+        int                 hardwareRegisterIndex = -1;
+        IdType              id;
     };
 }

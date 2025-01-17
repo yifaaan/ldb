@@ -1,4 +1,4 @@
-add_library(libldb process.cpp pipe.cpp registers.cpp breakpoint_site.cpp disassembler.cpp)
+add_library(libldb process.cpp pipe.cpp registers.cpp breakpoint_site.cpp disassembler.cpp watchpoint.cpp)
 add_library(ldb::libldb ALIAS libldb)
 
 

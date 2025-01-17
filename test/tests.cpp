@@ -475,5 +475,37 @@ TEST_CASE("Hardware breakpoint evades memory checksums", "[breakpoint]")
     proc->WaitOnSignal();
 
     REQUIRE(ToStringView(channel.Read()) == "Putting pineapple on pizza...\n");
+}
 
+TEST_CASE("Watchpoint detects read", "[watchpoint]")
+{
+    bool closeOnExec = false;
+    Pipe channel(closeOnExec);
+
+    auto program = "/home/clyf/dev/ldb/build/test/targets/anti_debugger";
+    auto proc = Process::Launch(program, true, channel.GetWrite());
+    channel.CloseWrite();
+
+    proc->Resume();
+    // anti_debugger: Raise(SIGTRAP)
+    proc->WaitOnSignal();
+    
+    auto func = VirtAddr(FromBytes<std::uint64_t>(channel.Read().data()));
+
+    // did not change the instruction(code text)
+    auto& watch = proc->CreateWatchpoint(func, ldb::StoppointMode::ReadWrite, 1);
+    watch.Enable();
+
+    proc->Resume();
+    // anti_debugger: AnInnocentFunction()
+    auto reason = proc->WaitOnSignal();
+
+    REQUIRE(reason.info == SIGTRAP);
+
+    proc->Resume();
+    // fflush(stdout);
+    // raise(SIGTRAP);
+    proc->WaitOnSignal();
+
+    REQUIRE(ToStringView(channel.Read()) == "Putting pineapple on pizza...\n");
 }
