@@ -7,6 +7,7 @@
 namespace ldb
 {
     class Process;
+
     class BreakpointSite
     {
     public:
@@ -20,7 +21,7 @@ namespace ldb
 
         void Disable();
 
-        bool isEnabled() const { return isEnable; }
+        bool IsEnabled() const { return isEnabled; }
 
         VirtAddr Address() const { return address; }
 
@@ -33,16 +34,24 @@ namespace ldb
 
         IdType Id() const { return id; }
 
+        bool IsHardware() const { return isHardware; }
+        bool IsInternal() const { return isInternal; }
+
     private:
-        BreakpointSite(Process& proc, VirtAddr _address);
+        BreakpointSite(Process& proc, VirtAddr _address, bool _isHardware = false, bool _isInternal = false);
         friend Process;
 
     private:
         IdType      id;
         Process*    process;
         VirtAddr    address;
-        bool        isEnable;
+        bool        isEnabled;
         /// the data replace with the int3
         std::byte   savedData;
+        bool isHardware;
+        /// for debugger use
+        bool isInternal;
+        /// debugger register index
+        int hardwareRegisterIndex = -1;
     };
 }

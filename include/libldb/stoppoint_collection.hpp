@@ -31,7 +31,7 @@ namespace ldb
 
         bool EnabledStoppointAtAddress(VirtAddr address) const
         {
-            return ContainsAddress(address) and GetByAddress(address).isEnabled();
+            return ContainsAddress(address) and GetByAddress(address).IsEnabled();
         }
 
         Stoppoint& GetById(typename Stoppoint::IdType id)

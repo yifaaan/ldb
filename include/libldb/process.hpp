@@ -68,7 +68,7 @@ namespace ldb
             GetRegisters().WriteById(RegisterId::rip, address.Addr());
         }
 
-        BreakpointSite& CreateBreakpointSite(VirtAddr address);
+        BreakpointSite& CreateBreakpointSite(VirtAddr address, bool hardware = false, bool internal = false);
         
         StoppointCollection<BreakpointSite>& BreakPointSites() { return breakpointSites; }
         const StoppointCollection<BreakpointSite>& BreakPointSites() const { return breakpointSites; }
@@ -85,6 +85,9 @@ namespace ldb
             return FromBytes<T>(data.data());
         }
 
+        int SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address);
+        void ClearHardwareStoppoint(int index);
+
     private:
         Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
                 :pid(_pid)
@@ -94,6 +97,8 @@ namespace ldb
         {}
 
         void ReadAllRegisters();
+
+        int SetHardwareBreakpoint(VirtAddr address, StoppointMode mode, std::size_t size);
 
     private:
         pid_t pid = 0;

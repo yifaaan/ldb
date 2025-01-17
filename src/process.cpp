@@ -23,6 +23,42 @@ namespace
         channel.Write(reinterpret_cast<std::byte*>(message.data()), message.size());
         exit(-1);
     }
+
+    std::uint64_t EncodeHardwareStoppointMode(ldb::StoppointMode mode)
+    {
+        switch (mode)
+        {
+        case ldb::StoppointMode::Write: return 0b01;
+        case ldb::StoppointMode::ReadWrite: return 0b11;
+        case ldb::StoppointMode::Execute: return 0b00;
+        default:
+            ldb::Error::Send("Invalid stoppoint mode");
+        }
+    }
+
+    std::uint64_t EncodeHardwareStoppointSize(std::size_t size)
+    {
+        switch (size)
+        {
+        case 1: return 0b00;
+        case 2: return 0b01;
+        case 4: return 0b11;
+        case 8: return 0b10;
+        default: ldb::Error::Send("Invalid stoppoint size");
+        }
+    }
+
+    int FindFreeStoppointRegister(std::uint64_t controlRegister)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            if ((controlRegister & (0b11 << (i * 2))) == 0)
+            {
+                return i;
+            }
+        }
+        ldb::Error::Send("No remaining hardware debug registers");
+    }
 }
 
 ldb::StopReason::StopReason(int waitStatus)
@@ -249,13 +285,13 @@ void ldb::Process::WriteGprs(const user_regs_struct& gprs)
     }
 }
 
-ldb::BreakpointSite& ldb::Process::CreateBreakpointSite(VirtAddr address)
+ldb::BreakpointSite& ldb::Process::CreateBreakpointSite(VirtAddr address, bool hardware, bool internal)
 {
     if (breakpointSites.ContainsAddress(address))
     {
         Error::Send("Breakpoint site already created at address " + std::to_string(address.Addr()));
     }
-    return breakpointSites.Push(std::unique_ptr<BreakpointSite>(new BreakpointSite(*this, address)));
+    return breakpointSites.Push(std::unique_ptr<BreakpointSite>(new BreakpointSite(*this, address, hardware, internal)));
 }
 
 ldb::StopReason ldb::Process::StepInstruction()
@@ -313,7 +349,7 @@ std::vector<std::byte> ldb::Process::ReadMemoryWithoutTraps(VirtAddr address, st
 
     for (auto site : sites)
     {
-        if (!site->isEnabled()) continue;
+        if (!site->IsEnabled() or site->IsHardware()) continue;
         auto offset = site->Address() - address.Addr();
         memory[offset.Addr()] = site->savedData;
     }
@@ -344,4 +380,115 @@ void ldb::Process::WriteMemory(VirtAddr address, Span<const std::byte> data)
         }
         written += 8;
     }
+}
+
+int ldb::Process::SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address)
+{
+    return SetHardwareBreakpoint(address, StoppointMode::Execute, 1);
+}
+
+int ldb::Process::SetHardwareBreakpoint(VirtAddr address, StoppointMode mode, std::size_t size)
+{
+    auto& regs = GetRegisters();
+    auto control = regs.ReadByIdAs<std::uint64_t>(RegisterId::dr7);
+
+    // four dbg registers idx: 0, 1, 2, 3
+    int freeSpace = FindFreeStoppointRegister(control);
+    auto id = static_cast<int>(RegisterId::dr0) + freeSpace;
+    regs.WriteById(static_cast<RegisterId>(id), address.Addr());
+
+
+    // 0
+    // Local DR0 breakpoint enabled
+    // 1
+    // Global DR0 breakpoint enabled
+    // 2
+    // Local DR1 breakpoint enabled
+    // 3
+    // Global DR1 breakpoint enabled
+    // 4
+    // Local DR2 breakpoint enabled
+    // 5
+    // Global DR2 breakpoint enabled
+    // 6
+    // Local DR3 breakpoint enabled
+    // 7
+    // Global DR3 breakpoint enabled
+    // 8-15
+    // Reserved/not relevant to us
+    // 16-17
+    // Conditions for DR0
+    // 18-19
+    // Byte size of DR0 breakpoint
+    // 20–21
+    // Conditions for DR1
+    // 22–23
+    // Byte size of DR1 breakpoint
+    // 24–25
+    // Conditions for DR2
+    // 26–27
+    // Byte size of DR2 breakpoint
+    // 28–29
+    // Conditions for DR3
+    // 30–31
+    // Byte size of DR3 breakpoint
+
+    // condition bits
+    // 00b
+    // Instruction execution only
+    // 01b
+    // Data writes only
+    // 10b
+    // I/O reads and writes (generally unsupported)
+    // 11b
+    // Data reads and writes
+
+    // size bits
+    // 00b
+    // One byte
+    // 01b
+    // Two bytes
+    // 10b
+    // Eight bytes
+    // 11b
+    // Four bytes
+
+    // Enable bit location: a = free_space * 2
+    // Mode bits location: b = free_space * 4 + 16
+    // Size bits location: c = free_space * 4 + 18
+
+    // for example, set a read/write stop point of size 8 on debug register 2.
+    // a = 4, b = 24, c = 26
+    // enable flag  = 00000000 00000000 00000000 00010000
+    // mode flag    = 00000011 00000000 00000000 00000000 : Data reads and writes
+    // size flag    = 00001000 00000000 00000000 00000000 : Eight bytes
+    // or flags     = 00001011 00000000 00000000 00010000
+    auto modeFlag = EncodeHardwareStoppointMode(mode);
+    auto sizeFlag = EncodeHardwareStoppointSize(size);
+
+    auto enableBit = (1 << (freeSpace * 2));
+    auto modeBits = (modeFlag << (freeSpace * 4 + 16));
+    auto sizeBits = (sizeFlag << (freeSpace * 4 + 18));
+
+    auto clearMask = (0b11 << (freeSpace * 2)) | (0b1111 << (freeSpace * 4 + 16));
+    
+    // clear all old informations of this dbg register, keep the other informations
+    auto masked = control & ~clearMask;
+    masked |= enableBit | modeBits | sizeBits;
+
+    regs.WriteById(RegisterId::dr7, masked);
+    return freeSpace;
+}
+
+void ldb::Process::ClearHardwareStoppoint(int index)
+{
+    auto id = static_cast<int>(RegisterId::dr0) + index;
+    GetRegisters().WriteById(static_cast<RegisterId>(id), 0);
+
+    auto control = GetRegisters().ReadByIdAs<std::uint64_t>(RegisterId::dr7);
+
+    auto clearMask = (0b11 << (index * 2)) | (0b1111 << (index * 4 + 16));
+    auto masked = control & ~clearMask;
+
+    GetRegisters().WriteById(RegisterId::dr7, masked);
 }

@@ -12,6 +12,13 @@ namespace ldb
     using byte64 = std::array<std::byte, 8>;
     using byte128 = std::array<std::byte, 16>;
 
+    enum class StoppointMode
+    {
+        Write,
+        ReadWrite,
+        Execute,
+    };
+
     class VirtAddr
     {
     public:

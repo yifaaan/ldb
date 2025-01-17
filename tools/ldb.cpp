@@ -130,7 +130,7 @@ namespace
                                 "delete <id>\n"
                                 "disable <id>\n"
                                 "enable <id>\n"
-                                "set <address>\n");
+                                "set <address> -h\n");
         }
         else if (IsPrefix(args[1], "memory"))
         {
@@ -324,11 +324,12 @@ namespace
                 fmt::print("Current breakpoints:\n");
                 process.BreakPointSites().ForEach([](const auto& site)
                 {
+                    if (site.IsInternal()) return;
                     fmt::print(
                             "{}: address = {:#x}, {}\n",
                             site.Id(),
                             site.Address().Addr(),
-                            site.isEnabled() ? "enabled" : "disabled");
+                            site.IsEnabled() ? "enabled" : "disabled");
                 });
             }
             return;
@@ -350,7 +351,13 @@ namespace
 
                 return;
             }
-            process.CreateBreakpointSite(ldb::VirtAddr{*address}).Enable();
+            bool hardware = false;
+            if (args.size() == 4)
+            {
+                if (args[3] == "-h") hardware = true;
+                else ldb::Error::Send("Invalid breakpoint command argument");
+            }
+            process.CreateBreakpointSite(ldb::VirtAddr{ *address }, hardware).Enable();
             return;
         }
 

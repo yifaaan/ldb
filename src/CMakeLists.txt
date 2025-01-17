@@ -6,6 +6,7 @@ set_target_properties(libldb PROPERTIES OUTPUT_NAME ldb)
 
 target_compile_features(libldb PUBLIC cxx_std_17)
 target_link_libraries(libldb PRIVATE Zydis::Zydis)
+
 target_include_directories(
     libldb 
     PUBLIC
