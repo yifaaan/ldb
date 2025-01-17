@@ -14,6 +14,7 @@ add_test_target(run_endlessly)
 add_test_target(end_immediately)
 add_test_target(hello_ldb)
 add_test_target(memory)
+add_test_target(anti_debugger)
 
 add_test_asm_target(reg_write)
 add_test_asm_target(reg_read)

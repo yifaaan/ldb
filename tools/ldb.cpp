@@ -467,7 +467,7 @@ namespace
         ldb::Disassembler dis(process);
 
         auto instructions = dis.Disassemble(nInstructions, address);
-        fmt::println("after dis.Disassemble");
+
         for (const auto& instr : instructions)
         {
             fmt::print("{:#018x}: {}\n", instr.address.Addr(), instr.text);
