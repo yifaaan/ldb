@@ -93,6 +93,12 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path, b
 
     if (pid == 0)
     {
+        // set the pgid to the same as the child pid
+        if (setpgid(0, 0) < 0)
+        {
+            ExitWithPerror(channel, "Could not set pgid");
+        }
+
         personality(ADDR_NO_RANDOMIZE);
         // in child
         channel.CloseRead();
@@ -220,15 +226,55 @@ ldb::StopReason ldb::Process::WaitOnSignal()
     if (isAttached and state == ProcessState::Stopped)
     {
         ReadAllRegisters();
-
+        AugmentStopReason(reason);
         // get address of int3
         auto instrBegin = GetPc() - 1;
-        if (reason.info == SIGTRAP and breakpointSites.EnabledStoppointAtAddress(instrBegin))
+        if (reason.info == SIGTRAP)
         {
-            SetPc(instrBegin);
+            if (
+                reason.trapReason == TrapType::SoftwareBreak
+                and breakpointSites.ContainsAddress(instrBegin) 
+                and breakpointSites.GetByAddress(instrBegin).IsEnabled())
+            {
+                SetPc(instrBegin);
+            }
+            else if (reason.trapReason == TrapType::HardwareBreak)
+            {
+                auto id = GetCurrentHardwareStoppoint();
+                if (id.index() == 1)
+                {
+                    watchpoints.GetById(std::get<1>(id)).UpdateData();
+                }
+            }
         }
     }
     return reason;
+}
+
+void ldb::Process::AugmentStopReason(StopReason& reason)
+{
+    siginfo_t info;
+    if (ptrace(PTRACE_GETSIGINFO, pid, nullptr, &info) < 0)
+    {
+        Error::SendErrno("Failed to get signal info");
+    }
+
+    reason.trapReason = TrapType::Unknown;
+    if (reason.info == SIGTRAP)
+    {
+        switch (info.si_code)
+        {
+        case TRAP_TRACE:
+            reason.trapReason = TrapType::SingleStep;
+            break;
+        case SI_KERNEL:
+            reason.trapReason = TrapType::SoftwareBreak;
+            break;
+        case TRAP_HWBKPT:
+            reason.trapReason = TrapType::HardwareBreak;
+            break;
+        }
+    }
 }
 
 void ldb::Process::ReadAllRegisters()
@@ -505,4 +551,26 @@ void ldb::Process::ClearHardwareStoppoint(int index)
 int ldb::Process::SetWatchpoint(Watchpoint::IdType id, VirtAddr address, StoppointMode mode, std::size_t size)
 {
     return SetHardwareBreakpoint(address, mode, size);
+}
+
+std::variant<ldb::BreakpointSite::IdType, ldb::Watchpoint::IdType> ldb::Process::GetCurrentHardwareStoppoint() const
+{
+    auto& regs = GetRegisters();
+    auto status = regs.ReadByIdAs<std::uint64_t>(RegisterId::dr6);
+    auto index = __builtin_ctzll(status);
+
+    auto id = static_cast<int>(RegisterId::dr0) + index;
+    auto addr = VirtAddr(regs.ReadByIdAs<std::uint64_t>(static_cast<RegisterId>(id)));
+
+    using RetType = std::variant<ldb::BreakpointSite::IdType, ldb::Watchpoint::IdType>;
+    if (breakpointSites.ContainsAddress(addr))
+    {
+        auto siteId = breakpointSites.GetByAddress(addr).Id();
+        return RetType{std::in_place_index<0>, siteId};
+    }
+    else
+    {
+        auto watchId = watchpoints.GetByAddress(addr).Id();
+        return RetType{std::in_place_index<1>, watchId};
+    }
 }

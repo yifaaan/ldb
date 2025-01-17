@@ -22,12 +22,21 @@ namespace ldb
         Terminated,
     };
 
+    enum class TrapType
+    {
+        SingleStep,
+        SoftwareBreak,
+        HardwareBreak,
+        Unknown,
+    };
+
     struct StopReason
     {
         StopReason(int waitStatus);
 
         ProcessState reason;
         std::uint8_t info;
+        std::optional<TrapType> trapReason;
     };
 
     class Process
@@ -46,6 +55,7 @@ namespace ldb
         void Resume();
 
         StopReason WaitOnSignal();
+        void AugmentStopReason(StopReason& reason);
 
         pid_t Pid() const { return pid; }
 
@@ -94,6 +104,8 @@ namespace ldb
 
         int SetWatchpoint(Watchpoint::IdType id, VirtAddr address, StoppointMode mode, std::size_t size);
 
+        std::variant<BreakpointSite::IdType, Watchpoint::IdType> GetCurrentHardwareStoppoint() const;
+    
     private:
         Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
                 :pid(_pid)

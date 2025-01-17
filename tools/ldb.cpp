@@ -21,6 +21,13 @@
 
 namespace
 {
+    ldb::Process* g_LdbProcess = nullptr;
+
+    void HandleSigint(int)
+    {
+        kill(g_LdbProcess->Pid(), SIGSTOP);
+    }
+
     /// ldb <program name>
     ///
     /// ldb -p <pid>
@@ -82,6 +89,43 @@ namespace
         }
     }
 
+    std::string GetSigtrapInfo(const ldb::Process& process, ldb::StopReason reason)
+    {
+        if (reason.trapReason == ldb::TrapType::SoftwareBreak)
+        {
+            auto& site = process.BreakPointSites().GetByAddress(process.GetPc());
+            return fmt::format(" (breakpoint {})", site.Id());
+        }
+
+        if (reason.trapReason == ldb::TrapType::HardwareBreak)
+        {
+            auto id = process.GetCurrentHardwareStoppoint();
+            if (id.index() == 0)
+            {
+                return fmt::format(" (breakpoint {})", std::get<0>(id));
+            }
+
+            std::string message;
+            auto& point = process.Watchpoinst().GetById(std::get<1>(id));
+            message += fmt::format(" (watchpoint {})", point.Id());
+
+            if (point.Data() == point.PreviousData())
+            {
+                message += fmt::format("\nValue: {:#x}", point.Data());
+            }
+            else
+            {
+                message += fmt::format("\nOld value: {:#x}\nNew value: {:#x}", point.PreviousData(), point.Data());
+            }
+            return message;
+        }
+        if (reason.trapReason == ldb::TrapType::SingleStep)
+        {
+            return " (single step)";
+        }
+        return "";
+    }
+
     void PrintStopReason(const ldb::Process& process, ldb::StopReason reason)
     {
         std::string message;
@@ -95,6 +139,10 @@ namespace
                 break;
             case ldb::ProcessState::Stopped:
                 message = fmt::format("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), process.GetPc().Addr());
+                if (reason.info == SIGTRAP)
+                {
+                    message += GetSigtrapInfo(process, reason);
+                }
                 break;
         }
         fmt::print("Process {} {}\n", process.Pid(), message);
@@ -750,6 +798,8 @@ int main(int argc, const char** argv)
     try
     {
         auto process = Attach(argc, argv);
+        g_LdbProcess = process.get();
+        signal(SIGINT, HandleSigint);
         MainLoop(process);
     }
     catch (const ldb::Error& err)

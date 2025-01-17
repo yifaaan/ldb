@@ -37,6 +37,10 @@ namespace ldb
         auto Mode() const -> StoppointMode { return mode; }
         auto Size() const -> std::size_t { return size; }
 
+        auto Data() const -> std::uint64_t { return data; }
+        auto PreviousData() const -> std::uint64_t { return previousData; }
+        auto UpdateData() -> void;
+
     private:
         friend Process;
         Watchpoint(Process& proc, VirtAddr _address, StoppointMode _mode, std::size_t _size);
@@ -50,5 +54,7 @@ namespace ldb
         /// debugger register index
         int             hardwareRegisterIndex = -1;
         IdType          id;
+        std::uint64_t   data = 0;
+        std::uint64_t   previousData = 0;
     };
 }
