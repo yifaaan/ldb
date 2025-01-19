@@ -18,6 +18,7 @@
 #include <libldb/error.hpp>
 #include <libldb/parse.hpp>
 #include <libldb/disassembler.hpp>
+#include <libldb/syscalls.hpp>
 
 namespace
 {
@@ -119,9 +120,27 @@ namespace
             }
             return message;
         }
+
         if (reason.trapReason == ldb::TrapType::SingleStep)
         {
             return " (single step)";
+        }
+
+        if (reason.trapReason == ldb::TrapType::Syscall)
+        {
+            const auto& info = *reason.syscallInfo;
+            std::string message = " ";
+            if (info.entry)
+            {
+                message += "(syscall entry)\n";
+                message += fmt::format("syscall: {}({:#x})", ldb::SyscallIdToName(info.id), fmt::join(info.args, ","));
+            }
+            else
+            {
+                message += "(syscall exit)\n";
+                message += fmt::format("syscall returned: {:#x}", info.ret);
+            }
+            return message;
         }
         return "";
     }
@@ -160,7 +179,9 @@ namespace
                                 "register    - Commands for operating on registers\n"
                                 "breakpoint  - Commands for operating on breakpoints\n"
                                 "memory      - Commands for operating on memory\n"
-                                "watchpoint  - Commands for operating on watchpoints\n");
+                                "watchpoint  - Commands for operating on watchpoints\n"
+                                "catchpoint  - Commands for operating on catchpoints\n"
+                                );
         }
         else if (IsPrefix(args[1], "register"))
         {
@@ -169,7 +190,8 @@ namespace
                                 "read\n"
                                 "read <register>\n"
                                 "read all\n"
-                                "write <register> <value>\n");
+                                "write <register> <value>\n"
+                                );
         }
         else if (IsPrefix(args[1], "breakpoint"))
         {
@@ -179,7 +201,8 @@ namespace
                                 "delete <id>\n"
                                 "disable <id>\n"
                                 "enable <id>\n"
-                                "set <address> -h\n");
+                                "set <address> -h\n"
+                                );
         }
         else if (IsPrefix(args[1], "memory"))
         {
@@ -187,14 +210,16 @@ namespace
                                 "Available commands:\n"
                                 "read <address>\n"
                                 "read <address> <number of bytes>\n"
-                                "write <address>\n");
+                                "write <address>\n"
+                                );
         }
         else if (IsPrefix(args[1], "disassemble"))
         {
             std::cerr << fmt::format(
                                 "Available commands:\n"
                                 "-c <number of instructions>\n"
-                                "-a <start address>\n");
+                                "-a <start address>\n"
+                                );
         }
         else if (IsPrefix(args[1], "watchpoint"))
         {
@@ -203,7 +228,17 @@ namespace
                                 "list\n"
                                 "enable <id>\n"
                                 "disable <id>\n"
-                                "set <address> <write|rw|execute> <size>\n");
+                                "set <address> <write|rw|execute> <size>\n"
+                                );
+        }
+        else if (IsPrefix(args[1], "catchpoint"))
+        {
+            std::cerr << fmt::format(
+                                "Available commands:\n"
+                                "syscall\n"
+                                "syscall none\n"
+                                "syscall <list of syscall IDs or names>\n"
+                                );
         }
         else
         {
@@ -700,6 +735,47 @@ namespace
         }
     }
 
+    void HandleSyscallCatchpointCommand(ldb::Process& process, std::vector<std::string>& args)
+    {
+        auto policy = ldb::SyscallCatchPolicy::CatchAll();
+
+        if (args.size() == 3 and args[2] == "none")
+        {
+            policy = ldb::SyscallCatchPolicy::CatchNone();
+        }
+        else if (args.size() >= 3)
+        {
+            auto syscalls = Split(args[2], ',');
+            std::vector<int> toCatch;
+
+            std::transform(std::begin(syscalls), std::end(syscalls), std::back_inserter(toCatch), [&syscalls](const auto& syscall)
+            {
+                return std::isdigit(syscall[0]) ? ldb::ToIntegral<int>(syscall).value() : ldb::SyscallNameToId(syscall);
+            });
+            policy = ldb::SyscallCatchPolicy::CatchSome(std::move(toCatch));
+        }
+        process.SetSyscallCatchPolicy(std::move(policy));
+    }
+
+    /// catchpoint syscall
+    ///
+    /// catchpoint syscall none
+    ///
+    /// catchpoint syscall <list>
+    void HandleCatchpointCommand(ldb::Process& process, std::vector<std::string>& args)
+    {
+        if (args.size() < 2)
+        {
+            PrintHelp({ "help", "catchpoint" });
+            return;
+        }
+
+        if (IsPrefix(args[1], "syscall"))
+        {
+            HandleSyscallCatchpointCommand(process, args);
+        }
+    }
+
     void HandleCommand(std::unique_ptr<ldb::Process>& process, std::string_view line)
     {
         auto args = Split(line, ' ');
@@ -739,6 +815,10 @@ namespace
         else if (IsPrefix(command, "watchpoint"))
         {
             HandleWatchpointCommand(*process, args);
+        }
+        else if (IsPrefix(command, "catchpoint"))
+        {
+            HandleCatchpointCommand(*process, args);
         }
         else
         {

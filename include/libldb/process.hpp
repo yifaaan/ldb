@@ -27,7 +27,19 @@ namespace ldb
         SingleStep,
         SoftwareBreak,
         HardwareBreak,
+        Syscall,
         Unknown,
+    };
+
+    struct SyscallInformation
+    {
+        std::uint16_t id;
+        bool entry;
+        union
+        {
+            std::array<std::uint64_t, 6> args;
+            std::int64_t ret;
+        };
     };
 
     struct StopReason
@@ -37,6 +49,54 @@ namespace ldb
         ProcessState reason;
         std::uint8_t info;
         std::optional<TrapType> trapReason;
+        std::optional<SyscallInformation> syscallInfo;
+    };
+
+
+
+    class SyscallCatchPolicy
+    {
+    public:
+        enum Mode
+        {
+            None,
+            Some,
+            All,
+        };
+
+        static SyscallCatchPolicy CatchAll()
+        {
+            return { Mode::All, {} };
+        }
+
+        static SyscallCatchPolicy CatchNone()
+        {
+            return { Mode::None, {} };
+        }
+
+        static SyscallCatchPolicy CatchSome(std::vector<int> _toCatch)
+        {
+            return { Mode::Some, _toCatch };
+        }
+
+        Mode GetMode() const
+        {
+            return mode;
+        }
+
+        const std::vector<int>& GetToCatch() const
+        {
+            return toCatch;
+        }
+
+    private:
+        SyscallCatchPolicy(Mode _mode, std::vector<int> _toCatch)
+            :mode{_mode}
+            ,toCatch{std::move(_toCatch)}
+        {}
+
+        Mode mode = Mode::None;
+        std::vector<int> toCatch;
     };
 
     class Process
@@ -105,7 +165,11 @@ namespace ldb
         int SetWatchpoint(Watchpoint::IdType id, VirtAddr address, StoppointMode mode, std::size_t size);
 
         std::variant<BreakpointSite::IdType, Watchpoint::IdType> GetCurrentHardwareStoppoint() const;
-    
+
+        void SetSyscallCatchPolicy(SyscallCatchPolicy info)
+        {
+            syscallCatchPolicy = std::move(info);
+        }
     private:
         Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
                 :pid(_pid)
@@ -118,6 +182,8 @@ namespace ldb
 
         int SetHardwareBreakpoint(VirtAddr address, StoppointMode mode, std::size_t size);
 
+        ldb::StopReason MaybeResumeFromSyscall(const StopReason& reason);
+
     private:
         pid_t pid = 0;
         /// clean up the inferior process
@@ -127,5 +193,7 @@ namespace ldb
         std::unique_ptr<Registers> registers;
         StoppointCollection<BreakpointSite> breakpointSites;
         StoppointCollection<Watchpoint> watchpoints;
+        SyscallCatchPolicy syscallCatchPolicy = SyscallCatchPolicy::CatchNone();
+        bool expectingSyscallExit = false;
     };
 }

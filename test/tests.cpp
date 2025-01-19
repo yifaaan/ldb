@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <elf.h>
+#include <fcntl.h>
 
 #include <catch2/catch_test_macros.hpp>
 #include <fmt/format.h>
@@ -13,7 +14,7 @@
 #include <libldb/pipe.hpp>
 #include <libldb/register_info.hpp>
 #include <libldb/bit.hpp>
-
+#include <libldb/syscalls.hpp>
 
 namespace
 {
@@ -508,4 +509,47 @@ TEST_CASE("Watchpoint detects read", "[watchpoint]")
     proc->WaitOnSignal();
 
     REQUIRE(ToStringView(channel.Read()) == "Putting pineapple on pizza...\n");
+}
+
+TEST_CASE("Syscall mapping works", "[syscall]")
+{
+    REQUIRE(ldb::SyscallIdToName(0) == "read");
+    REQUIRE(ldb::SyscallNameToId("read") == 0);
+
+    REQUIRE(ldb::SyscallIdToName(9) == "mmap");
+    REQUIRE(ldb::SyscallNameToId("mmap") == 9);
+}
+
+TEST_CASE("Syscall catchpoints work", "[catchpoint]")
+{
+    auto devNull = open("/dev/null", O_WRONLY);
+    auto program = "/home/clyf/dev/ldb/build/test/targets/anti_debugger";
+    auto proc = Process::Launch(program, true, devNull);
+
+    auto writeSyscallId = ldb::SyscallNameToId("write");
+    auto policy = ldb::SyscallCatchPolicy::CatchSome({ writeSyscallId });
+    proc->SetSyscallCatchPolicy(policy);
+
+    proc->Resume();
+    auto reason = proc->WaitOnSignal();
+
+
+    // trap in: write(STDOUT_FILENO, &ptr, sizeof(void*));
+    REQUIRE(reason.reason == ldb::ProcessState::Stopped);
+    REQUIRE(reason.info == SIGTRAP);
+    REQUIRE(reason.trapReason == ldb::TrapType::Syscall);
+    REQUIRE(reason.syscallInfo->id == writeSyscallId);
+    REQUIRE(reason.syscallInfo->entry == true);
+
+    proc->Resume();
+    reason = proc->WaitOnSignal();
+
+    // trap in: write(STDOUT_FILENO, &ptr, sizeof(void*));
+    REQUIRE(reason.reason == ldb::ProcessState::Stopped);
+    REQUIRE(reason.info == SIGTRAP);
+    REQUIRE(reason.trapReason == ldb::TrapType::Syscall);
+    REQUIRE(reason.syscallInfo->id == writeSyscallId);
+    REQUIRE(reason.syscallInfo->entry == false);
+
+    close(devNull);
 }
