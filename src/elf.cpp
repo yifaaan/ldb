@@ -92,3 +92,49 @@ ldb::Span<const std::byte> ldb::Elf::GetSectionContents(std::string_view name) c
     }
     return { nullptr, std::size_t{ 0 } };
 }
+
+std::string_view ldb::Elf::GetString(std::size_t index) const
+{
+    if (auto strtab = GetSection(".strtab"); strtab)
+    {
+        return { reinterpret_cast<char*>(data) + strtab.value()->sh_offset + index };
+    }
+    else
+    {
+        strtab = GetSection(".dynstr");
+        if (!strtab) return "";
+    }
+}
+
+const Elf64_Shdr* ldb::Elf::GetSectionContainingAddress(FileAddr addr) const
+{
+    if (addr.ElfFile() != this)
+    {
+        return nullptr;
+    }
+    for (const auto& sh : sectionHeaders)
+    {
+        auto begin = sh.sh_addr;
+        auto end = sh.sh_addr + sh.sh_size;
+        if (begin <= addr.Addr() && addr.Addr() < end)
+        {
+            return &sh;
+        }
+    }
+    return nullptr;
+}
+
+
+const Elf64_Shdr* ldb::Elf::GetSectionContainingAddress(VirtAddr addr) const
+{
+    for (const auto& sh : sectionHeaders)
+    {
+        auto begin = loadBias + sh.sh_addr;
+        auto end = loadBias + sh.sh_addr + sh.sh_size;
+        if (begin <= addr and addr < end)
+        {
+            return &sh;
+        }
+    }
+    return nullptr;
+}

@@ -5,6 +5,9 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <cassert>
+
+#include <libldb/elf.hpp>
 
 
 namespace ldb
@@ -19,6 +22,7 @@ namespace ldb
         Execute,
     };
 
+    class FileAddr;
     class VirtAddr
     {
     public:
@@ -27,6 +31,8 @@ namespace ldb
         explicit VirtAddr(std::uint64_t _addr) : addr(_addr) {}
 
         std::uint64_t Addr() const { return addr; }
+
+        FileAddr ToFileAddr(const Elf& elf) const;
 
         VirtAddr operator+(std::int64_t offset) const
         {
@@ -54,6 +60,106 @@ namespace ldb
 
     private:
         std::uint64_t addr = 0;
+    };
+
+    /// virtual address specified in the ELF file
+    class FileAddr
+    {
+    public:
+        FileAddr() = default;
+        FileAddr(const Elf& _elf, std::uint64_t _addr)
+            :elf{ &_elf }
+            ,addr{ _addr }
+        {}
+
+        std::uint64_t Addr() const { return addr; }
+
+        const Elf* ElfFile() const { return elf; }
+
+        VirtAddr ToVirtAddr() const;
+
+        FileAddr operator+(std::int64_t offset) const
+        {
+            return FileAddr{ *elf, addr + offset };
+        }
+
+        FileAddr operator-(std::int64_t offset) const
+        {
+            return FileAddr{ *elf, addr - offset };
+        }
+
+        FileAddr& operator+=(std::int64_t offset)
+        {
+            addr += offset;
+            return *this;
+        }
+
+        FileAddr& operator-=(std::int64_t offset)
+        {
+            addr -= offset;
+            return *this;
+        }
+        
+        // TODO: replace with this
+        // auto operator<=>(const FileAddr& other) const  = default;
+
+        bool operator==(const FileAddr& other) const
+        {
+            return addr == other.addr and elf == other.elf;
+        }
+
+        bool operator!= (const FileAddr& other) const
+        {
+            return !(*this == other);
+        }
+
+        bool operator<(const FileAddr& other) const
+        {
+            assert(elf == other.elf);
+            return addr < other.addr;
+        }
+
+        bool operator<=(const FileAddr& other) const
+        {
+            assert(elf == other.elf);
+            return addr <= other.addr;
+        }
+
+        bool operator>(const FileAddr& other) const
+        {
+            assert(elf == other.elf);
+            return addr > other.addr;
+        }
+
+        bool operator>=(const FileAddr& other) const
+        {
+            assert(elf == other.elf);
+            return addr >= other.addr;
+        }
+
+
+    private:
+        const Elf* elf = nullptr;
+        std::uint64_t addr = 0;
+    };
+
+    /// absolute offset from the start of the obj file
+    class FileOffset
+    {
+    public:
+        FileOffset() = default;
+        FileOffset(const Elf& _elf, std::uint64_t _offset)
+            :elf{ &_elf }
+            ,offset{ _offset }
+        {}
+
+        std::uint64_t Offset() const { return offset; }
+
+        const Elf* ElfFile() const { return elf; }
+
+    private:
+        const Elf* elf = nullptr;
+        std::uint64_t offset = 0;
     };
 
     template<typename T>

@@ -6,7 +6,7 @@
 #include <vector>
 
 
-#include "libldb/types.hpp"
+#include <libldb/types.hpp>
 
 namespace ldb
 {
@@ -30,6 +30,21 @@ namespace ldb
         std::optional<const Elf64_Shdr*> GetSection(std::string_view name) const;
 
         Span<const std::byte> GetSectionContents(std::string_view name) const;
+
+        /// general string table: .strtab
+        std::string_view GetString(std::size_t index) const;
+
+        /// get load bias
+        VirtAddr LoadBias() const { return loadBias; }
+
+        void NotifyLoaded(VirtAddr address) { loadBias = address; }
+
+        /// retrieve the section to which a file address belongs
+        const Elf64_Shdr* GetSectionContainingAddress(FileAddr addr) const;
+
+        /// retrieve the section to which a virtual address belongs
+        const Elf64_Shdr* GetSectionContainingAddress(VirtAddr addr) const;
+        
     private:
         void BuildSectionMap();
 
@@ -40,5 +55,6 @@ namespace ldb
         Elf64_Ehdr header;
         std::vector<Elf64_Shdr> sectionHeaders;
         std::unordered_map<std::string_view, Elf64_Shdr*> sectionMap;
+        VirtAddr loadBias;
     };
 }
