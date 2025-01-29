@@ -7,7 +7,8 @@
 #include <cstdint>
 #include <cassert>
 
-#include <libldb/elf.hpp>
+// 不能加上这行，Elf用了VirtAddr,而VritAddr用了Elf,不能两个都相互包含
+// #include <libldb/elf.hpp>
 
 
 namespace ldb
@@ -22,7 +23,10 @@ namespace ldb
         Execute,
     };
 
+    // 解决方法如下，声明Elf就行,在elf.hpp中include当前文件
+    
     class FileAddr;
+    class Elf;
     class VirtAddr
     {
     public:

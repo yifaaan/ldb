@@ -13,6 +13,8 @@
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/bit.hpp>
+#include <libldb/types.hpp>
+#include <libldb/elf.hpp>
 
 namespace 
 {

@@ -1,9 +1,14 @@
 #pragma once
 
 
-#include <filesystem>
+
 #include <elf.h>
+
+#include <optional>
+#include <filesystem>
 #include <vector>
+#include <unordered_map>
+
 
 
 #include <libldb/types.hpp>
@@ -44,6 +49,15 @@ namespace ldb
 
         /// retrieve the section to which a virtual address belongs
         const Elf64_Shdr* GetSectionContainingAddress(VirtAddr addr) const;
+
+        std::optional<FileAddr> GetSectionStartAddress(std::string_view name) const
+        {
+            if (auto sectionHeader = GetSection(name); sectionHeader)
+            {
+                return FileAddr{ *this, sectionHeader.value()->sh_addr };
+            }
+            return std::nullopt;
+        }
         
     private:
         void BuildSectionMap();
