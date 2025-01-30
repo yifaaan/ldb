@@ -58,6 +58,9 @@ namespace ldb
             }
             return std::nullopt;
         }
+
+        /// parse symbol table
+        void ParseSymbolTable();
         
     private:
         void BuildSectionMap();
@@ -70,5 +73,6 @@ namespace ldb
         std::vector<Elf64_Shdr> sectionHeaders;
         std::unordered_map<std::string_view, Elf64_Shdr*> sectionMap;
         VirtAddr loadBias;
+        std::vector<Elf64_Sym> symbolTable;
     };
 }

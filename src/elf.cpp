@@ -138,3 +138,16 @@ const Elf64_Shdr* ldb::Elf::GetSectionContainingAddress(VirtAddr addr) const
     }
     return nullptr;
 }
+
+void ldb::Elf::ParseSymbolTable()
+{
+    auto symtab = GetSection(".symtab");
+    if (!symtab)
+    {
+        symtab = GetSection(".dynsym");
+        if (!symtab) return;
+    }
+    auto tableHeader = *symtab;
+    symbolTable.resize(tableHeader->sh_size / tableHeader->sh_entsize);
+    std::copy(data + tableHeader->sh_offset, data + tableHeader->sh_offset + tableHeader->sh_size, reinterpret_cast<std::byte*>(symbolTable.data()));
+}
