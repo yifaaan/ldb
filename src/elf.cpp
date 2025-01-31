@@ -1,9 +1,13 @@
 
+#include "libldb/types.hpp"
+#include <algorithm>
 #include <elf.h>
+#include <optional>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <cxxabi.h>
 
 #include <libldb/elf.hpp>
 #include <libldb/error.hpp>
@@ -37,6 +41,7 @@ ldb::Elf::Elf(const std::filesystem::path& _path)
     std::copy(data, data + sizeof(header), AsBytes(header));
 
     BuildSectionMap();
+    BuildSymbolMaps();
 }
 
 ldb::Elf::~Elf()
@@ -150,4 +155,86 @@ void ldb::Elf::ParseSymbolTable()
     auto tableHeader = *symtab;
     symbolTable.resize(tableHeader->sh_size / tableHeader->sh_entsize);
     std::copy(data + tableHeader->sh_offset, data + tableHeader->sh_offset + tableHeader->sh_size, reinterpret_cast<std::byte*>(symbolTable.data()));
+}
+
+void ldb::Elf::BuildSymbolMaps()
+{
+    for (auto& symbol : symbolTable)
+    {
+        auto mangledName = GetString(symbol.st_name);
+        int demangleStatus = -1;
+        auto demangledName = abi::__cxa_demangle(mangledName.data(), nullptr, nullptr, &demangleStatus);
+        if (demangleStatus == 0)
+        {
+            symbolNameMap.insert({ demangledName, &symbol });
+            free(demangledName);
+        }
+        symbolNameMap.insert({ mangledName, &symbol });
+
+        if (symbol.st_value != 0 and symbol.st_name != 0 and ELF64_ST_TYPE(symbol.st_info) != STT_TLS)
+        {
+            auto addrRange = std::make_pair<FileAddr, FileAddr>({ *this, symbol.st_value }, { *this, symbol.st_value + symbol.st_size });
+            symbolAddrMap.insert({ addrRange, &symbol });
+        }
+    }
+}
+
+std::vector<const Elf64_Sym*> ldb::Elf::GetSymbolsByName(std::string_view name) const
+{
+    auto [begin, end] = symbolNameMap.equal_range(name);
+    std::vector<const Elf64_Sym*> ret;
+    std::transform(begin, end, std::back_inserter(ret), [](const auto& p)
+    {
+        return p.second;
+    });
+    return ret;
+}
+
+std::optional<const Elf64_Sym*> ldb::Elf::GetSymbolAtAddress(FileAddr address) const
+{
+    if (address.ElfFile() != this)
+    {
+        return std::nullopt;
+    }
+    if (auto it = symbolAddrMap.find({ address, {} }); it != std::end(symbolAddrMap))
+    {
+        return it->second;
+    }
+    return std::nullopt;
+}
+
+std::optional<const Elf64_Sym*> ldb::Elf::GetSymbolAtAddress(VirtAddr address) const
+{
+    return GetSymbolAtAddress(address.ToFileAddr(*this));
+}
+
+std::optional<const Elf64_Sym*> ldb::Elf::GetSymbolContainingAddress(FileAddr address) const
+{
+    if (address.ElfFile() != this or symbolAddrMap.empty())
+    {
+        return std::nullopt;
+    }
+    if (auto it = symbolAddrMap.lower_bound({ address, {} }); it != std::end(symbolAddrMap))
+    {
+        auto [first, second] = *it;
+        if (first.first == address)
+        {
+            return second;
+        }
+        if (it == std::begin(symbolAddrMap))
+        {
+            return std::nullopt;
+        }
+        --it;
+        if (auto [a, b] = *it; a.first < address and address < a.second)
+        {
+            return b;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<const Elf64_Sym*> ldb::Elf::GetSymbolContainingAddress(VirtAddr address) const
+{
+    return GetSymbolContainingAddress(address.ToFileAddr(*this));
 }

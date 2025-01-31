@@ -4,6 +4,7 @@
 
 #include <elf.h>
 
+#include <map>
 #include <optional>
 #include <filesystem>
 #include <vector>
@@ -61,9 +62,21 @@ namespace ldb
 
         /// parse symbol table
         void ParseSymbolTable();
+
+        std::vector<const Elf64_Sym*> GetSymbolsByName(std::string_view name) const;
+
+        std::optional<const Elf64_Sym*> GetSymbolAtAddress(FileAddr addr) const;
+
+        std::optional<const Elf64_Sym*> GetSymbolAtAddress(VirtAddr Addr) const;
+
+        std::optional<const Elf64_Sym*> GetSymbolContainingAddress(FileAddr addr) const;
+
+        std::optional<const Elf64_Sym*> GetSymbolContainingAddress(VirtAddr addr) const;
         
     private:
         void BuildSectionMap();
+
+        void BuildSymbolMaps();
 
         int fd;
         std::filesystem::path path;
@@ -74,5 +87,12 @@ namespace ldb
         std::unordered_map<std::string_view, Elf64_Shdr*> sectionMap;
         VirtAddr loadBias;
         std::vector<Elf64_Sym> symbolTable;
+        std::unordered_multimap<std::string_view, Elf64_Sym*> symbolNameMap;
+
+        static constexpr auto RangeComparator = [](const auto& a, const auto& b)
+        {
+            return a.first < b.first;
+        };
+        std::map<std::pair<FileAddr, FileAddr>, Elf64_Sym*, decltype(RangeComparator)> symbolAddrMap;
     };
 }
