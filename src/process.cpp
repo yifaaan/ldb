@@ -1,6 +1,5 @@
 
 #include <csignal>
-#include <iostream>
 #include <unistd.h>
 #include <sys/user.h>
 #include <sys/personality.h>
@@ -8,6 +7,7 @@
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <fstream>
 
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
@@ -15,6 +15,8 @@
 #include <libldb/bit.hpp>
 #include <libldb/types.hpp>
 #include <libldb/elf.hpp>
+
+#include <fmt/format.h>
 
 namespace 
 {
@@ -646,4 +648,25 @@ ldb::StopReason ldb::Process::MaybeResumeFromSyscall(const StopReason& reason)
         }
     }
     return reason;
+}
+
+std::unordered_map<int, std::uint64_t> ldb::Process::GetAuxv() const
+{
+    auto path = fmt::format("/proc/{}/auxv", pid);
+    std::ifstream auxv{ path };
+
+    std::unordered_map<int, std::uint64_t> ret;
+    std::uint64_t id, value;
+
+    auto read = [&](auto& info)
+    {
+        auxv.read(reinterpret_cast<char*>(&info), sizeof(info));
+    };
+
+    for (read(id); id != AT_NULL; read(id))
+    {
+        read(value);
+        ret[id] = value;
+    }
+    return ret;
 }

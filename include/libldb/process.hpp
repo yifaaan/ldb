@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <filesystem>
+#include <unordered_map>
 #include <optional>
 
 #include <sys/types.h>
@@ -170,6 +171,9 @@ namespace ldb
         {
             syscallCatchPolicy = std::move(info);
         }
+
+        std::unordered_map<int, std::uint64_t> GetAuxv() const;
+
     private:
         Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
                 :pid(_pid)
