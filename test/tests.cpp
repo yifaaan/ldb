@@ -1,3 +1,5 @@
+#include "libldb/types.hpp"
+#include <fmt/base.h>
 #include <fstream>
 #include <regex>
 #include <cerrno>
@@ -15,6 +17,7 @@
 #include <libldb/register_info.hpp>
 #include <libldb/bit.hpp>
 #include <libldb/syscalls.hpp>
+#include <libldb/target.hpp>
 
 namespace
 {
@@ -552,4 +555,23 @@ TEST_CASE("Syscall catchpoints work", "[catchpoint]")
     REQUIRE(reason.syscallInfo->entry == false);
 
     close(devNull);
+}
+
+
+TEST_CASE("ELF parser works", "[elf]")
+{
+    auto path = "/home/clyf/dev/ldb/build/test/targets/hello_ldb";
+    ldb::Elf elf{ path };
+    auto entry = elf.GetHeader().e_entry;
+    auto sym = elf.GetSymbolAtAddress(FileAddr{ elf, entry });
+    auto name = elf.GetString(sym.value()->st_name);
+    REQUIRE(name == "_start");
+    auto syms = elf.GetSymbolsByName("_start");
+    name = elf.GetString(syms.at(0)->st_name);
+    REQUIRE(name == "_start");
+
+    elf.NotifyLoaded(VirtAddr { 0xcafecafe });
+    sym = elf.GetSymbolAtAddress(VirtAddr{ 0xcafecafe + entry });
+    name = elf.GetString(sym.value()->st_name);
+    REQUIRE(name == "_start");
 }

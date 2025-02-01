@@ -2,12 +2,15 @@
 #include "libldb/types.hpp"
 #include <algorithm>
 #include <elf.h>
+#include <fmt/base.h>
 #include <optional>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <cxxabi.h>
+
+
 
 #include <libldb/elf.hpp>
 #include <libldb/error.hpp>
@@ -40,7 +43,9 @@ ldb::Elf::Elf(const std::filesystem::path& _path)
     data = reinterpret_cast<std::byte*>(ret);
     std::copy(data, data + sizeof(header), AsBytes(header));
 
+    ParseSectionHeaders();
     BuildSectionMap();
+    ParseSymbolTable();
     BuildSymbolMaps();
 }
 
@@ -147,11 +152,14 @@ const Elf64_Shdr* ldb::Elf::GetSectionContainingAddress(VirtAddr addr) const
 void ldb::Elf::ParseSymbolTable()
 {
     auto symtab = GetSection(".symtab");
+
     if (!symtab)
     {
         symtab = GetSection(".dynsym");
         if (!symtab) return;
     }
+
+    
     auto tableHeader = *symtab;
     symbolTable.resize(tableHeader->sh_size / tableHeader->sh_entsize);
     std::copy(data + tableHeader->sh_offset, data + tableHeader->sh_offset + tableHeader->sh_size, reinterpret_cast<std::byte*>(symbolTable.data()));
