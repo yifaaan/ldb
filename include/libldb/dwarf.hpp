@@ -10,18 +10,25 @@ namespace ldb
 {
     struct AttrSpec
     {
+        /// 属性
         std::uint64_t attr;
+        /// 形式
         std::uint64_t form;
     };
 
     struct Abbrev
     {
+        /// 缩写码
         std::uint64_t code;
+        /// 标签
         std::uint64_t tag;
+        /// 是否有子节点
         bool hasChildren;
+        /// 属性规格列表
         std::vector<AttrSpec> attrSpecs;
     };
 
+    class Die;
     class Dwarf;
     class CompileUnit
     {
@@ -32,13 +39,24 @@ namespace ldb
             ,abbrevOffset{ _abbrevOffset }
         {}
 
-        auto DwarfInfo() -> const Dwarf* const { return parent; }
+        const Dwarf* DwarfInfo() const { return parent; }
 
-        auto Data() const { return data; }
+        Span<const std::byte> Data() const { return data; }
 
-        const auto& AbbrevTable() const;
+        const std::unordered_map<std::uint64_t, Abbrev>& AbbrevTable() const;
+
+        ldb::Die Root() const;
 
     private:
+        // struct CompileUnitHeader 
+        // {
+        //    uint32_t unit_length;      // 编译单元的总长度
+        //    uint16_t version;          // DWARF格式版本号
+        //    uint32_t debug_abbrev_offset;  // 缩写表的偏移量
+        //    uint8_t  address_size;     // 目标机器的地址大小
+        // };
+
+        /// 所属的Dwarf
         Dwarf* parent;
         Span<const std::byte> data;
         std::size_t abbrevOffset;
@@ -51,10 +69,10 @@ namespace ldb
         Dwarf(const Elf& parent);
         const Elf* ElfFile() const { return elf; }
 
-        const auto& GetAbbrevTable(std::size_t offset);
+        const std::unordered_map<std::uint64_t, Abbrev>& GetAbbrevTable(std::size_t offset);
 
-        const auto& CompileUnits() const { return compileUnits; }
-        
+        const std::vector<std::unique_ptr<CompileUnit>>& CompileUnits() const { return compileUnits; }
+
     private:
         const Elf* elf;
 
@@ -76,5 +94,44 @@ namespace ldb
         std::vector<std::unique_ptr<CompileUnit>> compileUnits;
     };
 
-}
+    class Die
+    {
+    public:
+        explicit Die(const std::byte* _next)
+            :next{ _next }
+        {}
 
+        Die(const std::byte* _pos,
+            const CompileUnit* _compileUnit,
+            const Abbrev* _abbrev,
+            std::vector<const std::byte*> _attrLocs,
+            const std::byte* _next)
+            :pos { _pos }
+            ,next{ _next }
+            ,compileUnit{ _compileUnit }
+            ,abbrev{ _abbrev }
+            ,attrLocs{ std::move(_attrLocs) }
+        {}
+
+        const CompileUnit* Cu() const { return compileUnit; }
+
+        const Abbrev* AbbrevEntry() const { return abbrev; }
+
+        const std::byte* Position() const { return pos; }
+
+        const std::byte* Next() const { return next; }
+
+        
+    private:
+        /// 当前DIE的开始位置
+        const std::byte* pos = nullptr;
+        /// 当前DIE的所属的编译单元
+        const CompileUnit* compileUnit = nullptr;
+        /// 当前DIE的所属的缩写表
+        const Abbrev* abbrev = nullptr;
+        /// 当前DIE的属性位置列表
+        std::vector<const std::byte*> attrLocs;
+        /// 下一个DIE的开始位置
+        const std::byte* next = nullptr;
+    };
+}

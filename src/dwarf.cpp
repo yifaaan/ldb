@@ -13,8 +13,8 @@ namespace
     {
     public:
         explicit Cursor(ldb::Span<const std::byte> _data)
-            :data(_data)
-            ,pos(_data.Begin())
+            :data{ _data }
+            ,pos{ _data.Begin() }
         {}
     
         Cursor& operator++() { ++pos; return *this; }
@@ -135,6 +135,16 @@ namespace
                 // 进行符号位扩展，将高位都填充为1
                 result |= ~static_cast<std::int64_t>(0) << shift;
             }
+            return result;
+        }
+
+        void SkipForm(std::uint64_t form)
+        {
+            switch (form)
+            {
+            // TODO: many
+            default: ldb::Error::Send("Unrecongnized DWARF form");
+            }
         }
 
     private:
@@ -142,7 +152,7 @@ namespace
         const std::byte* pos;
     };
 
-    auto ParseAbbrevTable(const ldb::Elf& elf, std::size_t offset)
+    std::unordered_map<std::uint64_t, ldb::Abbrev> ParseAbbrevTable(const ldb::Elf& elf, std::size_t offset)
     {
         Cursor cursor{ elf.GetSectionContents(".debug_abbrev") };
         cursor += offset;
@@ -198,7 +208,7 @@ namespace
     //   DIE条目们...
     //
     // ...更多编译单元
-    auto ParseCompileUnit(ldb::Dwarf& dwarf, const ldb::Elf& elf, Cursor cursor)
+    std::unique_ptr<ldb::CompileUnit> ParseCompileUnit(ldb::Dwarf& dwarf, const ldb::Elf& elf, Cursor cursor)
     {
         auto start = cursor.Position();
         // parse header
@@ -237,7 +247,7 @@ namespace
     /// 编译单元的格式为：
     ///
     /// [版本] [单位头长度] [单位头] [单位体]
-    auto ParseCompileUnits(ldb::Dwarf& dwarf, const ldb::Elf& elf)
+    std::vector<std::unique_ptr<ldb::CompileUnit>> ParseCompileUnits(ldb::Dwarf& dwarf, const ldb::Elf& elf)
     {
         auto debugInfo = elf.GetSectionContents(".debug_info");
         Cursor cursor{ debugInfo };
@@ -251,6 +261,35 @@ namespace
         }
         return compileUnits;
     }
+
+    /// 解析DIE条目
+    ///
+    /// ┌──────────────┬──────────────┬────────────┬────────────┬─────────────┐
+    /// │ Abbrev Code  │    Tag       │ HasChildren│ Attributes │    ...      │
+    /// │              │  (隐含的)     │  (隐含的)   │            │             │
+    /// └──────────────┴──────────────┴────────────┴────────────┴─────────────┘
+    ldb::Die ParseDie(const ldb::CompileUnit& cu, Cursor cursor)
+    {
+        auto pos = cursor.Position();
+        auto abbrevCode = cursor.Uleb128();
+        // code为0表示这是一个空条目，用于标记兄弟节点链的结束
+        if (abbrevCode == 0)
+        {
+            auto next = cursor.Position();
+            return ldb::Die{ next };
+        }
+        auto& abbrevTable = cu.AbbrevTable();
+        auto& abbrev = abbrevTable.at(abbrevCode);
+        std::vector<const std::byte*> attrLocs;
+        attrLocs.reserve(abbrev.attrSpecs.size());
+        for (const auto& attrSpec : abbrev.attrSpecs)
+        {
+            attrLocs.emplace_back(cursor.Position());
+            cursor.SkipForm(attrSpec.form);
+        }
+        auto next = cursor.Position();
+        return ldb::Die{ pos, &cu, &abbrev, std::move(attrLocs), next };
+    }
 }
 
 ldb::Dwarf::Dwarf(const Elf& elf)
@@ -260,7 +299,7 @@ ldb::Dwarf::Dwarf(const Elf& elf)
 }
 
 
-const auto& ldb::Dwarf::GetAbbrevTable(std::size_t offset)
+const std::unordered_map<std::uint64_t, ldb::Abbrev>& ldb::Dwarf::GetAbbrevTable(std::size_t offset)
 {
     if (!abbrevTables.contains(offset))
     {
@@ -269,7 +308,15 @@ const auto& ldb::Dwarf::GetAbbrevTable(std::size_t offset)
     return abbrevTables.at(offset);
 }
 
-const auto& ldb::CompileUnit::AbbrevTable() const
+const std::unordered_map<std::uint64_t, ldb::Abbrev>& ldb::CompileUnit::AbbrevTable() const
 {
     return parent->GetAbbrevTable(abbrevOffset);
+}
+
+ldb::Die ldb::CompileUnit::Root() const
+{
+    std::size_t headerSize = 11;
+    // 跳过header
+    Cursor cursor{ {data.Begin() + headerSize, data.End() } };
+    return ParseDie(*this, cursor);
 }
