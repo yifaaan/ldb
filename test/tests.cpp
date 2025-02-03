@@ -21,6 +21,8 @@
 
 namespace
 {
+    const std::string TEST_TARGET_PATH = "/home/clyf/dev/ldb/build/test/targets/";
+
     bool ProcessExists(pid_t pid)
     {
         auto ret = kill(pid, 0);
@@ -40,17 +42,19 @@ namespace
         return data[indexOfStatusIndicator];
     }
 
-    /// parse the out put of command: readelf -WS <program_path> 
+    // parse the out put of command: readelf -WS <program_path> 
     std::int64_t GetSectionLoadBias(std::filesystem::path path, Elf64_Addr fileAddress)
     {
         auto command = fmt::format("readelf -WS {}", path.string());
-        auto pipe = popen(command.c_str(), "r");
+        // auto pipe = popen(command.c_str(), "r");
+
+        auto pipe = std::unique_ptr<FILE, decltype(&pclose)>(popen(command.c_str(), "r"), pclose);
 
         std::regex textRegex(R"(PROGBITS\s+(\w+)\s+(\w+)\s+(\w+))");
         char* line = nullptr;
         std::size_t len = 0;
 
-        while (getline(&line, &len, pipe) != -1)
+        while (getline(&line, &len, pipe.get()) != -1)
         {
             std::cmatch groups;
             if (std::regex_search(line, groups, textRegex))
@@ -61,15 +65,13 @@ namespace
                 if (address <= fileAddress and fileAddress < (address + size))
                 {
                     free(line);
-                    pclose(pipe);
                     return address - offset;
                 }
             }
             free(line);
             line = nullptr;
         }
-        pclose(pipe);
-        ldb::Error::Send("Could not find section load bias");
+        ldb::Error::Send(fmt::format("Could not find section load bias for address {:#x}", fileAddress));
     }
 
 
@@ -138,7 +140,7 @@ TEST_CASE("Process::Launch no such program", "[process]")
 
 TEST_CASE("Process::Attach success", "[process]")
 {
-    auto target = Process::Launch("/home/clyf/dev/ldb/build/test/targets/run_endlessly", false);
+    auto target = Process::Launch(TEST_TARGET_PATH + "run_endlessly", false);
     auto proc = Process::Attach(target->Pid());
     REQUIRE(GetProcessStatus(target->Pid()) == 't');
 }
@@ -151,14 +153,14 @@ TEST_CASE("Process::Attach invalid PID", "[process]")
 TEST_CASE("Process::Resume success", "[process]")
 {
     {
-        auto proc = Process::Launch("/home/clyf/dev/ldb/build/test/targets/run_endlessly");
+        auto proc = Process::Launch(TEST_TARGET_PATH + "run_endlessly");
         proc->Resume();
         auto status = GetProcessStatus(proc->Pid());
         auto success = status == 'R' or status == 'S';
         REQUIRE(success);
     }
     {
-        auto target = Process::Launch("/home/clyf/dev/ldb/build/test/targets/run_endlessly", false);
+        auto target = Process::Launch(TEST_TARGET_PATH + "run_endlessly", false);
         auto proc = Process::Attach(target->Pid());
         proc->Resume();
         auto status = GetProcessStatus(proc->Pid());
@@ -169,7 +171,7 @@ TEST_CASE("Process::Resume success", "[process]")
 
 TEST_CASE("Process::Resum already terminated", "[process]")
 {
-    auto proc = Process::Launch("/home/clyf/dev/ldb/build/test/targets/end_immediately");
+    auto proc = Process::Launch(TEST_TARGET_PATH + "end_immediately");
     proc->Resume();
     proc->WaitOnSignal();
     REQUIRE_THROWS_AS(proc->Resume(), Error);
@@ -180,7 +182,7 @@ TEST_CASE("Write register works", "[register]")
     bool closeOnExec = false;
     Pipe channel(closeOnExec);
 
-    auto proc = Process::Launch("/home/clyf/dev/ldb/build/test/targets/reg_write", true, channel.GetWrite());
+    auto proc = Process::Launch(TEST_TARGET_PATH + "reg_write", true, channel.GetWrite());
     channel.CloseWrite();
 
     // print rsi
@@ -225,7 +227,7 @@ TEST_CASE("Write register works", "[register]")
 
 TEST_CASE("Read register works", "[register]")
 {
-    auto proc = Process::Launch("/home/clyf/dev/ldb/build/test/targets/reg_read");
+    auto proc = Process::Launch(TEST_TARGET_PATH + "reg_read");
     auto& regs = proc->GetRegisters();
 
     proc->Resume();
@@ -252,14 +254,14 @@ TEST_CASE("Read register works", "[register]")
 
 TEST_CASE("Can create breakpoint site", "[breakpoint]")
 {
-    auto proc = Process::Launch("/home/clyf/dev/ldb/build/test/targets/run_endlessly");
+    auto proc = Process::Launch(TEST_TARGET_PATH + "run_endlessly");
     auto& site = proc->CreateBreakpointSite(VirtAddr{42});
     REQUIRE(site.Address().Addr() == 42);
 }
 
 TEST_CASE("Breakpoint site ids increase", "[breakpoint]")
 {
-    auto proc = Process::Launch("/home/clyf/dev/ldb/build/test/targets/run_endlessly");
+    auto proc = Process::Launch(TEST_TARGET_PATH + "run_endlessly");
 
     auto& s1 = proc->CreateBreakpointSite(VirtAddr{42});
     REQUIRE(s1.Address().Addr() == 42);
@@ -276,7 +278,7 @@ TEST_CASE("Breakpoint site ids increase", "[breakpoint]")
 
 TEST_CASE("Can find breakpoint site", "[breakpoint]")
 {
-    auto proc = Process::Launch("/home/clyf/dev/ldb/build/test/targets/run_endlessly");
+    auto proc = Process::Launch(TEST_TARGET_PATH + "run_endlessly");
     const auto& cproc = proc;
 
     proc->CreateBreakpointSite(VirtAddr{42});
@@ -305,7 +307,7 @@ TEST_CASE("Can find breakpoint site", "[breakpoint]")
 
 TEST_CASE("Cannot find breakpoint site", "[breakpoint]") 
 {
-    auto proc = Process::Launch("/home/clyf/dev/ldb/build/test/targets/run_endlessly");
+    auto proc = Process::Launch(TEST_TARGET_PATH + "run_endlessly");
     const auto& cproc = proc;
     REQUIRE_THROWS_AS(proc->BreakPointSites().GetByAddress(VirtAddr{ 44 }), Error);
     REQUIRE_THROWS_AS(proc->BreakPointSites().GetById(44), Error);
@@ -315,7 +317,7 @@ TEST_CASE("Cannot find breakpoint site", "[breakpoint]")
 
 TEST_CASE("Breakpoint site list size and emptiness", "[breakpoint]")
 {
-    auto proc = Process::Launch("/home/clyf/dev/ldb/build/test/targets/run_endlessly");
+    auto proc = Process::Launch(TEST_TARGET_PATH + "run_endlessly");
     const auto& cproc = proc;
 
     REQUIRE(proc->BreakPointSites().Empty());
@@ -338,7 +340,7 @@ TEST_CASE("Breakpoint site list size and emptiness", "[breakpoint]")
 
 TEST_CASE("Can iterate breakpoint sites", "[breakpoint]")
 {
-    auto proc = Process::Launch("/home/clyf/dev/ldb/build/test/targets/run_endlessly");
+    auto proc = Process::Launch(TEST_TARGET_PATH + "run_endlessly");
     const auto& cproc = proc;
 
     proc->CreateBreakpointSite(VirtAddr{42});
@@ -362,7 +364,7 @@ TEST_CASE("Breakpoint on address works", "[breakpoint]")
     bool closeOnExec = false;
     Pipe channel(closeOnExec);
 
-    auto program = "/home/clyf/dev/ldb/build/test/targets/hello_ldb";
+    auto program = TEST_TARGET_PATH + "hello_ldb";
     auto proc = Process::Launch(program, true, channel.GetWrite());
     channel.CloseWrite();
 
@@ -389,7 +391,7 @@ TEST_CASE("Breakpoint on address works", "[breakpoint]")
 
 TEST_CASE("Can remove breakpoint sites", "[breakpoint]")
 {
-    auto program = "/home/clyf/dev/ldb/build/test/targets/run_endlessly";
+    auto program = TEST_TARGET_PATH + "run_endlessly";
     auto proc = Process::Launch(program);
 
     auto& site = proc->CreateBreakpointSite(VirtAddr{42});
@@ -406,7 +408,7 @@ TEST_CASE("Reading and writing memory works", "[memory]")
     bool closeOnExec = false;
     Pipe channel(closeOnExec);
 
-    auto program = "/home/clyf/dev/ldb/build/test/targets/memory";
+    auto program = TEST_TARGET_PATH + "memory";
     auto proc = Process::Launch(program, true, channel.GetWrite());
     channel.CloseWrite();
 
@@ -443,7 +445,7 @@ TEST_CASE("Hardware breakpoint evades memory checksums", "[breakpoint]")
     bool closeOnExec = false;
     Pipe channel(closeOnExec);
 
-    auto program = "/home/clyf/dev/ldb/build/test/targets/anti_debugger";
+    auto program = TEST_TARGET_PATH + "anti_debugger";
     auto proc = Process::Launch(program, true, channel.GetWrite());
     channel.CloseWrite();
 
@@ -486,7 +488,7 @@ TEST_CASE("Watchpoint detects read", "[watchpoint]")
     bool closeOnExec = false;
     Pipe channel(closeOnExec);
 
-    auto program = "/home/clyf/dev/ldb/build/test/targets/anti_debugger";
+    auto program = TEST_TARGET_PATH + "anti_debugger";
     auto proc = Process::Launch(program, true, channel.GetWrite());
     channel.CloseWrite();
 
@@ -526,7 +528,7 @@ TEST_CASE("Syscall mapping works", "[syscall]")
 TEST_CASE("Syscall catchpoints work", "[catchpoint]")
 {
     auto devNull = open("/dev/null", O_WRONLY);
-    auto program = "/home/clyf/dev/ldb/build/test/targets/anti_debugger";
+    auto program = TEST_TARGET_PATH + "anti_debugger";
     auto proc = Process::Launch(program, true, devNull);
 
     auto writeSyscallId = ldb::SyscallNameToId("write");
@@ -560,7 +562,7 @@ TEST_CASE("Syscall catchpoints work", "[catchpoint]")
 
 TEST_CASE("ELF parser works", "[elf]")
 {
-    auto path = "/home/clyf/dev/ldb/build/test/targets/hello_ldb";
+    auto path = TEST_TARGET_PATH + "hello_ldb";
     ldb::Elf elf{ path };
     auto entry = elf.GetHeader().e_entry;
     auto sym = elf.GetSymbolAtAddress(FileAddr{ elf, entry });

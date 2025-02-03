@@ -9,6 +9,7 @@ add_library(libldb
     elf.cpp 
     types.cpp 
     target.cpp
+    dwarf.cpp
 )
 add_library(ldb::libldb ALIAS libldb)
 
