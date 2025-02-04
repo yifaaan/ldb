@@ -1,3 +1,4 @@
+#include "libldb/detail/dwarf.h"
 #include <string_view>
 #include <algorithm>
 
@@ -142,7 +143,48 @@ namespace
         {
             switch (form)
             {
-            // TODO: many
+            case DW_FORM_flag_present:
+                break;
+            case DW_FORM_data1:
+            case DW_FORM_ref1:
+            case DW_FORM_flag:
+                pos += 1;
+                break;
+            case DW_FORM_data2:
+            case DW_FORM_ref2:
+                pos += 2;
+                break;
+            case DW_FORM_data4:
+            case DW_FORM_ref4:
+            case DW_FORM_ref_addr:
+            case DW_FORM_sec_offset:
+            case DW_FORM_strp:
+                pos += 4;
+                break;
+            case DW_FORM_data8:
+            case DW_FORM_addr:
+                pos += 8;
+                break;
+            case DW_FORM_sdata:
+                Sleb128();
+                break;
+            case DW_FORM_udata:
+            case DW_FORM_ref_udata:
+                Uleb128();
+                break;
+            case DW_FORM_block1:
+                pos += U8();
+                break;
+            case DW_FORM_block2:
+                pos += U16();
+                break;
+            case DW_FORM_block4:
+                pos += U32();
+                break;
+            case DW_FORM_block:
+            case DW_FORM_exprloc:
+                pos += Uleb128();
+                break;
             default: ldb::Error::Send("Unrecongnized DWARF form");
             }
         }
@@ -271,23 +313,35 @@ namespace
     ldb::Die ParseDie(const ldb::CompileUnit& cu, Cursor cursor)
     {
         auto pos = cursor.Position();
+        // 1. 读取缩写码(ULEB128编码)
         auto abbrevCode = cursor.Uleb128();
-        // code为0表示这是一个空条目，用于标记兄弟节点链的结束
+        
+        // 如果缩写码为0,表示这是一个空条目,用于标记兄弟节点链的结束
         if (abbrevCode == 0)
         {
             auto next = cursor.Position();
             return ldb::Die{ next };
         }
+
+        // 2. 从缩写表中获取对应的缩写项
         auto& abbrevTable = cu.AbbrevTable();
         auto& abbrev = abbrevTable.at(abbrevCode);
+
+        // 3. 收集属性位置
         std::vector<const std::byte*> attrLocs;
         attrLocs.reserve(abbrev.attrSpecs.size());
+        
+        // 4. 遍历属性规格,记录每个属性的位置
         for (const auto& attrSpec : abbrev.attrSpecs)
         {
             attrLocs.emplace_back(cursor.Position());
             cursor.SkipForm(attrSpec.form);
         }
+
+        // 5. 记录下一个DIE的位置
         auto next = cursor.Position();
+
+        // 6. 构造DIE对象并返回
         return ldb::Die{ pos, &cu, &abbrev, std::move(attrLocs), next };
     }
 }
