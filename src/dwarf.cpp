@@ -185,6 +185,15 @@ namespace
             case DW_FORM_exprloc:
                 pos += Uleb128();
                 break;
+            case DW_FORM_string:
+                while (!Finished() && *pos != std::byte{ 0 })
+                {
+                    ++pos;
+                }
+                ++pos;
+                break;
+            case DW_FORM_indirect:
+                SkipForm(Uleb128());
             default: ldb::Error::Send("Unrecongnized DWARF form");
             }
         }
@@ -374,3 +383,50 @@ ldb::Die ldb::CompileUnit::Root() const
     Cursor cursor{ {data.Begin() + headerSize, data.End() } };
     return ParseDie(*this, cursor);
 }
+
+ldb::Die::ChildrenRange::Iterator::Iterator(const Die& _die)
+{
+    Cursor nextCursor({ _die.Next(), _die.compileUnit->Data().End() });
+    die = ParseDie(*_die.compileUnit, nextCursor);
+}
+
+bool ldb::Die::ChildrenRange::Iterator::operator==(const Iterator& rhs) const
+{
+    auto lhsNull = !die.has_value() or !die->AbbrevEntry();
+    auto rhsNull = !rhs.die.has_value() or !rhs.die->AbbrevEntry();
+    if (lhsNull and rhsNull)
+    {
+        return true;
+    }
+    if (lhsNull or rhsNull)
+    {
+        return false;
+    }
+    return die->abbrev == rhs.die->abbrev and die->Next() == rhs->Next();
+}
+
+ldb::Die::ChildrenRange::Iterator& ldb::Die::ChildrenRange::Iterator::operator++()
+{
+    if (!die.has_value() or !die->abbrev)
+    {
+        return *this;
+    }
+
+    if (!die->abbrev->hasChildren)
+    {
+        Cursor nextCursor({ die->Next(), die->compileUnit->Data().End() });
+        die = ParseDie(*die->compileUnit, nextCursor);
+    }
+    else 
+    {
+        Iterator subChildren{ *die };
+        while (subChildren->abbrev)
+        {
+            ++subChildren;
+        }
+        Cursor nextCursor( {subChildren->Next(), die->compileUnit->Data().End() });
+        die = ParseDie(*die->compileUnit, nextCursor);
+    }
+    return *this;
+}
+// TODO: operator++(int)

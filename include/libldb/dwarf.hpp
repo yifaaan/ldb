@@ -121,7 +121,10 @@ namespace ldb
 
         const std::byte* Next() const { return next; }
 
+        class ChildrenRange;
+        ChildrenRange Children() const;
         
+
     private:
         /// 当前DIE的开始位置
         const std::byte* pos = nullptr;
@@ -133,5 +136,60 @@ namespace ldb
         std::vector<const std::byte*> attrLocs;
         /// 下一个DIE的开始位置
         const std::byte* next = nullptr;
+    };
+
+    class Die::ChildrenRange
+    {
+    public:
+        ChildrenRange(Die _die)
+            :die{ std::move(_die) }
+        {}
+
+        class Iterator
+        {
+            // TODO: 实现
+        public:
+            using value_type = Die;
+            using reference = const Die&;
+            using pointer = const Die*;
+            using difference_type = std::ptrdiff_t;
+            using iterator_category = std::forward_iterator_tag;
+
+            Iterator() = default;
+            Iterator(const Iterator&) = default;
+            Iterator& operator=(const Iterator&) = default;
+
+            explicit Iterator(const Die& _die);
+
+            const Die& operator*() const { return die.value(); }
+
+            const Die* operator->() const { return &die.value(); }
+
+            Iterator& operator++();
+            Iterator operator++(int);
+
+            bool operator==(const Iterator& rhs) const;
+            bool operator!=(const Iterator& rhs) const
+            {
+                return !(*this == rhs);
+            }
+            
+        private:
+            std::optional<Die> die;
+        };
+
+        Iterator Begin() const
+        {
+            if (die.abbrev->hasChildren)
+            {
+                return Iterator{ die };
+            }
+            return End();
+        }
+
+        Iterator End() const { return Iterator{}; }
+
+    private:
+        Die die;
     };
 }
