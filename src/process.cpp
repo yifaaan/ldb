@@ -3,7 +3,20 @@
 #include <unistd.h>
 
 #include <libldb/error.hpp>
+#include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
+
+namespace {
+
+// Failed to execute the program.
+// Write the error message to the pipe.
+// Exit the child process.
+void exit_with_perror(ldb::Pipe& channel, const std::string& prefix) {
+  auto message = prefix + std::string(": ") + std::strerror(errno);
+  channel.Write(reinterpret_cast<std::byte*>(message.data()), message.size());
+  exit(-1);
+}
+}  // namespace
 
 ldb::StopReason::StopReason(int wait_status) {
   if (WIFEXITED(wait_status)) {
@@ -25,16 +38,19 @@ ldb::StopReason::StopReason(int wait_status) {
 }
 
 std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path) {
+  // 创建一个管道，用于父子进程之间的通信
+  Pipe channel(/*close_on_exec=*/true);
   pid_t pid;
   if ((pid = fork()) < 0) {
     Error::SendErrno("fork failed");
   }
   if (pid == 0) {
+    channel.CloseRead();
     // `PTRACE_TRACEME`的作用
     // 子进程调用`PTRACE_TRACEME`后，内核会在其`task_struct`中设置`PT_PTRACED`标志，标记该进程为被跟踪状态。
     // 此时子进程不会主动停止，但后续的`execve()`系统调用会触发内核的调试拦截机制。
     if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
-      Error::SendErrno("Tracing failed");
+      exit_with_perror(channel, "Tracing failed");
     }
     // Execute the program.
     // Arguments list must be terminated by nullptr.
@@ -42,8 +58,21 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path) {
     // 当子进程调用`execve()`加载新程序时，内核会在新程序入口点（如`_start`）执行前插入一个调试陷阱，由内核自动发送`SIGTRAP`信号给子进程。
     // 子进程因`SIGTRAP`进入`TASK_STOPPED`状态，此时父进程需要通过`waitpid()`同步这一状态变更。
     if (execlp(path.c_str(), path.c_str(), nullptr) < 0) {
-      Error::SendErrno("exec failed");
+      exit_with_perror(channel, "exec failed");
     }
+  }
+  channel.CloseWrite();
+  // Once the child process exec is successful, it will close the write end of
+  // the pipe. The the Read() will return EOF.
+  auto data = channel.Read();
+
+  // If the data is not empty, it means the child process has exited.
+  // We need to wait for the child process to exit and get the exit status.
+  if (data.size() > 0) {
+    waitpid(pid, nullptr, 0);
+    auto chars = reinterpret_cast<char*>(data.data());
+    // Throw the error message in parent process.
+    Error::Send(std::string(chars, chars + data.size()));
   }
   std::unique_ptr<Process> process{new Process(pid, /*terminate_on_end=*/true)};
   process->WaitOnSignal();
