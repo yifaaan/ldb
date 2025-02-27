@@ -19,10 +19,15 @@ class Process {
   Process& operator=(const Process&) = delete;
   ~Process();
 
+  // Launch a new process and return a pointer to it.
+  // When the child pauses, the kernel will send a SIGCHLD signal to parent.
   static std::unique_ptr<Process> Launch(std::filesystem::path path);
+
+  // Attach to a running process and return a pointer to it.
+  // When the child pauses, the kernel will send a SIGCHLD signal to parent.
   static std::unique_ptr<Process> Attach(pid_t pid);
 
-  // Resume the child process
+  // Resume the child process to continue execution.
   void Resume();
 
   // Wait the child process's change of state.

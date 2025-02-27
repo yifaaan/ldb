@@ -5,8 +5,7 @@
 #include <libldb/error.hpp>
 #include <libldb/process.hpp>
 
-// Launch a new process and return a pointer to it.
-// When the child pauses, the kernel will send a SIGCHLD signal to parent.
+
 std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path) {
   pid_t pid;
   if ((pid = fork()) < 0) {
@@ -69,4 +68,11 @@ ldb::Process::~Process() {
       waitpid(pid_, &status, 0);
     }
   }
+}
+
+void ldb::Process::Resume() {
+  if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0) {
+    Error::SendErrno("Could not resume");
+  }
+  state_ = ProcessState::kRunning;
 }
