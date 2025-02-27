@@ -22,16 +22,18 @@ class Process {
   static std::unique_ptr<Process> Launch(std::filesystem::path path);
   static std::unique_ptr<Process> Attach(pid_t pid);
 
+  // Resume the child process
   void Resume();
 
+  // Wait the child process's change of state.
   void WaitOnSignal();
 
   pid_t Pid() const { return pid_; }
 
-  ProcessState State() const { return state_;}
+  ProcessState State() const { return state_; }
 
-  private:
-    Process(pid_t pid, bool terminate_on_end)
+ private:
+  Process(pid_t pid, bool terminate_on_end)
       : pid_{pid}, terminate_on_end_{terminate_on_end} {}
 
  private:
