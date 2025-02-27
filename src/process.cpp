@@ -5,6 +5,24 @@
 #include <libldb/error.hpp>
 #include <libldb/process.hpp>
 
+ldb::StopReason::StopReason(int wait_status) {
+  if (WIFEXITED(wait_status)) {
+    // Normal exit.
+    reason = ProcessState::kExited;
+    // Get the exit status.
+    info = WEXITSTATUS(wait_status);
+  } else if (WIFSIGNALED(wait_status)) {
+    // Terminated by a signal.
+    reason = ProcessState::kTerminated;
+    // Get the signal number.
+    info = WTERMSIG(wait_status);
+  } else if (WIFSTOPPED(wait_status)) {
+    // Stopped by a signal.
+    reason = ProcessState::kStopped;
+    // Get the signal number.
+    info = WSTOPSIG(wait_status);
+  }
+}
 
 std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path) {
   pid_t pid;
@@ -33,7 +51,7 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path) {
 }
 
 std::unique_ptr<ldb::Process> ldb::Process::Attach(pid_t pid) {
-  if (pid == 0) {
+  if (pid <= 0) {
     Error::Send("Invalid pid");
   }
   // `PTRACE_ATTACH`的作用
@@ -75,4 +93,16 @@ void ldb::Process::Resume() {
     Error::SendErrno("Could not resume");
   }
   state_ = ProcessState::kRunning;
+}
+
+ldb::StopReason ldb::Process::WaitOnSignal() {
+  int wait_status;
+  int options = 0;
+  if (waitpid(pid_, &wait_status, options) < 0) {
+    Error::SendErrno("waitpid failed");
+  }
+  StopReason reason{wait_status};
+  // Update the process state.
+  state_ = reason.reason;
+  return reason;
 }

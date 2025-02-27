@@ -12,6 +12,14 @@ enum class ProcessState {
   kTerminated,
 };
 
+// The reason why the child process stopped.
+struct StopReason {
+  StopReason(int wait_status);
+
+  ProcessState reason;
+  std::uint8_t info;
+};
+
 class Process {
  public:
   Process() = delete;
@@ -31,7 +39,8 @@ class Process {
   void Resume();
 
   // Wait the child process's change of state.
-  void WaitOnSignal();
+  // Return the reason why the child process stopped.
+  StopReason WaitOnSignal();
 
   pid_t Pid() const { return pid_; }
 

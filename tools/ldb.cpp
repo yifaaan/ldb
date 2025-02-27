@@ -7,57 +7,28 @@
 #include <unistd.h>
 
 #include <cstdio>
+#include <cstring>
 #include <iostream>
+#include <libldb/error.hpp>
 #include <libldb/libldb.hpp>
+#include <libldb/process.hpp>
 #include <sstream>
 #include <string>
 #include <vector>
 
 namespace {
 // attach to a process or a program
-pid_t attach(int argc, const char** argv) {
-  pid_t pid = 0;
+std::unique_ptr<ldb::Process> attach(int argc, const char** argv) {
   // Passing PID
   if (argc == 3 && argv[1] == std::string_view("-p")) {
-    pid = std::stoi(argv[2]);
-    if (pid <= 0) {
-      std::cerr << "Invalid PID: " << argv[2] << "\n";
-      return -1;
-    }
-    // Attach to the process.
-    // It will send SIGSTOP to the process to pause it.
-    if (ptrace(PTRACE_ATTACH, pid, /*addr*/ nullptr, /*data*/ nullptr) < 0) {
-      std::perror("Could not attach");
-      return -1;
-    }
+    pid_t pid = std::atoi(argv[2]);
+    return ldb::Process::Attach(pid);
   } else {
     // Passing program name.
     // We need to fork a child process to execute the program.
     const char* program_path = argv[1];
-    if ((pid = fork()) < 0) {
-      std::perror("fork failed");
-      return -1;
-    }
-    if (pid == 0) {
-      // `PTRACE_TRACEME`的作用
-      // 子进程调用`PTRACE_TRACEME`后，内核会在其`task_struct`中设置`PT_PTRACED`标志，标记该进程为被跟踪状态。
-      // 此时子进程不会主动停止，但后续的`execve()`系统调用会触发内核的调试拦截机制。
-      if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
-        std::perror("Tracing failed");
-        return -1;
-      }
-      // Execute the program.
-      // Arguments list must be terminated by nullptr.
-      // `execve()`的暂停行为
-      // 当子进程调用`execve()`加载新程序时，内核会在新程序入口点（如`_start`）执行前插入一个调试陷阱，由内核自动发送`SIGTRAP`信号给子进程。
-      // 子进程因`SIGTRAP`进入`TASK_STOPPED`状态，此时父进程需要通过`waitpid()`同步这一状态变更。
-      if (execlp(program_path, program_path, nullptr) < 0) {
-        std::perror("Exec failed");
-        return -1;
-      }
-    }
+    return ldb::Process::Launch(program_path);
   }
-  return pid;
 }
 
 // split a string by a delimiter
@@ -94,36 +65,41 @@ void wait_on_signal(pid_t pid) {
   exit(1);
 }
 
+void print_stop_reason(const ldb::Process& process, ldb::StopReason reason) {
+  fmt::print("Process {} ", process.Pid());
+
+  switch (reason.reason) {
+    case ldb::ProcessState::kExited:
+      fmt::println("exited with status {}", static_cast<int>(reason.info));
+      break;
+    case ldb::ProcessState::kTerminated:
+      fmt::println("terminated with signal {}", sigabbrev_np(reason.info));
+      break;
+    case ldb::ProcessState::kStopped:
+      fmt::println("stopped with signal {}", sigabbrev_np(reason.info));
+      break;
+      // default:
+      //   fmt::println("unknown stop reason");
+      //   break;
+  }
+}
+
 // handle command
-void handle_command(pid_t pid, std::string_view line) {
+void handle_command(std::unique_ptr<ldb::Process>& process,
+                    std::string_view line) {
   auto args = split(line, ' ');
   auto command = args[0];
 
   if (is_prefix(command, "continue")) {
-    resume(pid);
-    // Wait for the process to stop.
-    wait_on_signal(pid);
+    process->Resume();
+    auto reason = process->WaitOnSignal();
+    print_stop_reason(*process, reason);
   } else {
     fmt::println("Unknown command: {}", command);
   }
 }
-}  // namespace
 
-int main(int argc, const char** argv) {
-  if (argc == 1) {
-    std::cerr << "No arguments given\n";
-    return -1;
-  }
-  pid_t pid = attach(argc, argv);
-
-  // After attaching to the process, we need to wait for the process to stop.
-  // And then we can accept commands from the user.
-  int wait_status;
-  int options = 0;
-  if (waitpid(pid, &wait_status, options) < 0) {
-    std::perror("waitpid failed");
-  }
-
+void main_loop(std::unique_ptr<ldb::Process>& process) {
   // For now, the child process is paused.
   // We can accept commands from the user.
   char* line = nullptr;
@@ -144,7 +120,25 @@ int main(int argc, const char** argv) {
 
     // Handle the command.
     if (!line_str.empty()) {
-      handle_command(pid, line_str);
+      try {
+        handle_command(process, line_str);
+      } catch (const ldb::Error& err) {
+        fmt::println("{}", err.what());
+      }
     }
+  }
+}
+}  // namespace
+
+int main(int argc, const char** argv) {
+  if (argc == 1) {
+    std::cerr << "No arguments given\n";
+    return -1;
+  }
+  try {
+    auto process = attach(argc, argv);
+    main_loop(process);
+  } catch (const ldb::Error& err) {
+    fmt::println("{}", err.what());
   }
 }
