@@ -50,3 +50,23 @@ std::unique_ptr<ldb::Process> ldb::Process::Attach(pid_t pid) {
   process->WaitOnSignal();
   return process;
 }
+
+ldb::Process::~Process() {
+  if (pid_ != 0) {
+    int status;
+    // If the process is running, stop it.
+    if (state_ == ProcessState::kRunning) {
+      kill(pid_, SIGSTOP);
+      waitpid(pid_, &status, 0);
+    }
+    // Detach the process.解除调试关系
+    ptrace(PTRACE_DETACH, pid_, nullptr, nullptr);
+    // Resume the process.
+    kill(pid_, SIGCONT);
+    // If terminate on end, kill it.
+    if (terminate_on_end_) {
+      kill(pid_, SIGKILL);
+      waitpid(pid_, &status, 0);
+    }
+  }
+}
