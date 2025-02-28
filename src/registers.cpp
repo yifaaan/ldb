@@ -1,4 +1,7 @@
+#include <exception>
+#include <iostream>
 #include <libldb/bit.hpp>
+#include <libldb/process.hpp>
 #include <libldb/registers.hpp>
 #include <libldb/types.hpp>
 
@@ -28,5 +31,27 @@ ldb::Registers::Value ldb::Registers::Read(const RegisterInfo& info) const {
   } else {
     return FromBytes<Byte128>(bytes + info.offset);
   }
+}
+
+void ldb::Registers::Write(const RegisterInfo& info, Value value) {
+  auto bytes = AsBytes(data_);
+
+  std::visit(
+      [&](const auto& v) {
+        if (sizeof(v) == info.size) {
+          auto value_bytes = AsBytes(v);
+          std::copy(value_bytes, value_bytes + sizeof(v), bytes + info.offset);
+        } else {
+          std::cerr
+              << "ldb::Registers::Write called with mismatched register and "
+                 "value sizes";
+          std::terminate();
+        }
+      },
+      value);
+
+  // Write the value to the user area ptrace provides to update the register.
+  process_->WriteUserArea(info.offset,
+                          FromBytes<std::uint64_t>(bytes + info.offset));
 }
 }  // namespace ldb

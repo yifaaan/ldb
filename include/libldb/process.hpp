@@ -3,7 +3,9 @@
 #include <sys/types.h>
 
 #include <filesystem>
+#include <libldb/registers.hpp>
 #include <memory>
+
 namespace ldb {
 enum class ProcessState {
   Stopped,
@@ -47,16 +49,31 @@ class Process {
 
   ProcessState state() const { return state_; }
 
+  // Get the registers of the process.
+  Registers& registers() { return *registers_; }
+  // Get the registers of the process.
+  const Registers& registers() const { return *registers_; }
+
+  // ptrace provides an area of memory in the same format as the user struct,
+  // called the user area, which we can write into to update a single register
+  // value.
+  void WriteUserArea(std::size_t offset, std::uint64_t value);
+
  private:
   Process(pid_t pid, bool terminate_on_end, bool is_attached)
       : pid_{pid},
         terminate_on_end_{terminate_on_end},
-        is_attached_{is_attached} {}
+        is_attached_{is_attached},
+        registers_{new Registers{*this}} {}
+
+  // Read all the registers of the process to the registers object.
+  void ReadAllRegisters();
 
  private:
   pid_t pid_ = 0;
   bool terminate_on_end_ = true;
   ProcessState state_ = ProcessState::Stopped;
   bool is_attached_ = true;
+  std::unique_ptr<Registers> registers_;
 };
 }  // namespace ldb

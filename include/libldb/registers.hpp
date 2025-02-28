@@ -2,12 +2,12 @@
 
 #include <sys/user.h>
 
-#include <libldb/process.hpp>
 #include <libldb/register_info.hpp>
 #include <libldb/types.hpp>
 #include <variant>
 
 namespace ldb {
+class Process;
 class Registers {
  public:
   Registers() = delete;

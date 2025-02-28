@@ -142,5 +142,39 @@ ldb::StopReason ldb::Process::WaitOnSignal() {
   StopReason reason{wait_status};
   // Update the process state.
   state_ = reason.reason;
+
+  // Only the process is attached and stopped, read all the registers.
+  if (is_attached_ && state_ == ProcessState::Stopped) {
+    ReadAllRegisters();
+  }
   return reason;
+}
+
+void ldb::Process::WriteUserArea(std::size_t offset, std::uint64_t data) {
+  if (ptrace(PTRACE_POKEUSER, pid_, offset, data) < 0) {
+    Error::SendErrno("Could not write to user area");
+  }
+}
+
+void ldb::Process::ReadAllRegisters() {
+  if (ptrace(PTRACE_GETREGS, pid_, nullptr, &registers().data_.regs) < 0) {
+    Error::SendErrno("Could not read GPR registers");
+  }
+  if (ptrace(PTRACE_GETFPREGS, pid_, nullptr, &registers().data_.i387) < 0) {
+    Error::SendErrno("Could not read FPR registers");
+  }
+  // Return debug registers.
+  for (int i = 0; i < 8; i++) {
+    auto id = static_cast<int>(RegisterId::dr0) + i;
+    auto info = RegisterInfoById(static_cast<RegisterId>(id));
+
+    errno = 0;
+    // Get the value of the debug register.
+    std::int64_t data = ptrace(PTRACE_PEEKUSER, pid_, info.offset, nullptr);
+    if (errno != 0) {
+      Error::SendErrno("Could not read debug register");
+    }
+    // Write the value to the register object.
+    registers().data_.u_debugreg[i] = data;
+  }
 }
