@@ -11,7 +11,7 @@ namespace {
 // Failed to execute the program.
 // Write the error message to the pipe.
 // Exit the child process.
-void exit_with_perror(ldb::Pipe& channel, const std::string& prefix) {
+void ExitWithPerror(ldb::Pipe& channel, const std::string& prefix) {
   auto message = prefix + std::string(": ") + std::strerror(errno);
   channel.Write(reinterpret_cast<std::byte*>(message.data()), message.size());
   exit(-1);
@@ -21,23 +21,24 @@ void exit_with_perror(ldb::Pipe& channel, const std::string& prefix) {
 ldb::StopReason::StopReason(int wait_status) {
   if (WIFEXITED(wait_status)) {
     // Normal exit.
-    reason = ProcessState::kExited;
+    reason = ProcessState::Exited;
     // Get the exit status.
     info = WEXITSTATUS(wait_status);
   } else if (WIFSIGNALED(wait_status)) {
     // Terminated by a signal.
-    reason = ProcessState::kTerminated;
+    reason = ProcessState::Terminated;
     // Get the signal number.
     info = WTERMSIG(wait_status);
   } else if (WIFSTOPPED(wait_status)) {
     // Stopped by a signal.
-    reason = ProcessState::kStopped;
+    reason = ProcessState::Stopped;
     // Get the signal number.
     info = WSTOPSIG(wait_status);
   }
 }
 
-std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path) {
+std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path,
+                                                   bool debug) {
   // 创建一个管道，用于父子进程之间的通信
   Pipe channel(/*close_on_exec=*/true);
   pid_t pid;
@@ -49,8 +50,8 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path) {
     // `PTRACE_TRACEME`的作用
     // 子进程调用`PTRACE_TRACEME`后，内核会在其`task_struct`中设置`PT_PTRACED`标志，标记该进程为被跟踪状态。
     // 此时子进程不会主动停止，但后续的`execve()`系统调用会触发内核的调试拦截机制。
-    if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
-      exit_with_perror(channel, "Tracing failed");
+    if (debug && ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0) {
+      ExitWithPerror(channel, "Tracing failed");
     }
     // Execute the program.
     // Arguments list must be terminated by nullptr.
@@ -58,7 +59,7 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path) {
     // 当子进程调用`execve()`加载新程序时，内核会在新程序入口点（如`_start`）执行前插入一个调试陷阱，由内核自动发送`SIGTRAP`信号给子进程。
     // 子进程因`SIGTRAP`进入`TASK_STOPPED`状态，此时父进程需要通过`waitpid()`同步这一状态变更。
     if (execlp(path.c_str(), path.c_str(), nullptr) < 0) {
-      exit_with_perror(channel, "exec failed");
+      ExitWithPerror(channel, "exec failed");
     }
   }
   channel.CloseWrite();
@@ -74,8 +75,13 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path) {
     // Throw the error message in parent process.
     Error::Send(std::string(chars, chars + data.size()));
   }
-  std::unique_ptr<Process> process{new Process(pid, /*terminate_on_end=*/true)};
-  process->WaitOnSignal();
+  std::unique_ptr<Process> process{
+      new Process(pid, /*terminate_on_end=*/true, debug)};
+  // If debug is true, wait for the child process to exit.
+  // If debug is false, the child process will not be paused.
+  if (debug) {
+    process->WaitOnSignal();
+  }
   return process;
 }
 
@@ -92,7 +98,7 @@ std::unique_ptr<ldb::Process> ldb::Process::Attach(pid_t pid) {
   }
   // Attached process will not be terminated on end.
   std::unique_ptr<Process> process(
-      new Process(pid, /*terminate_on_end=*/false));
+      new Process(pid, /*terminate_on_end=*/false, /*is_attached=*/true));
   process->WaitOnSignal();
   return process;
 }
@@ -100,15 +106,18 @@ std::unique_ptr<ldb::Process> ldb::Process::Attach(pid_t pid) {
 ldb::Process::~Process() {
   if (pid_ != 0) {
     int status;
-    // If the process is running, stop it.
-    if (state_ == ProcessState::kRunning) {
-      kill(pid_, SIGSTOP);
-      waitpid(pid_, &status, 0);
+    if (is_attached_) {
+      // If the process is running, stop it.
+      if (state_ == ProcessState::Running) {
+        kill(pid_, SIGSTOP);
+        waitpid(pid_, &status, 0);
+      }
+      // Detach the process.解除调试关系
+      ptrace(PTRACE_DETACH, pid_, nullptr, nullptr);
+      // Resume the process.
+      kill(pid_, SIGCONT);
     }
-    // Detach the process.解除调试关系
-    ptrace(PTRACE_DETACH, pid_, nullptr, nullptr);
-    // Resume the process.
-    kill(pid_, SIGCONT);
+
     // If terminate on end, kill it.
     if (terminate_on_end_) {
       kill(pid_, SIGKILL);
@@ -121,7 +130,7 @@ void ldb::Process::Resume() {
   if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0) {
     Error::SendErrno("Could not resume");
   }
-  state_ = ProcessState::kRunning;
+  state_ = ProcessState::Running;
 }
 
 ldb::StopReason ldb::Process::WaitOnSignal() {

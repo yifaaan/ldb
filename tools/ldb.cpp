@@ -66,16 +66,16 @@ void wait_on_signal(pid_t pid) {
 }
 
 void print_stop_reason(const ldb::Process& process, ldb::StopReason reason) {
-  fmt::print("Process {} ", process.Pid());
+  fmt::print("Process {} ", process.pid());
 
   switch (reason.reason) {
-    case ldb::ProcessState::kExited:
+    case ldb::ProcessState::Exited:
       fmt::println("exited with status {}", static_cast<int>(reason.info));
       break;
-    case ldb::ProcessState::kTerminated:
+    case ldb::ProcessState::Terminated:
       fmt::println("terminated with signal {}", sigabbrev_np(reason.info));
       break;
-    case ldb::ProcessState::kStopped:
+    case ldb::ProcessState::Stopped:
       fmt::println("stopped with signal {}", sigabbrev_np(reason.info));
       break;
       // default:

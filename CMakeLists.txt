@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 set(CMAKE_CXX_STANDARD 20)
 
+set(CMAKE_TOOLCHAIN_FILE "~/vcpkg/scripts/buildsystems/vcpkg.cmake")
 project(ldb LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
