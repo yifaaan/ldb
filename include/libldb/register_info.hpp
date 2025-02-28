@@ -2,6 +2,7 @@
 
 #include <sys/user.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <libldb/error.hpp>

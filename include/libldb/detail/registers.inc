@@ -9,19 +9,19 @@ DEFINE_REGISTER macro defined"
      RegisterType::Gpr, RegisterFormat::Uint)
 #define DEFINE_GPR_32(name,super) \
     DEFINE_REGISTER(name, -1, 4, GPR_OFFSET(super),\
-     RegisterType::sub_gpr, RegisterFormat::Uint)
+     RegisterType::SubGpr, RegisterFormat::Uint)
      
 #define DEFINE_GPR_16(name,super) \
     DEFINE_REGISTER(name, -1, 2, GPR_OFFSET(super),\
-     RegisterType::sub_gpr, RegisterFormat::Uint)
+     RegisterType::SubGpr, RegisterFormat::Uint)
      
 #define DEFINE_GPR_8H(name,super) \
  DEFINE_REGISTER(name, -1, 1, GPR_OFFSET(super) + 1,\
-     RegisterType::sub_gpr, RegisterFormat::Uint)
+     RegisterType::SubGpr, RegisterFormat::Uint)
      
 #define DEFINE_GPR_8L(name,super) \
     DEFINE_REGISTER(name, -1, 1, GPR_OFFSET(super),\
-     RegisterType::sub_gpr, RegisterFormat::Uint)
+     RegisterType::SubGpr, RegisterFormat::Uint)
 
 DEFINE_GPR_64(rax, 0),
 DEFINE_GPR_64(rdx, 1),
@@ -84,22 +84,22 @@ DEFINE_GPR_8L(r14b, r14), DEFINE_GPR_8L(r15b, r15),
 
 #define DEFINE_FPR(name,dwarf_id,user_name) \
     DEFINE_REGISTER(name, dwarf_id, FPR_SIZE(user_name), FPR_OFFSET(user_name),\
-    RegisterType::fpr, RegisterFormat::Uint)
+    RegisterType::Fpr, RegisterFormat::Uint)
 
 #define DEFINE_FP_ST(number) \
     DEFINE_REGISTER(st ## number, (33 + number), 16,\
-     (FPR_OFFSET(st_space) + number*16), RegisterType::fpr,\
-     RegisterFormat::long_double)
+     (FPR_OFFSET(st_space) + number*16), RegisterType::Fpr,\
+     RegisterFormat::LongDouble)
 
 #define DEFINE_FP_MM(number) \
     DEFINE_REGISTER(mm ## number, (41 + number), 8,\
-     (FPR_OFFSET(st_space) + number*16), RegisterType::fpr,\
-     RegisterFormat::vector)
+     (FPR_OFFSET(st_space) + number*16), RegisterType::Fpr,\
+     RegisterFormat::Vector)
 
 #define DEFINE_FP_XMM(number) \
     DEFINE_REGISTER(xmm ## number, (17 + number), 16,\
-     (FPR_OFFSET(xmm_space) + number*16), RegisterType::fpr,\
-     RegisterFormat::vector)
+     (FPR_OFFSET(xmm_space) + number*16), RegisterType::Fpr,\
+     RegisterFormat::Vector)
 
 DEFINE_FPR(fcw, 65, cwd),
 DEFINE_FPR(fsw, 66, swd),
@@ -124,7 +124,7 @@ DEFINE_FP_XMM(12), DEFINE_FP_XMM(13), DEFINE_FP_XMM(14), DEFINE_FP_XMM(15),
 #define DR_OFFSET(number) (offsetof(user, u_debugreg) + number * 8)
 #define DEFINE_DR(number)\
     DEFINE_REGISTER(dr ## number, -1, 8, DR_OFFSET(number),\
-     RegisterType::dr, RegisterFormat::Uint)
+     RegisterType::Dr, RegisterFormat::Uint)
 
 DEFINE_DR(0), DEFINE_DR(1), DEFINE_DR(2), DEFINE_DR(3),
 DEFINE_DR(4), DEFINE_DR(5), DEFINE_DR(6), DEFINE_DR(7)
