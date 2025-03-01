@@ -1,6 +1,7 @@
 #pragma once
 
 #include <sys/types.h>
+#include <sys/user.h>
 
 #include <filesystem>
 #include <libldb/registers.hpp>
@@ -53,6 +54,14 @@ class Process {
   Registers& registers() { return *registers_; }
   // Get the registers of the process.
   const Registers& registers() const { return *registers_; }
+
+  // Write all floating point registers.
+  // ptrace does not support writing and reading from the x87 area on x64.
+  // So we need to write and read all x87 registers.
+  void WriteFprs(const user_fpregs_struct& fprs);
+
+  // Write all general purpose registers.
+  void WriteGprs(const user_regs_struct& gprs);
 
   // ptrace provides an area of memory in the same format as the user struct,
   // called the user area, which we can write into to update a single register

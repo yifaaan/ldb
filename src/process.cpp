@@ -1,4 +1,5 @@
 #include <sys/ptrace.h>
+#include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -150,7 +151,21 @@ ldb::StopReason ldb::Process::WaitOnSignal() {
   return reason;
 }
 
+void ldb::Process::WriteFprs(const user_fpregs_struct& fprs) {
+  if (ptrace(PTRACE_SETFPREGS, pid_, nullptr, &fprs) < 0) {
+    Error::SendErrno("Could not write floating point registers");
+  }
+}
+
+void ldb::Process::WriteGprs(const user_regs_struct& gprs) {
+  if (ptrace(PTRACE_SETREGS, pid_, nullptr, &gprs) < 0) {
+    Error::SendErrno("Could not write floating point registers");
+  }
+}
+
 void ldb::Process::WriteUserArea(std::size_t offset, std::uint64_t data) {
+  // The offset must be aligned to 8 bytes.
+  // Otherwise, ptrace will return EIO error.
   if (ptrace(PTRACE_POKEUSER, pid_, offset, data) < 0) {
     Error::SendErrno("Could not write to user area");
   }
