@@ -96,4 +96,12 @@ TEST_CASE("Write register works", "[register]") {
 
   auto output = channel.Read();
   REQUIRE(ToStringView(output) == "0xcafecafe");
+  // Then reg_write process traps because we need to write mm0.
+
+  regs.WriteById(RegisterId::mm0, 0xba5eba11);
+  process->Resume();
+  process->WaitOnSignal();
+
+  output = channel.Read();
+  REQUIRE(ToStringView(output) == "0xba5eba11");
 }

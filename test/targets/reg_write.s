@@ -40,6 +40,20 @@ main:
     # Call fflush
     movq $0, %rdi
     call fflush@plt
+    # Trap, because the debugger need to write value into mm0
+    trap
+
+    # Print contents of mm0
+    movq %mm0, %rsi
+    leaq hex_format(%rip), %rdi
+    movq $0, %rax
+    call printf@plt
+    # Call fflush
+    movq $0, %rdi
+    call fflush@plt
+    trap
+
+
 
     popq %rbp
     movq $0, %rax
