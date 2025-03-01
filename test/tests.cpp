@@ -2,9 +2,10 @@
 #include <cerrno>
 #include <csignal>
 #include <fstream>
+#include <libldb/bit.hpp>
+#include <libldb/error.hpp>
+#include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
-
-#include "libldb/error.hpp"
 
 using namespace ldb;
 namespace {
@@ -71,4 +72,28 @@ TEST_CASE("Process::Resume already terminated", "[process]") {
   process->Resume();
   process->WaitOnSignal();
   REQUIRE_THROWS_AS(process->Resume(), Error);
+}
+
+TEST_CASE("Write register works", "[register]") {
+  bool close_on_exec = false;
+  ldb::Pipe channel{close_on_exec};
+
+  auto process =
+      Process::Launch("test/targets/reg_write", true, channel.GetWrite());
+  channel.CloseWrite();
+
+  process->Resume();
+  // reg_write process traps itself.
+  process->WaitOnSignal();
+
+  // Write the rsi register(the second parameter of printf) so that the
+  // reg_write process prints 0xcafecafe.
+  auto& regs = process->registers();
+  regs.WriteById(RegisterId::rsi, 0xcafecafe);
+  // Resume the reg_write process to call printf.
+  process->Resume();
+  process->WaitOnSignal();
+
+  auto output = channel.Read();
+  REQUIRE(ToStringView(output) == "0xcafecafe");
 }

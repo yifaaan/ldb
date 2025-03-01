@@ -33,7 +33,7 @@ main:
 
     trap
 
-    # Print contents of rsi.
+    # Print contents of the second parameter in rsi which is writed by the debugger.
     leaq hex_format(%rip), %rdi
     movq $0, %rax
     call printf@plt
