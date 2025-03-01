@@ -38,8 +38,9 @@ ldb::StopReason::StopReason(int wait_status) {
   }
 }
 
-std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path,
-                                                   bool debug) {
+std::unique_ptr<ldb::Process> ldb::Process::Launch(
+    std::filesystem::path path, bool debug,
+    std::optional<int> stdout_replacement) {
   // 创建一个管道，用于父子进程之间的通信
   Pipe channel(/*close_on_exec=*/true);
   pid_t pid;
@@ -48,6 +49,14 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(std::filesystem::path path,
   }
   if (pid == 0) {
     channel.CloseRead();
+    if (stdout_replacement) {
+      // If stdout_replacement is provided, replace the child process's stdout
+      // with the file descriptor. This means the child process's stdout will
+      // be redirected to the file descriptor.
+      if (dup2(*stdout_replacement, STDOUT_FILENO) < 0) {
+        ExitWithPerror(channel, "stdout replacement failed");
+      }
+    }
     // `PTRACE_TRACEME`的作用
     // 子进程调用`PTRACE_TRACEME`后，内核会在其`task_struct`中设置`PT_PTRACED`标志，标记该进程为被跟踪状态。
     // 此时子进程不会主动停止，但后续的`execve()`系统调用会触发内核的调试拦截机制。

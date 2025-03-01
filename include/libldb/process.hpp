@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <libldb/registers.hpp>
 #include <memory>
+#include <optional>
 
 namespace ldb {
 enum class ProcessState {
@@ -32,8 +33,11 @@ class Process {
 
   // Launch a new process and return a pointer to it.
   // When the child pauses, the kernel will send a SIGCHLD signal to parent.
-  static std::unique_ptr<Process> Launch(std::filesystem::path path,
-                                         bool debug = true);
+  // If stdout_replacement is provided, the child process's stdout will be
+  // replaced with the file descriptor.
+  static std::unique_ptr<Process> Launch(
+      std::filesystem::path path, bool debug = true,
+      std::optional<int> stdout_replacement = std::nullopt);
 
   // Attach to a running process and return a pointer to it.
   // When the child pauses, the kernel will send a SIGCHLD signal to parent.
