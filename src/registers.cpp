@@ -95,7 +95,6 @@ void ldb::Registers::Write(const RegisterInfo& info, Value value) {
     // purpose register or debug register.
     // The prace function requires the offset to be aligned to 8 bytes.
     auto aligned_offset = info.offset & ~0x7;
-    // TODO: Only support 64-bit registers for now.
     process_->WriteUserArea(aligned_offset,
                             FromBytes<std::uint64_t>(bytes + aligned_offset));
   }
