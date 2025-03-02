@@ -8,6 +8,7 @@
 #include <libldb/process.hpp>
 
 #include "libldb/register_info.hpp"
+#include "libldb/types.hpp"
 
 using namespace ldb;
 namespace {
@@ -124,4 +125,34 @@ TEST_CASE("Write register works", "[register]") {
   process->WaitOnSignal();
   output = channel.Read();
   REQUIRE(ToStringView(output) == "42.24");
+}
+
+TEST_CASE("Read register works", "[register]") {
+  auto process = Process::Launch("test/targets/reg_read");
+  auto& regs = process->registers();
+  process->Resume();
+  // reg_read process traps itself at reg_read.s:36 for now.
+  process->WaitOnSignal();
+
+  REQUIRE(regs.ReadByIdAs<std::uint64_t>(RegisterId::r13) == 0xcafecafe);
+
+  process->Resume();
+  // reg_read process traps itself at reg_read.s:40 for now.
+  process->WaitOnSignal();
+  REQUIRE(regs.ReadByIdAs<std::uint8_t>(RegisterId::r13b) == 42);
+
+  process->Resume();
+  // reg_read process traps itself at reg_read.s:46 for now.
+  process->WaitOnSignal();
+  REQUIRE(regs.ReadByIdAs<Byte64>(RegisterId::mm0) == ToByte64(0xba5eba11ull));
+
+  process->Resume();
+  // reg_read process traps itself at reg_read.s:51 for now.
+  process->WaitOnSignal();
+  REQUIRE(regs.ReadByIdAs<Byte128>(RegisterId::xmm0) == ToByte128(64.125));
+
+  process->Resume();
+  // reg_read process traps itself at reg_read.s:57 for now.
+  process->WaitOnSignal();
+  REQUIRE(regs.ReadByIdAs<long double>(RegisterId::st0) == 64.125l);
 }
