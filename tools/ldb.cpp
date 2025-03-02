@@ -12,6 +12,7 @@
 #include <iostream>
 #include <libldb/error.hpp>
 #include <libldb/libldb.hpp>
+#include <libldb/parse.hpp>
 #include <libldb/process.hpp>
 #include <libldb/register_info.hpp>
 #include <span>
@@ -54,23 +55,55 @@ bool IsPrefix(std::string_view str, std::string_view of) {
   return of.starts_with(str);
 }
 
+ldb::Registers::Value ParseRegisterValue(const ldb::RegisterInfo& info,
+                                         std::string_view text) {
+  try {
+    if (info.format == ldb::RegisterFormat::Uint) {
+      switch (info.size) {
+        case 1:
+          return ldb::ToIntegral<std::uint8_t>(text, 16).value();
+        case 2:
+          return ldb::ToIntegral<std::uint16_t>(text, 16).value();
+        case 4:
+          return ldb::ToIntegral<std::uint32_t>(text, 16).value();
+        case 8:
+          return ldb::ToIntegral<std::uint64_t>(text, 16).value();
+      }
+    } else if (info.format == ldb::RegisterFormat::LongDouble) {
+      return ldb::ToFloat<long double>(text).value();
+    } else if (info.format == ldb::RegisterFormat::Vector) {
+      if (info.size == 8) {
+        return ldb::ParseVector<8>(text);
+      } else if (info.size == 16) {
+        return ldb::ParseVector<16>(text);
+      }
+    }
+  } catch (...) {
+  }
+  ldb::Error::Send("Invalid format");
+}
+
 void PrintStopReason(const ldb::Process& process, ldb::StopReason reason) {
   fmt::print("Process {} ", process.pid());
-
+  std::string message;
   switch (reason.reason) {
     case ldb::ProcessState::Exited:
-      fmt::println("exited with status {}", static_cast<int>(reason.info));
+      message =
+          fmt::format("exited with status {}", static_cast<int>(reason.info));
       break;
     case ldb::ProcessState::Terminated:
-      fmt::println("terminated with signal {}", sigabbrev_np(reason.info));
+      message =
+          fmt::format("terminated with signal {}", sigabbrev_np(reason.info));
       break;
     case ldb::ProcessState::Stopped:
-      fmt::println("stopped with signal {}", sigabbrev_np(reason.info));
+      message = fmt::format("stopped with signal {} at {:#x}",
+                            sigabbrev_np(reason.info), process.GetPc().addr());
       break;
       // default:
       //   fmt::println("unknown stop reason");
       //   break;
   }
+  fmt::println("Process {} {}", process.pid(), message);
 }
 
 // help ...
@@ -126,6 +159,23 @@ void HandleRegisterRead(ldb::Process& process,
   }
 }
 
+void HandleRegisterWrite(ldb::Process& process,
+                         std::span<const std::string> args) {
+  if (args.size() != 4) {
+    PrintHelp(std::vector<std::string>{"help", "register"});
+    return;
+  }
+
+  try {
+    auto reg_info = ldb::RegisterInfoByName(args[2]);
+    auto value = ParseRegisterValue(reg_info, args[3]);
+    process.registers().Write(reg_info, value);
+  } catch (const ldb::Error& err) {
+    fmt::println("{}", err.what());
+    return;
+  }
+}
+
 void HandleRegisterCommand(ldb::Process& process,
                            std::span<const std::string> args) {
   if (args.size() < 2) {
@@ -135,6 +185,8 @@ void HandleRegisterCommand(ldb::Process& process,
 
   if (IsPrefix(args[1], "read")) {
     HandleRegisterRead(process, args);
+  } else if (IsPrefix(args[1], "write")) {
+    HandleRegisterWrite(process, args);
   } else {
     PrintHelp(std::vector<std::string>{"help", "register"});
   }

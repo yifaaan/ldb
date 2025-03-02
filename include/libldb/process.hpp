@@ -72,6 +72,10 @@ class Process {
   // value.
   void WriteUserArea(std::size_t offset, std::uint64_t value);
 
+  VirtAddr GetPc() const {
+    return VirtAddr{registers().ReadByIdAs<std::uint64_t>(RegisterId::rip)};
+  }
+
  private:
   Process(pid_t pid, bool terminate_on_end, bool is_attached)
       : pid_{pid},
