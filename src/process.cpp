@@ -7,6 +7,8 @@
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
 
+#include "libldb/breakpoint_site.hpp"
+
 namespace {
 
 // Failed to execute the program.
@@ -201,4 +203,13 @@ void ldb::Process::ReadAllRegisters() {
     // Write the value to the register object.
     registers().data_.u_debugreg[i] = data;
   }
+}
+
+ldb::BreakpointSite& ldb::Process::CreateBreakpointSite(VirtAddr address) {
+  if (breakpoint_sites_.ContainsAddress(address)) {
+    Error::Send("Breakpoint site already created at address " +
+                std::to_string((address.addr())));
+  }
+  return breakpoint_sites_.Push(
+      std::unique_ptr<BreakpointSite>(new BreakpointSite{*this, address}));
 }

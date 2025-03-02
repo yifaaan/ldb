@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "libldb/breakpoint_site.hpp"
+#include "libldb/stoppoint_collection.hpp"
 #include "libldb/types.hpp"
 
 namespace ldb {
@@ -80,7 +81,17 @@ class Process {
     return VirtAddr{registers().ReadByIdAs<std::uint64_t>(RegisterId::rip)};
   }
 
+  // Create a breakpoint site at the given address.
   BreakpointSite& CreateBreakpointSite(VirtAddr address);
+
+  // Get the collection of breakpoint sites.
+  StoppointCollection<BreakpointSite>& breakpoint_sites() {
+    return breakpoint_sites_;
+  }
+  // Get the collection of breakpoint sites.
+  const StoppointCollection<BreakpointSite>& breakpoint_sites() const {
+    return breakpoint_sites_;
+  }
 
  private:
   Process(pid_t pid, bool terminate_on_end, bool is_attached)
@@ -98,6 +109,6 @@ class Process {
   ProcessState state_ = ProcessState::Stopped;
   bool is_attached_ = true;
   std::unique_ptr<Registers> registers_;
-  std::vector<std::unique_ptr<BreakpointSite>> breakpoint_sites_;
+  StoppointCollection<BreakpointSite> breakpoint_sites_;
 };
 }  // namespace ldb
