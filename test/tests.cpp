@@ -7,6 +7,8 @@
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
 
+#include "libldb/register_info.hpp"
+
 using namespace ldb;
 namespace {
 // Check if the process exists.
@@ -106,6 +108,18 @@ TEST_CASE("Write register works", "[register]") {
   REQUIRE(ToStringView(output) == "0xba5eba11");
 
   regs.WriteById(RegisterId::xmm0, 42.24);
+  process->Resume();
+  process->WaitOnSignal();
+  output = channel.Read();
+  REQUIRE(ToStringView(output) == "42.24");
+
+  regs.WriteById(RegisterId::st0, 42.24l);
+  // 设置状态字(fsw)以指示FPU栈的状态
+  // 位11-13(0b111)指示栈顶位置为7，这意味着下一个压栈操作将使用st0
+  regs.WriteById(RegisterId::fsw, std::uint16_t{0b0011100000000000});
+  // 设置标签字(ftw)以指示哪些寄存器有效
+  // 对于st0设置为0b00(有效)，其他寄存器设置为0b11(空)
+  regs.WriteById(RegisterId::ftw, std::uint16_t{0b0011111111111111});
   process->Resume();
   process->WaitOnSignal();
   output = channel.Read();
