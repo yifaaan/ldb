@@ -1,4 +1,5 @@
-#include <fmt/core.h>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <readline/history.h>
 #include <readline/readline.h>
 #include <sys/ptrace.h>
@@ -12,9 +13,12 @@
 #include <libldb/error.hpp>
 #include <libldb/libldb.hpp>
 #include <libldb/process.hpp>
+#include <libldb/register_info.hpp>
 #include <span>
 #include <sstream>
 #include <string>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -86,6 +90,56 @@ void PrintHelp(std::span<const std::string> args) {
   }
 }
 
+void HandleRegisterRead(ldb::Process& process,
+                        std::span<const std::string> args) {
+  auto format = [](const auto t) {
+    if constexpr (std::is_floating_point_v<decltype(t)>) {
+      return fmt::format("{}", t);
+    } else if constexpr (std::is_integral_v<decltype(t)>) {
+      return fmt::format("{:#0{}x}", t, sizeof(t) * 2 + 2);
+    } else {
+      // For vector registers, print the hex values of the elements.
+      // For example, <1, 2, 3> -> [0x01 0x02 0x03]
+      return fmt::format("[{:#04x}]", fmt::join(t, ","));
+    }
+  };
+  if (args.size() == 2 or (args.size() == 3 && args[2] == "all")) {
+    for (const auto& reg_info : ldb::RegisterInfos) {
+      auto should_print =
+          (reg_info.type == ldb::RegisterType::Gpr || args.size() == 3) &&
+          reg_info.name != "orig_rax";
+      if (!should_print) continue;
+      auto value = process.registers().Read(reg_info);
+      fmt::println("{}:\t{}", reg_info.name, std::visit(format, value));
+    }
+  } else if (args.size() == 3) {
+    try {
+      auto reg_info = ldb::RegisterInfoByName(args[2]);
+      auto value = process.registers().Read(reg_info);
+      fmt::println("{}:\t{}", reg_info.name, std::visit(format, value));
+    } catch (const ldb::Error& err) {
+      fmt::println(stderr, "No such register");
+      return;
+    }
+  } else {
+    PrintHelp(std::vector<std::string>{"help", "register"});
+  }
+}
+
+void HandleRegisterCommand(ldb::Process& process,
+                           std::span<const std::string> args) {
+  if (args.size() < 2) {
+    PrintHelp(std::vector<std::string>{"help", "register"});
+    return;
+  }
+
+  if (IsPrefix(args[1], "read")) {
+    HandleRegisterRead(process, args);
+  } else {
+    PrintHelp(std::vector<std::string>{"help", "register"});
+  }
+}
+
 // handle command
 void HandleCommand(std::unique_ptr<ldb::Process>& process,
                    std::string_view line) {
@@ -98,6 +152,8 @@ void HandleCommand(std::unique_ptr<ldb::Process>& process,
     PrintStopReason(*process, reason);
   } else if (IsPrefix(command, "help")) {
     PrintHelp(args);
+  } else if (IsPrefix(command, "register")) {
+    HandleRegisterCommand(*process, args);
   } else {
     fmt::println("Unknown command: {}", command);
   }
