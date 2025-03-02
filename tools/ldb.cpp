@@ -12,13 +12,14 @@
 #include <libldb/error.hpp>
 #include <libldb/libldb.hpp>
 #include <libldb/process.hpp>
+#include <span>
 #include <sstream>
 #include <string>
 #include <vector>
 
 namespace {
 // attach to a process or a program
-std::unique_ptr<ldb::Process> attach(int argc, const char** argv) {
+std::unique_ptr<ldb::Process> Attach(int argc, const char** argv) {
   // Passing PID
   if (argc == 3 && argv[1] == std::string_view("-p")) {
     pid_t pid = std::atoi(argv[2]);
@@ -32,7 +33,7 @@ std::unique_ptr<ldb::Process> attach(int argc, const char** argv) {
 }
 
 // split a string by a delimiter
-std::vector<std::string> split(std::string_view str, char delimiter) {
+std::vector<std::string> Split(std::string_view str, char delimiter) {
   std::vector<std::string> ret;
   std::string s;
   std::stringstream ss{std::string{str}};
@@ -45,27 +46,11 @@ std::vector<std::string> split(std::string_view str, char delimiter) {
 }
 
 // check if `str` is a prefix of `of`
-bool is_prefix(std::string_view str, std::string_view of) {
+bool IsPrefix(std::string_view str, std::string_view of) {
   return of.starts_with(str);
 }
 
-void resume(pid_t pid) {
-  if (ptrace(PTRACE_CONT, pid, /*addr*/ nullptr, /*data*/ nullptr) < 0) {
-    std::perror("Could not continue");
-    exit(1);
-  }
-}
-
-void wait_on_signal(pid_t pid) {
-  int wait_status;
-  int options = 0;
-  if (waitpid(pid, &wait_status, options) < 0) {
-    std::perror("wailpid failed");
-  }
-  exit(1);
-}
-
-void print_stop_reason(const ldb::Process& process, ldb::StopReason reason) {
+void PrintStopReason(const ldb::Process& process, ldb::StopReason reason) {
   fmt::print("Process {} ", process.pid());
 
   switch (reason.reason) {
@@ -84,22 +69,41 @@ void print_stop_reason(const ldb::Process& process, ldb::StopReason reason) {
   }
 }
 
+// help ...
+void PrintHelp(std::span<const std::string> args) {
+  if (args.size() == 1) {
+    fmt::println(stderr, R"(Available commands:
+    continue    - Resume the process
+    register    - Commands for operating on registers)");
+  } else if (IsPrefix(args[1], "register")) {
+    fmt::println(stderr, R"(Available commands:
+    read
+    read <register>
+    read all
+    write <register> <value>)");
+  } else {
+    fmt::println(stderr, "No help available on that");
+  }
+}
+
 // handle command
-void handle_command(std::unique_ptr<ldb::Process>& process,
-                    std::string_view line) {
-  auto args = split(line, ' ');
+void HandleCommand(std::unique_ptr<ldb::Process>& process,
+                   std::string_view line) {
+  auto args = Split(line, ' ');
   auto command = args[0];
 
-  if (is_prefix(command, "continue")) {
+  if (IsPrefix(command, "continue")) {
     process->Resume();
     auto reason = process->WaitOnSignal();
-    print_stop_reason(*process, reason);
+    PrintStopReason(*process, reason);
+  } else if (IsPrefix(command, "help")) {
+    PrintHelp(args);
   } else {
     fmt::println("Unknown command: {}", command);
   }
 }
 
-void main_loop(std::unique_ptr<ldb::Process>& process) {
+void MainLoop(std::unique_ptr<ldb::Process>& process) {
   // For now, the child process is paused.
   // We can accept commands from the user.
   char* line = nullptr;
@@ -121,7 +125,7 @@ void main_loop(std::unique_ptr<ldb::Process>& process) {
     // Handle the command.
     if (!line_str.empty()) {
       try {
-        handle_command(process, line_str);
+        HandleCommand(process, line_str);
       } catch (const ldb::Error& err) {
         fmt::println("{}", err.what());
       }
@@ -136,8 +140,8 @@ int main(int argc, const char** argv) {
     return -1;
   }
   try {
-    auto process = attach(argc, argv);
-    main_loop(process);
+    auto process = Attach(argc, argv);
+    MainLoop(process);
   } catch (const ldb::Error& err) {
     fmt::println("{}", err.what());
   }
