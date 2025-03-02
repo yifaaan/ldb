@@ -7,6 +7,10 @@
 #include <libldb/registers.hpp>
 #include <memory>
 #include <optional>
+#include <vector>
+
+#include "libldb/breakpoint_site.hpp"
+#include "libldb/types.hpp"
 
 namespace ldb {
 enum class ProcessState {
@@ -76,6 +80,8 @@ class Process {
     return VirtAddr{registers().ReadByIdAs<std::uint64_t>(RegisterId::rip)};
   }
 
+  BreakpointSite& CreateBreakpointSite(VirtAddr address);
+
  private:
   Process(pid_t pid, bool terminate_on_end, bool is_attached)
       : pid_{pid},
@@ -92,5 +98,6 @@ class Process {
   ProcessState state_ = ProcessState::Stopped;
   bool is_attached_ = true;
   std::unique_ptr<Registers> registers_;
+  std::vector<std::unique_ptr<BreakpointSite>> breakpoint_sites_;
 };
 }  // namespace ldb
