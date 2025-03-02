@@ -104,4 +104,10 @@ TEST_CASE("Write register works", "[register]") {
 
   output = channel.Read();
   REQUIRE(ToStringView(output) == "0xba5eba11");
+
+  regs.WriteById(RegisterId::xmm0, 42.24);
+  process->Resume();
+  process->WaitOnSignal();
+  output = channel.Read();
+  REQUIRE(ToStringView(output) == "42.24");
 }

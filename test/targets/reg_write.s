@@ -4,6 +4,7 @@
 .section .data
 
 hex_format: .asciz "%#x"
+float_format: .asciz "%.2f"
 
 .section .text
 
@@ -54,6 +55,14 @@ main:
     trap
 
 
+    # Print contents of xmm0
+    leaq float_format(%rip), %rdi
+    # The second parameter:值为1-8：表示通过XMM0-XMM7传递的浮点参数数量
+    movq $1, %rax
+    call printf@plt
+    movq $0, %rdi
+    call fflush@plt
+    trap
 
     popq %rbp
     movq $0, %rax
