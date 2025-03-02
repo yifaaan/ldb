@@ -84,7 +84,6 @@ ldb::Registers::Value ParseRegisterValue(const ldb::RegisterInfo& info,
 }
 
 void PrintStopReason(const ldb::Process& process, ldb::StopReason reason) {
-  fmt::print("Process {} ", process.pid());
   std::string message;
   switch (reason.reason) {
     case ldb::ProcessState::Exited:
