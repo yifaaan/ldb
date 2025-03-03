@@ -241,6 +241,9 @@ void HandleBreakpointCommand(ldb::Process& process,
                    "with '0x'");
       return;
     }
+    auto& site = process.CreateBreakpointSite(ldb::VirtAddr{*address});
+    site.Enable();
+    return;
   }
 
   auto id = ldb::ToIntegral<ldb::BreakpointSite::IdType>(args[2]);

@@ -143,6 +143,24 @@ ldb::Process::~Process() {
 }
 
 void ldb::Process::Resume() {
+  // If the process is stopped at a breakpoint, we need to disable the
+  // breakpoint and single step to the instruction begin address to continue
+  // execution.
+  auto pc = GetPc();
+  if (breakpoint_sites_.EnabledStoppointAtAddress(pc)) {
+    auto& bp = breakpoint_sites_.GetByAddress(pc);
+    // Disable the breakpoint to continue execution.
+    bp.Disable();
+    if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
+      Error::SendErrno("Failed to single step");
+    }
+    int wait_status;
+    if (waitpid(pid_, &wait_status, 0) < 0) {
+      Error::SendErrno("waitpid failed");
+    }
+    // Enable the breakpoint again.
+    bp.Enable();
+  }
   if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0) {
     Error::SendErrno("Could not resume");
   }
@@ -162,6 +180,14 @@ ldb::StopReason ldb::Process::WaitOnSignal() {
   // Only the process is attached and stopped, read all the registers.
   if (is_attached_ && state_ == ProcessState::Stopped) {
     ReadAllRegisters();
+
+    // When the process is stopped by int3 instruction, set the program counter
+    // to the instruction begin address to continue execution.
+    auto instruction_begin = GetPc() - 1;
+    if (reason.info == SIGTRAP &&
+        breakpoint_sites_.EnabledStoppointAtAddress(instruction_begin)) {
+      SetPc(instruction_begin);
+    }
   }
   return reason;
 }

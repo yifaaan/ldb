@@ -79,6 +79,11 @@ class Process {
     return VirtAddr{registers().ReadByIdAs<std::uint64_t>(RegisterId::rip)};
   }
 
+  // Set the program counter to the given address.
+  void SetPc(VirtAddr address) {
+    registers().WriteById(RegisterId::rip, address.addr());
+  }
+
   // Create a breakpoint site at the given address.
   BreakpointSite& CreateBreakpointSite(VirtAddr address);
 

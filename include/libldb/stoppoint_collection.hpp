@@ -69,7 +69,7 @@ bool StoppointCollection<Stoppoint>::ContainsId(Stoppoint::IdType id) const {
 template <typename Stoppoint>
 bool StoppointCollection<Stoppoint>::EnabledStoppointAtAddress(
     VirtAddr address) const {
-  return ContainsAddress(address) && GetByAddress(address).enabled();
+  return ContainsAddress(address) && GetByAddress(address).IsEnabled();
 }
 
 template <typename Stoppoint>
