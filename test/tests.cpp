@@ -156,3 +156,22 @@ TEST_CASE("Read register works", "[register]") {
   process->WaitOnSignal();
   REQUIRE(regs.ReadByIdAs<long double>(RegisterId::st0) == 64.125l);
 }
+
+TEST_CASE("Can create breakpoint site", "[breakpoint]") {
+  auto process = Process::Launch("test/targets/run_endlessly");
+  auto& site = process->CreateBreakpointSite(VirtAddr{42});
+  REQUIRE(site.address().addr() == 42);
+}
+
+TEST_CASE("Breakpoint site ids increase", "[breakpoint]") {
+  auto process = Process::Launch("test/targets/run_endlessly");
+  auto& s1 = process->CreateBreakpointSite(VirtAddr{42});
+  auto& s2 = process->CreateBreakpointSite(VirtAddr{43});
+  REQUIRE(s2.id() == s1.id() + 1);
+
+  auto& s3 = process->CreateBreakpointSite(VirtAddr{44});
+  REQUIRE(s3.id() == s2.id() + 1);
+
+  auto& s4 = process->CreateBreakpointSite(VirtAddr{45});
+  REQUIRE(s4.id() == s3.id() + 1);
+}
