@@ -243,3 +243,23 @@ ldb::BreakpointSite& ldb::Process::CreateBreakpointSite(VirtAddr address) {
   return breakpoint_sites_.Push(
       std::unique_ptr<BreakpointSite>(new BreakpointSite{*this, address}));
 }
+
+ldb::StopReason ldb::Process::StepInstruction() {
+  std::optional<BreakpointSite*> to_reenable;
+  // If a breakpoint is enabled at the current program counter, disable it
+  // and remember to reenable it after single stepping.
+  auto pc = GetPc();
+  if (breakpoint_sites_.EnabledStoppointAtAddress(pc)) {
+    auto& bp = breakpoint_sites_.GetByAddress(pc);
+    bp.Disable();
+    to_reenable = &bp;
+  }
+  if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
+    Error::SendErrno("Failed to single step");
+  }
+  auto reason = WaitOnSignal();
+  if (to_reenable) {
+    to_reenable.value()->Enable();
+  }
+  return reason;
+}

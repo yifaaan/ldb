@@ -116,7 +116,8 @@ void PrintHelp(std::span<const std::string> args) {
     fmt::println(stderr, R"(Available commands:
 continue    - Resume the process
 register    - Commands for operating on registers
-breakpoint  - Commands for operating on breakpoints)");
+breakpoint  - Commands for operating on breakpoints
+step        - Step over a single instruction)");
   } else if (IsPrefix(args[1], "register")) {
     fmt::println(stderr, R"(Available commands:
 read
@@ -277,6 +278,9 @@ void HandleCommand(std::unique_ptr<ldb::Process>& process,
     HandleRegisterCommand(*process, args);
   } else if (IsPrefix(command, "breakpoint")) {
     HandleBreakpointCommand(*process, args);
+  } else if (IsPrefix(command, "step")) {
+    auto reason = process->StepInstruction();
+    PrintStopReason(*process, reason);
   } else {
     fmt::println("Unknown command: {}", command);
   }

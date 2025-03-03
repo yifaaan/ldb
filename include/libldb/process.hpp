@@ -96,6 +96,9 @@ class Process {
     return breakpoint_sites_;
   }
 
+  // Step the process to the next instruction.
+  ldb::StopReason StepInstruction();
+
  private:
   Process(pid_t pid, bool terminate_on_end, bool is_attached)
       : pid_{pid},
