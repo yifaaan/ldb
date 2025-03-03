@@ -1,3 +1,4 @@
+#include <fmt/base.h>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 #include <readline/history.h>
@@ -191,6 +192,46 @@ void HandleRegisterCommand(ldb::Process& process,
   }
 }
 
+void HandleBreakpointCommand(ldb::Process& process,
+                             std::span<const std::string> args) {
+  if (args.size() < 2) {
+    PrintHelp(std::vector<std::string>{"help", "breakpoint"});
+    return;
+  }
+
+  auto command = args[1];
+
+  // List all breakpoints.
+  if (IsPrefix(command, "list")) {
+    if (process.breakpoint_sites().Empty()) {
+      fmt::println("No breakpoints set");
+    } else {
+      fmt::println("Current breakpoints:");
+      process.breakpoint_sites().ForEach([](const auto& site) {
+        fmt::println("{}: address = {:#x}, {}", site.id(),
+                     site.address().addr(),
+                     site.IsEnabled() ? "enabled" : "diabled");
+      });
+    }
+  }
+
+  if (args.size() < 3) {
+    PrintHelp(std::vector<std::string>{"help", "breakpoint"});
+    return;
+  }
+
+  // Set a breakpoint at the given address.
+  if (IsPrefix(command, "set")) {
+    auto address = ldb::ToIntegral<std::uint64_t>(args[2], 16);
+    if (!address) {
+      fmt::println(stderr,
+                   "Breakpoint command expectes address in hexadecimal, prefix "
+                   "with '0x'");
+      return;
+    }
+  }
+}
+
 // handle command
 void HandleCommand(std::unique_ptr<ldb::Process>& process,
                    std::string_view line) {
@@ -205,6 +246,8 @@ void HandleCommand(std::unique_ptr<ldb::Process>& process,
     PrintHelp(args);
   } else if (IsPrefix(command, "register")) {
     HandleRegisterCommand(*process, args);
+  } else if (IsPrefix(command, "breakpoint")) {
+    HandleBreakpointCommand(*process, args);
   } else {
     fmt::println("Unknown command: {}", command);
   }
