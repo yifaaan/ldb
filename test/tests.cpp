@@ -6,9 +6,8 @@
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
-
-#include "libldb/register_info.hpp"
-#include "libldb/types.hpp"
+#include <libldb/register_info.hpp>
+#include <libldb/types.hpp>
 
 using namespace ldb;
 namespace {
@@ -174,4 +173,83 @@ TEST_CASE("Breakpoint site ids increase", "[breakpoint]") {
 
   auto& s4 = process->CreateBreakpointSite(VirtAddr{45});
   REQUIRE(s4.id() == s3.id() + 1);
+}
+
+TEST_CASE("Can find breakpoint site", "[breakpoint]") {
+  auto process = Process::Launch("test/targets/run_endlessly");
+  const auto& cprocess = *process;
+
+  process->CreateBreakpointSite(VirtAddr{42});
+  process->CreateBreakpointSite(VirtAddr{43});
+  process->CreateBreakpointSite(VirtAddr{44});
+  process->CreateBreakpointSite(VirtAddr{45});
+
+  auto& s1 = process->breakpoint_sites().GetByAddress(VirtAddr{44});
+  REQUIRE(process->breakpoint_sites().ContainsAddress(VirtAddr{44}));
+  REQUIRE(s1.address().addr() == 44);
+
+  auto& cs1 = cprocess.breakpoint_sites().GetByAddress(VirtAddr{44});
+  REQUIRE(cprocess.breakpoint_sites().ContainsAddress(VirtAddr{44}));
+  REQUIRE(cs1.address().addr() == 44);
+
+  auto& s2 = process->breakpoint_sites().GetById(s1.id() + 1);
+  REQUIRE(process->breakpoint_sites().ContainsId(s1.id() + 1));
+  REQUIRE(s2.id() == s1.id() + 1);
+  REQUIRE(s2.address().addr() == 45);
+
+  auto& cs2 = cprocess.breakpoint_sites().GetById(cs1.id() + 1);
+  REQUIRE(cprocess.breakpoint_sites().ContainsId(cs1.id() + 1));
+  REQUIRE(cs2.address().addr() == 45);
+}
+
+TEST_CASE("Cannot find breakpoint site", "[breakpoint]") {
+  auto process = Process::Launch("test/targets/run_endlessly");
+  const auto& cprocess = *process;
+
+  REQUIRE_THROWS_AS(process->breakpoint_sites().GetByAddress(VirtAddr{44}),
+                    Error);
+  REQUIRE_THROWS_AS(process->breakpoint_sites().GetById(1), Error);
+
+  REQUIRE_THROWS_AS(cprocess.breakpoint_sites().GetByAddress(VirtAddr{44}),
+                    Error);
+  REQUIRE_THROWS_AS(cprocess.breakpoint_sites().GetById(1), Error);
+}
+
+TEST_CASE("Breakpoint site list size and emptiness", "[breakpoint]") {
+  auto process = Process::Launch("test/targets/run_endlessly");
+  const auto& cprocess = *process;
+
+  REQUIRE(process->breakpoint_sites().Empty());
+  REQUIRE(cprocess.breakpoint_sites().Empty());
+
+  process->CreateBreakpointSite(VirtAddr{42});
+  process->CreateBreakpointSite(VirtAddr{43});
+  REQUIRE(process->breakpoint_sites().Size() == 2);
+  REQUIRE(cprocess.breakpoint_sites().Size() == 2);
+  REQUIRE(!process->breakpoint_sites().Empty());
+  REQUIRE(!cprocess.breakpoint_sites().Empty());
+
+  process->CreateBreakpointSite(VirtAddr{44});
+  process->CreateBreakpointSite(VirtAddr{45});
+
+  REQUIRE(process->breakpoint_sites().Size() == 4);
+  REQUIRE(cprocess.breakpoint_sites().Size() == 4);
+}
+
+TEST_CASE("Can iterate over breakpoint sites", "[breakpoint]") {
+  auto process = Process::Launch("test/targets/run_endlessly");
+  const auto& cprocess = *process;
+
+  process->CreateBreakpointSite(VirtAddr{42});
+  process->CreateBreakpointSite(VirtAddr{43});
+  process->CreateBreakpointSite(VirtAddr{44});
+  process->CreateBreakpointSite(VirtAddr{45});
+
+  process->breakpoint_sites().ForEach([addr = 42](const auto& site) mutable {
+    REQUIRE(site.address().addr() == addr++);
+  });
+
+  cprocess.breakpoint_sites().ForEach([addr = 42](const auto& site) mutable {
+    REQUIRE(site.address().addr() == addr++);
+  });
 }

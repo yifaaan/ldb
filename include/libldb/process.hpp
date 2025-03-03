@@ -4,14 +4,12 @@
 #include <sys/user.h>
 
 #include <filesystem>
+#include <libldb/breakpoint_site.hpp>
 #include <libldb/registers.hpp>
+#include <libldb/stoppoint_collection.hpp>
+#include <libldb/types.hpp>
 #include <memory>
 #include <optional>
-#include <vector>
-
-#include "libldb/breakpoint_site.hpp"
-#include "libldb/stoppoint_collection.hpp"
-#include "libldb/types.hpp"
 
 namespace ldb {
 enum class ProcessState {
