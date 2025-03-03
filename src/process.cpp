@@ -1,3 +1,4 @@
+#include <sys/personality.h>
 #include <sys/ptrace.h>
 #include <sys/user.h>
 #include <sys/wait.h>
@@ -50,6 +51,9 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(
     Error::SendErrno("fork failed");
   }
   if (pid == 0) {
+    // Close the randomization of the address space.
+    // The load virtual address of the program is fixed.
+    personality(ADDR_NO_RANDOMIZE);
     channel.CloseRead();
     if (stdout_replacement) {
       // If stdout_replacement is provided, replace the child process's stdout

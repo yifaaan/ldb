@@ -36,7 +36,9 @@ std::unique_ptr<ldb::Process> Attach(int argc, const char** argv) {
     // Passing program name.
     // We need to fork a child process to execute the program.
     const char* program_path = argv[1];
-    return ldb::Process::Launch(program_path);
+    auto process = ldb::Process::Launch(program_path);
+    fmt::println("Launched process with PID {}", process->pid());
+    return process;
   }
 }
 
