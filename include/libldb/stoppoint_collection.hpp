@@ -102,14 +102,14 @@ Stoppoint& StoppointCollection<Stoppoint>::GetByAddress(VirtAddr address) {
 template <typename Stoppoint>
 void StoppointCollection<Stoppoint>::RemoveById(Stoppoint::IdType id) {
   auto it = FindById(id);
-  (**it).disable();
+  (**it).Disable();
   stoppoints_.erase(it);
 }
 
 template <typename Stoppoint>
 void StoppointCollection<Stoppoint>::RemoveByAddress(VirtAddr address) {
   auto it = FindByAddress(address);
-  (**it).disable();
+  (**it).Disable();
   stoppoints_.erase(it);
 }
 

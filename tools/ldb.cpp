@@ -23,6 +23,8 @@
 #include <variant>
 #include <vector>
 
+#include "libldb/breakpoint_site.hpp"
+
 namespace {
 // attach to a process or a program
 std::unique_ptr<ldb::Process> Attach(int argc, const char** argv) {
@@ -110,14 +112,22 @@ void PrintStopReason(const ldb::Process& process, ldb::StopReason reason) {
 void PrintHelp(std::span<const std::string> args) {
   if (args.size() == 1) {
     fmt::println(stderr, R"(Available commands:
-    continue    - Resume the process
-    register    - Commands for operating on registers)");
+continue    - Resume the process
+register    - Commands for operating on registers
+breakpoint  - Commands for operating on breakpoints)");
   } else if (IsPrefix(args[1], "register")) {
     fmt::println(stderr, R"(Available commands:
-    read
-    read <register>
-    read all
-    write <register> <value>)");
+read
+read <register>
+read all
+write <register> <value>)");
+  } else if (IsPrefix(args[1], "breakpoint")) {
+    fmt::println(stderr, R"(Available commands:
+list
+delete <id>
+enable <id>
+disable <id>
+set <address>)");
   } else {
     fmt::println(stderr, "No help available on that");
   }
@@ -229,6 +239,20 @@ void HandleBreakpointCommand(ldb::Process& process,
                    "with '0x'");
       return;
     }
+  }
+
+  auto id = ldb::ToIntegral<ldb::BreakpointSite::IdType>(args[2]);
+  if (!id) {
+    fmt::println(stderr, "Command expects breakpoint id");
+    return;
+  }
+
+  if (IsPrefix(command, "enable")) {
+    process.breakpoint_sites().GetById(*id).Enable();
+  } else if (IsPrefix(command, "disable")) {
+    process.breakpoint_sites().GetById(*id).Disable();
+  } else if (IsPrefix(command, "delete")) {
+    process.breakpoint_sites().RemoveById(*id);
   }
 }
 
