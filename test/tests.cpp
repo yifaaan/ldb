@@ -44,11 +44,13 @@ std::int64_t GetSectionLoadBias(std::filesystem::path path,
   while (getline(&line, &len, pipe) != -1) {
     std::cmatch groups;
     if (std::regex_search(line, groups, text_regex)) {
-      // The relative offset of the segment's load address.
+      // 预期加载的虚拟地址
       auto address = std::stol(groups[1], nullptr, 16);
-      // The file offset.
+      // 在elf文件中的偏移量
       auto offset = std::stol(groups[2], nullptr, 16);
+      // 段的大小
       auto size = std::stol(groups[3], nullptr, 16);
+      // 如果文件地址在这个段内
       if (address <= file_address && file_address < (address + size)) {
         free(line);
         pclose(pipe);
@@ -62,6 +64,17 @@ std::int64_t GetSectionLoadBias(std::filesystem::path path,
   ldb::Error::Send("Could not find seciton load bias");
 }
 
+/*
+文件布局                    内存布局
++----------------+         +----------------+
+| ...            |         | ...            |
+| Offset 0x450  | ------> | 0x400450       | (.text)
+| ...            |         | ...            |
+| Offset 0x1000  | ------> | 0x601000       | (.data)
++----------------+         +----------------+
+*/
+
+// 获取入口点的文件偏移量
 std::int64_t GetEntryPointOffset(std::filesystem::path path) {
   std::ifstream elf_file{path};
 
@@ -70,6 +83,26 @@ std::int64_t GetEntryPointOffset(std::filesystem::path path) {
 
   auto entry_file_address = header.e_entry;
   return entry_file_address - GetSectionLoadBias(path, entry_file_address);
+}
+
+// offset是入口点在elf文件中的偏移量
+VirtAddr GetLoadAddress(pid_t pid, std::int64_t offset) {
+  std::ifstream maps{"/proc/" + std::to_string(pid) + "/maps"};
+  std::regex map_regex(R"((\w+)-\w+ ..(.). (\w+))");
+
+  std::string data;
+  while (std::getline(maps, data)) {
+    std::smatch groups;
+    std::regex_search(data, groups, map_regex);
+    if (groups[2] == 'x') {
+      // 该段的虚拟加载基地址
+      auto low_range = std::stol(groups[1], nullptr, 16);
+      // 该段在文件中的偏移量
+      auto file_offset = std::stol(groups[3], nullptr, 16);
+      return VirtAddr{static_cast<uint64_t>(offset - file_offset + low_range)};
+    }
+  }
+  ldb::Error::Send("Could not find load address");
 }
 }  // namespace
 
@@ -295,4 +328,43 @@ TEST_CASE("Can iterate over breakpoint sites", "[breakpoint]") {
   cprocess.breakpoint_sites().ForEach([addr = 42](const auto& site) mutable {
     REQUIRE(site.address().addr() == addr++);
   });
+}
+
+TEST_CASE("Breakpoint on address works", "[breakpoint]") {
+  bool close_on_exec = false;
+  ldb::Pipe channel{close_on_exec};
+
+  auto process =
+      Process::Launch("test/targets/hello_ldb", true, channel.GetWrite());
+  channel.CloseWrite();
+
+  auto offset = GetEntryPointOffset("test/targets/hello_ldb");
+  auto load_address = GetLoadAddress(process->pid(), offset);
+
+  process->CreateBreakpointSite(load_address).Enable();
+  process->Resume();
+  auto reason = process->WaitOnSignal();
+
+  REQUIRE(reason.reason == ProcessState::Stopped);
+  REQUIRE(reason.info == SIGTRAP);
+  REQUIRE(process->GetPc() == load_address);
+  process->Resume();
+  reason = process->WaitOnSignal();
+
+  REQUIRE(reason.reason == ProcessState::Exited);
+  REQUIRE(reason.info == 0);
+
+  auto data = channel.Read();
+  REQUIRE(ToStringView(data) == "Hello, LDB!\n");
+}
+
+TEST_CASE("Can remove breakpoint sites", "[breakpoint]") {
+  auto process = Process::Launch("test/targets/run_endlessly");
+
+  auto& site = process->CreateBreakpointSite(VirtAddr{42});
+  process->CreateBreakpointSite(VirtAddr{43});
+  REQUIRE(process->breakpoint_sites().Size() == 2);
+  process->breakpoint_sites().RemoveById(site.id());
+  process->breakpoint_sites().RemoveByAddress(VirtAddr{43});
+  REQUIRE(process->breakpoint_sites().Empty());
 }
