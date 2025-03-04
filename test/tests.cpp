@@ -368,3 +368,31 @@ TEST_CASE("Can remove breakpoint sites", "[breakpoint]") {
   process->breakpoint_sites().RemoveByAddress(VirtAddr{43});
   REQUIRE(process->breakpoint_sites().Empty());
 }
+
+TEST_CASE("Reading and writing memory works", "[memory]") {
+  bool close_on_exec = false;
+  Pipe channel{close_on_exec};
+
+  auto process =
+      Process::Launch("test/targets/memory", true, channel.GetWrite());
+  channel.CloseWrite();
+  process->Resume();
+  process->WaitOnSignal();
+
+  auto a_pointer = FromBytes<std::uint64_t>(channel.Read().data());
+  auto data_vec =
+      process->ReadMemory(VirtAddr{a_pointer}, sizeof(unsigned long long));
+  auto data = FromBytes<std::uint64_t>(data_vec.data());
+  REQUIRE(data == 0xcafecafe);
+
+  process->Resume();
+  process->WaitOnSignal();
+
+  auto b_pointer = FromBytes<std::uint64_t>(channel.Read().data());
+  process->WriteMemory(VirtAddr{b_pointer}, {AsBytes("Hello, ldb!"), 12});
+  process->Resume();
+  process->WaitOnSignal();
+
+  auto read = channel.Read();
+  REQUIRE(ToStringView(read) == "Hello, ldb!");
+}
