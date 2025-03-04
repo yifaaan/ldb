@@ -280,8 +280,8 @@ std::vector<std::byte> ldb::Process::ReadMemory(VirtAddr address,
     auto up_to_next_page = 0x1000 - address.addr() & 0xfff;
     auto chunk_size = std::min(size, up_to_next_page);
 
-    remote_descs.emplace_back(
-        reinterpret_cast<void*>(address.addr(), chunk_size));
+    remote_descs.emplace_back(reinterpret_cast<void*>(address.addr()),
+                              chunk_size);
     size -= chunk_size;
     address += chunk_size;
   }
