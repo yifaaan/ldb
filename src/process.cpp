@@ -1,13 +1,18 @@
+#include <bits/types/struct_iovec.h>
 #include <sys/personality.h>
 #include <sys/ptrace.h>
+#include <sys/uio.h>
 #include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <iterator>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
+#include <vector>
 
+#include "libldb/bit.hpp"
 #include "libldb/breakpoint_site.hpp"
 
 namespace {
@@ -93,8 +98,7 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(
   }
   std::unique_ptr<Process> process{
       new Process(pid, /*terminate_on_end=*/true, debug)};
-  // If debug is true, wait for the child process to exit.
-  // If debug is false, the child process will not be paused.
+  // waitpid processes SIGTRAP for execlp
   if (debug) {
     process->WaitOnSignal();
   }
@@ -262,4 +266,56 @@ ldb::StopReason ldb::Process::StepInstruction() {
     to_reenable.value()->Enable();
   }
   return reason;
+}
+
+std::vector<std::byte> ldb::Process::ReadMemory(VirtAddr address,
+                                                std::size_t size) const {
+  std::vector<std::byte> buf(size);
+
+  iovec local_iov{buf.data(), buf.size()};
+
+  std::vector<iovec> remote_descs;
+
+  while (size > 0) {
+    auto up_to_next_page = 0x1000 - address.addr() & 0xfff;
+    auto chunk_size = std::min(size, up_to_next_page);
+
+    remote_descs.emplace_back(
+        reinterpret_cast<void*>(address.addr(), chunk_size));
+    size -= chunk_size;
+    address += chunk_size;
+  }
+
+  if (process_vm_readv(pid_, &local_iov, 1, remote_descs.data(),
+                       remote_descs.size(), 0) < 0) {
+    Error::SendErrno("Could not read process memory");
+  }
+  return buf;
+}
+
+void ldb::Process::WriteMemory(VirtAddr address,
+                               std::span<const std::byte> data) {
+  std::size_t written = 0;
+  while (written < data.size()) {
+    auto remaining = data.size() - written;
+    std::uint64_t word;
+    if (remaining >= sizeof(word)) {
+      word = FromBytes<std::uint64_t>(data.data() + written);
+    } else {
+      // Read the data from source
+      // remaining = 3
+      // 0xffffff **********
+      auto read = ReadMemory(address + written, sizeof(word));
+      auto word_data = reinterpret_cast<char*>(&word);
+      // Copy the remaining to the word: 0xffffff
+      std::memcpy(word_data, data.data() + written, remaining);
+      // Copy the source data: 0x**********
+      std::memcpy(word_data + remaining, read.data() + remaining,
+                  sizeof(word) - remaining);
+    }
+    if (ptrace(PTRACE_POKEDATA, pid_, address + written, word) < 0) {
+      Error::SendErrno("Failed to write memory");
+    }
+    written += sizeof(word);
+  }
 }

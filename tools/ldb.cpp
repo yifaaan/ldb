@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "libldb/breakpoint_site.hpp"
+#include "libldb/types.hpp"
 
 namespace {
 // attach to a process or a program
@@ -117,20 +118,30 @@ void PrintHelp(std::span<const std::string> args) {
 continue    - Resume the process
 register    - Commands for operating on registers
 breakpoint  - Commands for operating on breakpoints
-step        - Step over a single instruction)");
+step        - Step over a single instruction
+memory      - Commands for operating on memory
+)");
   } else if (IsPrefix(args[1], "register")) {
     fmt::println(stderr, R"(Available commands:
 read
 read <register>
 read all
-write <register> <value>)");
+write <register> <value>
+)");
   } else if (IsPrefix(args[1], "breakpoint")) {
     fmt::println(stderr, R"(Available commands:
 list
 delete <id>
 enable <id>
 disable <id>
-set <address>)");
+set <address>
+)");
+  } else if (IsPrefix(args[1], "memory")) {
+    fmt::println(stderr, R"(Available commands:
+read <address>
+read <address> <numner of bytes>
+write <address> <bytes>
+)");
   } else {
     fmt::println(stderr, "No help available on that");
   }
@@ -262,6 +273,66 @@ void HandleBreakpointCommand(ldb::Process& process,
   }
 }
 
+// sdb> mem read 0x000055555555515b
+// 0x0055555555515b: cc f0 fe ff ff b8 00 00 00 00 5d c3 00 f3 0f 1e
+// 0x0055555555516b: fa 48 83 ec 08 48 83 c4 08 c3 00 00 00 00 00 00
+void HandleMemoryReadCommand(ldb::Process& process,
+                             std::span<const std::string> args) {
+  auto address = ldb::ToIntegral<std::uint64_t>(args[2], 16);
+  if (!address) {
+    ldb::Error::Send("Invalid address format");
+    return;
+  }
+
+  std::size_t n_bytes = 32;
+  if (args.size() == 4) {
+    auto bytes_arg = ldb::ToIntegral<std::size_t>(args[3]);
+    if (!bytes_arg) {
+      ldb::Error::Send("Invalid number of bytes");
+      n_bytes = *bytes_arg;
+    }
+  }
+
+  auto data = process.ReadMemory(ldb::VirtAddr{*address}, n_bytes);
+  for (std::size_t i = 0; i < data.size(); i += 16) {
+    auto start = data.begin() + i;
+    auto end = data.begin() + std::min(i + 16, data.size());
+    fmt::println("{:#016x}: {:02x}", *address + i, fmt::join(start, end, " "));
+  }
+}
+// mem write 0x555555555156 [0xff,0xff]
+void HandleMemoryWriteCommand(ldb::Process& process,
+                              std::span<const std::string> args) {
+  if (args.size() != 4) {
+    PrintHelp(std::vector<std::string>{"help", "memory"});
+    return;
+  }
+
+  auto address = ldb::ToIntegral<std::uint64_t>(args[2], 16);
+  if (!address) {
+    ldb::Error::Send("Invalid address format");
+  }
+  auto data = ldb::ParseVector(args[3]);
+  process.WriteMemory(ldb::VirtAddr{*address}, {std::begin(data), data.size()});
+}
+
+void HandleMemoryCommand(ldb::Process& process,
+                         std::span<const std::string> args) {
+  if (args.size() < 3) {
+    PrintHelp(std::vector<std::string>{"help", "memory"});
+    return;
+  }
+
+  auto command = args[1];
+  if (IsPrefix(command, "read")) {
+    HandleMemoryReadCommand(process, args);
+  } else if (IsPrefix(command, "write")) {
+    HandleMemoryWriteCommand(process, args);
+  } else {
+    PrintHelp(std::vector<std::string>{"help", "memory"});
+  }
+}
+
 // handle command
 void HandleCommand(std::unique_ptr<ldb::Process>& process,
                    std::string_view line) {
@@ -281,6 +352,8 @@ void HandleCommand(std::unique_ptr<ldb::Process>& process,
   } else if (IsPrefix(command, "step")) {
     auto reason = process->StepInstruction();
     PrintStopReason(*process, reason);
+  } else if (IsPrefix(command, "memory")) {
+    HandleMemoryCommand(*process, args);
   } else {
     fmt::println("Unknown command: {}", command);
   }

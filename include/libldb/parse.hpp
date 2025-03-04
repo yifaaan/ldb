@@ -5,6 +5,7 @@
 #include <libldb/error.hpp>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 namespace ldb {
 // Convert a string_view to an integral type.
@@ -69,6 +70,32 @@ auto ParseVector(std::string_view text) {
     invalid();
   }
   if (c != std::end(text)) {
+    invalid();
+  }
+  return bytes;
+}
+// mem write 0x555555555156 [0xff,0xff]
+inline auto ParseVector(std::string_view text) {
+  auto invalid = [] { ldb::Error::Send("Invalid format"); };
+
+  std::vector<std::byte> bytes;
+  auto c = text.data();
+
+  if (*c++ != '[') {
+    invalid();
+  }
+  while (*c != ']') {
+    auto byte = ToIntegral<std::byte>({c, 4}, 16);
+    bytes.push_back(*byte);
+    c += 4;
+
+    if (*c == ',') {
+      c++;
+    } else if (*c != ']') {
+      invalid();
+    }
+  }
+  if (++c != text.end()) {
     invalid();
   }
   return bytes;

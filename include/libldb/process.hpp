@@ -10,6 +10,9 @@
 #include <libldb/types.hpp>
 #include <memory>
 #include <optional>
+#include <span>
+
+#include "libldb/bit.hpp"
 
 namespace ldb {
 enum class ProcessState {
@@ -98,6 +101,19 @@ class Process {
 
   // Step the process to the next instruction.
   ldb::StopReason StepInstruction();
+
+  // Read memory from the process at the given address.
+  std::vector<std::byte> ReadMemory(VirtAddr address, std::size_t size) const;
+
+  // Write memory to the process at the given address.
+  void WriteMemory(VirtAddr address, std::span<const std::byte>);
+
+  // Read a value from the process at the given address.
+  template <typename T>
+  T ReadMemoryAs(VirtAddr address) const {
+    auto data = ReadMemory(address, sizeof(T));
+    return FromBytes<T>(data.data());
+  }
 
  private:
   Process(pid_t pid, bool terminate_on_end, bool is_attached)
