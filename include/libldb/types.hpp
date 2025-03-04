@@ -48,4 +48,14 @@ class VirtAddr {
  private:
   std::uint64_t addr_ = 0;
 };
+
+// 断点类型
+// 写入断点
+// 读写断点
+// 执行断点
+enum class StoppointMode {
+  Write,
+  ReadWrite,
+  Execute,
+};
 }  // namespace ldb

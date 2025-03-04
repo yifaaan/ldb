@@ -45,8 +45,15 @@ class BreakpointSite {
     return low <= address_ && address_ < high;
   }
 
+  // Check if the breakpoint site is a hardware breakpoint.
+  bool IsHardware() const { return is_hardware_; }
+
+  // Check if the breakpoint site is an internal breakpoint(for debugger use)
+  bool IsInternal() const { return is_internal_; }
+
  private:
-  BreakpointSite(Process& process, VirtAddr address);
+  BreakpointSite(Process& process, VirtAddr address, bool is_hardware = false,
+                 bool is_internal = false);
   friend Process;
 
   IdType id_;
@@ -56,5 +63,8 @@ class BreakpointSite {
   // Hold the data we replace with the int3 instruction when setting a
   // breakpoint.
   std::byte saved_data_;
+  bool is_hardware_;
+  bool is_internal_;
+  int hardware_register_index_ = -1;
 };
 }  // namespace ldb

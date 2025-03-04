@@ -88,7 +88,8 @@ class Process {
   }
 
   // Create a breakpoint site at the given address.
-  BreakpointSite& CreateBreakpointSite(VirtAddr address);
+  BreakpointSite& CreateBreakpointSite(VirtAddr address, bool hardware = false,
+                                       bool internal = false);
 
   // Get the collection of breakpoint sites.
   StoppointCollection<BreakpointSite>& breakpoint_sites() {
@@ -120,6 +121,12 @@ class Process {
     return FromBytes<T>(data.data());
   }
 
+  // Set a hardware breakpoint at the given address.
+  int SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address);
+
+  // Clear a hardware stoppoint at the given index.
+  void ClearHardwareStoppoint(int index);
+
  private:
   Process(pid_t pid, bool terminate_on_end, bool is_attached)
       : pid_{pid},
@@ -129,6 +136,10 @@ class Process {
 
   // Read all the registers of the process to the registers object.
   void ReadAllRegisters();
+
+  // Set a hardware stoppoint at the given address with the given mode and size.
+  int SetHardwareStoppoint(VirtAddr address, StoppointMode mode,
+                           std::size_t size);
 
  private:
   pid_t pid_ = 0;

@@ -153,6 +153,7 @@ delete <id>
 enable <id>
 disable <id>
 set <address>
+set <address> -h
 )");
   } else if (IsPrefix(args[1], "memory")) {
     fmt::println(stderr, R"(Available commands:
@@ -255,11 +256,16 @@ void HandleBreakpointCommand(ldb::Process& process,
     } else {
       fmt::println("Current breakpoints:");
       process.breakpoint_sites().ForEach([](const auto& site) {
+        // 内部断点不显示
+        if (site.IsInternal()) {
+          return;
+        }
         fmt::println("{}: address = {:#x}, {}", site.id(),
                      site.address().addr(),
                      site.IsEnabled() ? "enabled" : "diabled");
       });
     }
+    return;
   }
 
   if (args.size() < 3) {
@@ -276,7 +282,16 @@ void HandleBreakpointCommand(ldb::Process& process,
                    "with '0x'");
       return;
     }
-    auto& site = process.CreateBreakpointSite(ldb::VirtAddr{*address});
+    bool hardware = false;
+    if (args.size() == 4) {
+      if (args[3] == "-h") {
+        hardware = true;
+      } else {
+        ldb::Error::Send("Invalid breakpoint command argument");
+      }
+    }
+    auto& site =
+        process.CreateBreakpointSite(ldb::VirtAddr{*address}, hardware);
     site.Enable();
     return;
   }

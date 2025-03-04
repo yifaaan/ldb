@@ -11,9 +11,15 @@ auto GetNextId() {
 }
 }  // namespace
 
-ldb::BreakpointSite::BreakpointSite(Process& process, VirtAddr address)
-    : process_{&process}, address_{address}, is_enabled_{false}, saved_data_{} {
-  id_ = GetNextId();
+ldb::BreakpointSite::BreakpointSite(Process& process, VirtAddr address,
+                                    bool is_hardware, bool is_internal)
+    : process_{&process},
+      address_{address},
+      is_enabled_{false},
+      saved_data_{},
+      is_hardware_{is_hardware},
+      is_internal_{is_internal} {
+  id_ = is_internal_ ? -1 : GetNextId();
 }
 
 void ldb::BreakpointSite::Enable() {
@@ -21,20 +27,25 @@ void ldb::BreakpointSite::Enable() {
     return;
   }
 
-  errno = 0;
-  // Get the original instruction.
-  std::uint64_t data =
-      ptrace(PTRACE_PEEKDATA, process_->pid(), address_, nullptr);
-  if (errno != 0) {
-    Error::SendErrno("Enabling breakpoint site failed");
-  }
-  // Save the original instruction.
-  saved_data_ = static_cast<std::byte>(data & 0xff);
-  // Replace the instruction at the breakpoint site with the int3 instruction.
-  std::uint64_t int3 = 0xcc;
-  std::uint64_t data_with_int3 = (data & ~0xff) | int3;
-  if (ptrace(PTRACE_POKEDATA, process_->pid(), address_, data_with_int3) < 0) {
-    Error::SendErrno("Enabling breakpoint site failed");
+  if (is_hardware_) {
+    hardware_register_index_ = process_->SetHardwareBreakpoint(id_, address_);
+  } else {
+    errno = 0;
+    // Get the original instruction.
+    std::uint64_t data =
+        ptrace(PTRACE_PEEKDATA, process_->pid(), address_, nullptr);
+    if (errno != 0) {
+      Error::SendErrno("Enabling breakpoint site failed");
+    }
+    // Save the original instruction.
+    saved_data_ = static_cast<std::byte>(data & 0xff);
+    // Replace the instruction at the breakpoint site with the int3 instruction.
+    std::uint64_t int3 = 0xcc;
+    std::uint64_t data_with_int3 = (data & ~0xff) | int3;
+    if (ptrace(PTRACE_POKEDATA, process_->pid(), address_, data_with_int3) <
+        0) {
+      Error::SendErrno("Enabling breakpoint site failed");
+    }
   }
   is_enabled_ = true;
 }
@@ -44,16 +55,22 @@ void ldb::BreakpointSite::Disable() {
     return;
   }
 
-  errno = 0;
-  std::uint64_t data =
-      ptrace(PTRACE_PEEKDATA, process_->pid(), address_, nullptr);
-  if (errno != 0) {
-    Error::Send("Disabling breakpoint site failed");
-  }
+  if (is_hardware_) {
+    process_->ClearHardwareStoppoint(hardware_register_index_);
+    hardware_register_index_ = -1;
+  } else {
+    errno = 0;
+    std::uint64_t data =
+        ptrace(PTRACE_PEEKDATA, process_->pid(), address_, nullptr);
+    if (errno != 0) {
+      Error::Send("Disabling breakpoint site failed");
+    }
 
-  auto restored_data = (data & ~0xff) | static_cast<std::uint8_t>(saved_data_);
-  if (ptrace(PTRACE_POKEDATA, process_->pid(), address_, restored_data) < 0) {
-    Error::SendErrno("Disabling breakpoint site failed");
+    auto restored_data =
+        (data & ~0xff) | static_cast<std::uint8_t>(saved_data_);
+    if (ptrace(PTRACE_POKEDATA, process_->pid(), address_, restored_data) < 0) {
+      Error::SendErrno("Disabling breakpoint site failed");
+    }
   }
   is_enabled_ = false;
 }

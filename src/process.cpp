@@ -14,6 +14,8 @@
 
 #include "libldb/bit.hpp"
 #include "libldb/breakpoint_site.hpp"
+#include "libldb/register_info.hpp"
+#include "libldb/types.hpp"
 
 namespace {
 
@@ -24,6 +26,60 @@ void ExitWithPerror(ldb::Pipe& channel, const std::string& prefix) {
   auto message = prefix + std::string(": ") + std::strerror(errno);
   channel.Write(reinterpret_cast<std::byte*>(message.data()), message.size());
   exit(-1);
+}
+
+// Encode the hardware stoppoint mode.
+// 00 - 执行断点
+// 01 - 数据写入断点
+// 10 - I/O读写（通常不支持）
+// 11 - 数据读写断点
+std::uint64_t EncodeHardwareStoppointMode(ldb::StoppointMode mode) {
+  switch (mode) {
+    case ldb::StoppointMode::Write:
+      return 0b01;
+    case ldb::StoppointMode::ReadWrite:
+      return 0b11;
+    case ldb::StoppointMode::Execute:
+      return 0b00;
+    default:
+      ldb::Error::Send("Invalid stoppoint size");
+  }
+}
+
+// 1 byte (00b): The breakpoint is triggered if the CPU accesses a single byte
+// at the specified address.
+
+// 2 bytes (01b): The breakpoint is triggered if the CPU accesses a 2-byte
+// (word) value at the specified address.
+
+// 4 bytes (11b): The breakpoint is triggered if the CPU accesses a 4-byte
+// (dword) value at the specified address.
+
+// 8 bytes (10b): This setting is often undefined or reserved in many
+// architectures. However, in some contexts, it might be used for larger data
+// types or specific debugging scenarios.
+std::uint64_t EncodeHardwareStoppointSize(std::size_t size) {
+  switch (size) {
+    case 1:
+      return 0b00;
+    case 2:
+      return 0b01;
+    case 4:
+      return 0b11;
+    case 8:
+      return 0b10;
+    default:
+      ldb::Error::Send("Invalid stoppoint size");
+  }
+}
+
+int FindFreeStoppointRegister(std::uint64_t control_reg) {
+  for (int i = 0; i < 4; i++) {
+    if ((control_reg & (0b11 << (i * 2))) == 0) {
+      return i;
+    }
+  }
+  ldb::Error::Send("No remaining hardware debug registers");
 }
 }  // namespace
 
@@ -239,13 +295,15 @@ void ldb::Process::ReadAllRegisters() {
   }
 }
 
-ldb::BreakpointSite& ldb::Process::CreateBreakpointSite(VirtAddr address) {
+ldb::BreakpointSite& ldb::Process::CreateBreakpointSite(VirtAddr address,
+                                                        bool hardware,
+                                                        bool internal) {
   if (breakpoint_sites_.ContainsAddress(address)) {
     Error::Send("Breakpoint site already created at address " +
                 std::to_string((address.addr())));
   }
-  return breakpoint_sites_.Push(
-      std::unique_ptr<BreakpointSite>(new BreakpointSite{*this, address}));
+  return breakpoint_sites_.Push(std::unique_ptr<BreakpointSite>(
+      new BreakpointSite{*this, address, hardware, internal}));
 }
 
 ldb::StopReason ldb::Process::StepInstruction() {
@@ -301,7 +359,8 @@ std::vector<std::byte> ldb::Process::ReadMemoryWithoutTraps(
   auto sites = breakpoint_sites_.GetInRegion(address, address + size);
 
   for (auto site : sites) {
-    if (!site->IsEnabled()) {
+    // 如果断点未启用或为硬件断点，则跳过
+    if (!site->IsEnabled() || site->IsHardware()) {
       continue;
     }
     auto offset = site->address() - address.addr();
@@ -335,4 +394,103 @@ void ldb::Process::WriteMemory(VirtAddr address,
     }
     written += sizeof(word);
   }
+}
+
+int ldb::Process::SetHardwareBreakpoint(ldb::BreakpointSite::IdType id,
+                                        VirtAddr address) {
+  return SetHardwareStoppoint(address, StoppointMode::Execute, 1);
+}
+
+int ldb::Process::SetHardwareStoppoint(VirtAddr address, StoppointMode mode,
+                                       std::size_t size) {
+  // Read the control register.
+  auto& regs = registers();
+  auto control_reg = regs.ReadByIdAs<std::uint64_t>(RegisterId::dr7);
+  int free_space = FindFreeStoppointRegister(control_reg);
+
+  // Get the free register id.
+  auto id = static_cast<int>(RegisterId::dr0) + free_space;
+  // Write the hardware breakpoint address to the register.
+  regs.WriteById(static_cast<RegisterId>(id), address.addr());
+
+  auto mode_flag = EncodeHardwareStoppointMode(mode);
+  auto size_flag = EncodeHardwareStoppointSize(size);
+
+  // The DR7 register, also known as the Debug Control Register,
+  //     plays a crucial role in controlling and configuring hardware
+  //     breakpoints
+  //         on x64 architectures.Here's a breakdown of its structure:
+
+  // Bits	Description
+  // 0-7
+  // Breakpoint Enables
+  // 0	Local enable for breakpoint #0 (L0)
+  // 1	Global enable for breakpoint #0 (G0)
+  // 2	Local enable for breakpoint #1 (L1)
+  // 3	Global enable for breakpoint #1 (G1)
+  // 4	Local enable for breakpoint #2 (L2)
+  // 5	Global enable for breakpoint #2 (G2)
+  // 6	Local enable for breakpoint #3 (L3)
+  // 7	Global enable for breakpoint #3 (G3)
+  // 8-9
+  // Reserved (386 only: Local Exact Breakpoint Enable (LE) and Global Exact
+  // Breakpoint Enable (GE))
+  // 10
+  // Reserved, read-only, read as 1 and should be written as 1
+  // 11
+  // RTM (Processors with Intel TSX only: Enable advanced
+  // debugging of RTM transactions)
+  // 12
+  // IR, SMIE (386/486 only: Action on breakpoint match; otherwise reserved)
+  // 13
+  // GD (General Detect Enable:
+  // causes a debug exception on any attempt to access DR0-DR7)
+  // 14-15
+  // Reserved, should be written as all-0s
+  // 16-17
+  // R/W0 (Breakpoint condition for breakpoint #0: 00b = execution break,
+  // 01b = write watchpoint, 11b = R/W watchpoint)
+  // 18-19
+  // LEN0 (Breakpoint length for breakpoint #0: 00 = 1 byte, 01 = 2 bytes,
+  // 10 = undefined or 8 bytes, 11 = 4 bytes)
+  // 20-21
+  // R/W1 (Breakpoint condition for breakpoint #1)
+  // 22-23
+  // LEN1 (Breakpoint length for breakpoint #1)
+  // 24-25
+  // R/W2 (Breakpoint condition for breakpoint #2)
+  // 26-27
+  // LEN2 (Breakpoint length for breakpoint #2)
+  // 28-29
+  // R/W3 (Breakpoint condition for breakpoint #3)
+  // 30-31
+  // LEN3 (Breakpoint length for breakpoint #3)
+  // 32-35
+  // Reserved for PTTT (Processor Trace Trigger Tracing) on some processors;
+  // otherwise read as 0 and must be written as 0
+  // 36-63
+  // Reserved (x86-64 only), read as all-0s and must be written as all-0s
+  auto enable_bit = 1 << (free_space * 2);
+  auto mode_bits = mode_flag << (free_space * 4 + 16);
+  auto size_bits = size_flag << (free_space * 4 + 18);
+  auto clear_mask =
+      (0b11 << (free_space * 2)) | (0b1111 << (free_space * 4 + 16));
+  // Clear the enable, mode and size bits of the control register.
+  auto masked = control_reg & ~clear_mask;
+  // Set the enable, mode and size bits of the control register.
+  masked |= enable_bit | mode_bits | size_bits;
+  regs.WriteById(RegisterId::dr7, masked);
+  return free_space;
+}
+
+void ldb::Process::ClearHardwareStoppoint(int index) {
+  auto id = static_cast<int>(RegisterId::dr0) + index;
+  // Clear the breakpoint address.
+  registers().WriteById(static_cast<RegisterId>(id), 0);
+  auto control_reg = registers().ReadByIdAs<std::uint64_t>(RegisterId::dr7);
+  auto clear_mask = (0b11 << (index * 2)) | (0b1111 << (index * 4 + 16));
+  // Clear the enable, mode and size bits of the control register.
+  auto masked = control_reg & ~clear_mask;
+  // Write the control register back.
+  registers().WriteById(RegisterId::dr7, masked);
 }
