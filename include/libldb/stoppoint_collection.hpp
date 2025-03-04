@@ -35,6 +35,9 @@ class StoppointCollection {
   // Get the stoppoint at the given address.
   const Stoppoint& GetByAddress(VirtAddr address) const;
 
+  // Get all stoppoints that are in the range [low, high).
+  std::vector<Stoppoint*> GetInRegion(VirtAddr low, VirtAddr high) const;
+
   // Remove the stoppoint with the given ID.
   void RemoveById(Stoppoint::IdType id);
 
@@ -97,6 +100,18 @@ Stoppoint& StoppointCollection<Stoppoint>::GetByAddress(VirtAddr address) {
     return **it;
   }
   Error::Send("Invalid stoppoint address");
+}
+
+template <typename Stoppoint>
+std::vector<Stoppoint*> StoppointCollection<Stoppoint>::GetInRegion(
+    VirtAddr low, VirtAddr high) const {
+  std::vector<Stoppoint*> ret;
+  for (const auto& point : stoppoints_) {
+    if (point->InRange(low, high)) {
+      ret.push_back(&*point);
+    }
+  }
+  return ret;
 }
 
 template <typename Stoppoint>

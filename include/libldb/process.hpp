@@ -105,6 +105,11 @@ class Process {
   // Read memory from the process at the given address.
   std::vector<std::byte> ReadMemory(VirtAddr address, std::size_t size) const;
 
+  // Read memory from the process at the given address without trapping on
+  // breakpoints.
+  std::vector<std::byte> ReadMemoryWithoutTraps(VirtAddr address,
+                                                std::size_t size) const;
+
   // Write memory to the process at the given address.
   void WriteMemory(VirtAddr address, std::span<const std::byte>);
 

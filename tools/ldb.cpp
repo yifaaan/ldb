@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "libldb/breakpoint_site.hpp"
+#include "libldb/disassembler.hpp"
 #include "libldb/types.hpp"
 
 namespace {
@@ -111,6 +112,22 @@ void PrintStopReason(const ldb::Process& process, ldb::StopReason reason) {
   fmt::println("Process {} {}", process.pid(), message);
 }
 
+void PrintDisassembly(ldb::Process& process, ldb::VirtAddr address,
+                      std::size_t n_instructions) {
+  ldb::Disassembler dis{process};
+  auto instructions = dis.Disassemble(n_instructions, address);
+  for (const auto& instr : instructions) {
+    fmt::println("{:#018x}: {}", instr.address.addr(), instr.text);
+  }
+}
+
+void HandleStop(ldb::Process& process, ldb::StopReason reason) {
+  PrintStopReason(process, reason);
+  if (reason.reason == ldb::ProcessState::Stopped) {
+    PrintDisassembly(process, process.GetPc(), 5);
+  }
+}
+
 // help ...
 void PrintHelp(std::span<const std::string> args) {
   if (args.size() == 1) {
@@ -120,6 +137,7 @@ register    - Commands for operating on registers
 breakpoint  - Commands for operating on breakpoints
 step        - Step over a single instruction
 memory      - Commands for operating on memory
+disassemble - Disassemble machine code to assembly
 )");
   } else if (IsPrefix(args[1], "register")) {
     fmt::println(stderr, R"(Available commands:
@@ -141,6 +159,11 @@ set <address>
 read <address>
 read <address> <numner of bytes>
 write <address> <bytes>
+)");
+  } else if (IsPrefix(args[1], "disassemble")) {
+    fmt::println(stderr, R"(Available commands:
+-c <number of instructions>
+-a <start address>
 )");
   } else {
     fmt::println(stderr, "No help available on that");
@@ -333,6 +356,37 @@ void HandleMemoryCommand(ldb::Process& process,
   }
 }
 
+// disassemble -c <n_instructions> -a <address>
+void HandleDisassembleCommand(ldb::Process& process,
+                              std::span<const std::string> args) {
+  std::size_t n_instructions = 5;
+  auto address = process.GetPc();
+
+  auto it = args.begin() + 1;
+  while (it != std::end(args)) {
+    if (*it == "-a" && it + 1 != std::end(args)) {
+      it++;
+      auto opt_addr = ldb::ToIntegral<std::uint64_t>(*it++, 16);
+      if (!opt_addr) {
+        ldb::Error::Send("Invalid address format");
+      }
+      address = ldb::VirtAddr{*opt_addr};
+    } else if (*it == "-c" && it + 1 != std::end(args)) {
+      it++;
+      auto opt_n = ldb::ToIntegral<std::size_t>(*it++);
+      if (!opt_n) {
+        ldb::Error::Send("Invalid number of instructions");
+        n_instructions = *opt_n;
+      } else {
+        PrintHelp(std::vector<std::string>{"help", "disassemble"});
+        return;
+      }
+    }
+  }
+
+  PrintDisassembly(process, address, n_instructions);
+}
+
 // handle command
 void HandleCommand(std::unique_ptr<ldb::Process>& process,
                    std::string_view line) {
@@ -342,7 +396,7 @@ void HandleCommand(std::unique_ptr<ldb::Process>& process,
   if (IsPrefix(command, "continue")) {
     process->Resume();
     auto reason = process->WaitOnSignal();
-    PrintStopReason(*process, reason);
+    HandleStop(*process, reason);
   } else if (IsPrefix(command, "help")) {
     PrintHelp(args);
   } else if (IsPrefix(command, "register")) {
@@ -351,9 +405,11 @@ void HandleCommand(std::unique_ptr<ldb::Process>& process,
     HandleBreakpointCommand(*process, args);
   } else if (IsPrefix(command, "step")) {
     auto reason = process->StepInstruction();
-    PrintStopReason(*process, reason);
+    HandleStop(*process, reason);
   } else if (IsPrefix(command, "memory")) {
     HandleMemoryCommand(*process, args);
+  } else if (IsPrefix(command, "disassemble")) {
+    HandleDisassembleCommand(*process, args);
   } else {
     fmt::println("Unknown command: {}", command);
   }
