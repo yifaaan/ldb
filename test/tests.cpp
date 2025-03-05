@@ -434,3 +434,37 @@ TEST_CASE("Hardware breakpoint evades memory checksums", "[breakpoint]") {
   process->Resume();
   REQUIRE(ToStringView(channel.Read()) == "Putting pineapple on pizza...\n");
 }
+
+TEST_CASE("Watchpoint detects read", "[watchpoint]") {
+  bool close_on_exec = false;
+  Pipe channel{close_on_exec};
+  auto process =
+      Process::Launch("test/targets/anti_debugger", true, channel.GetWrite());
+  channel.CloseWrite();
+  process->Resume();
+  // STGTRAP on raise(SIGTRAP):24
+  process->WaitOnSignal();
+  // Read the address of AnInnocentFunction
+  auto func = VirtAddr{FromBytes<std::uint64_t>(channel.Read().data())};
+
+  auto& watch = process->CreateWatchpoint(func, StoppointMode::ReadWrite, 1);
+  watch.Enable();
+  process->Resume();
+  // TRAP on func
+  process->WaitOnSignal();
+
+  process->StepInstruction();
+  auto& soft = process->CreateBreakpointSite(func, false);
+  soft.Enable();
+
+  process->Resume();
+  // TRAP at raise(SIGTRAP):33
+  auto reason = process->WaitOnSignal();
+  REQUIRE(reason.info == SIGTRAP);
+
+  process->Resume();
+  // TRAP at func
+  process->WaitOnSignal();
+
+  REQUIRE(ToStringView(channel.Read()) == "Putting pineapple on pizza...\n");
+}

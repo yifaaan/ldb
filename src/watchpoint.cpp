@@ -16,7 +16,7 @@ ldb::Watchpoint::Watchpoint(Process& process, VirtAddr address,
       mode_{mode},
       size_{size},
       is_enabled_{false} {
-  if ((address.addr() % (size - 1)) != 0) {
+  if ((address.addr() & (size - 1)) != 0) {
     Error::Send("Watchpoint address must be aligned to size");
   }
   id_ = GetNextId();
