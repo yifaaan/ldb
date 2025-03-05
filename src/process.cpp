@@ -16,6 +16,7 @@
 #include "libldb/breakpoint_site.hpp"
 #include "libldb/register_info.hpp"
 #include "libldb/types.hpp"
+#include "libldb/watchpoint.hpp"
 
 namespace {
 
@@ -300,10 +301,21 @@ ldb::BreakpointSite& ldb::Process::CreateBreakpointSite(VirtAddr address,
                                                         bool internal) {
   if (breakpoint_sites_.ContainsAddress(address)) {
     Error::Send("Breakpoint site already created at address " +
-                std::to_string((address.addr())));
+                std::to_string(address.addr()));
   }
   return breakpoint_sites_.Push(std::unique_ptr<BreakpointSite>(
       new BreakpointSite{*this, address, hardware, internal}));
+}
+
+ldb::Watchpoint& ldb::Process::CreateWatchpoint(VirtAddr address,
+                                                StoppointMode mode,
+                                                std::size_t size) {
+  if (watchpoints_.ContainsAddress(address)) {
+    Error::Send("Watchpoint already created at address " +
+                std::to_string(address.addr()));
+  }
+  return watchpoints_.Push(
+      std::unique_ptr<Watchpoint>(new Watchpoint{*this, address, mode, size}));
 }
 
 ldb::StopReason ldb::Process::StepInstruction() {
@@ -481,6 +493,11 @@ int ldb::Process::SetHardwareStoppoint(VirtAddr address, StoppointMode mode,
   masked |= enable_bit | mode_bits | size_bits;
   regs.WriteById(RegisterId::dr7, masked);
   return free_space;
+}
+
+int ldb::Process::SetWatchpoint(Watchpoint::IdType id, VirtAddr address,
+                                StoppointMode mode, std::size_t size) {
+  return SetHardwareStoppoint(address, mode, size);
 }
 
 void ldb::Process::ClearHardwareStoppoint(int index) {

@@ -138,6 +138,7 @@ breakpoint  - Commands for operating on breakpoints
 step        - Step over a single instruction
 memory      - Commands for operating on memory
 disassemble - Disassemble machine code to assembly
+watchpoint  - Commands for operating on watchpoints
 )");
   } else if (IsPrefix(args[1], "register")) {
     fmt::println(stderr, R"(Available commands:
@@ -165,6 +166,14 @@ write <address> <bytes>
     fmt::println(stderr, R"(Available commands:
 -c <number of instructions>
 -a <start address>
+)");
+  } else if (IsPrefix(args[1], "watchpoint")) {
+    fmt::println(stderr, R"(Available commands:
+list
+set <address> <write|rw|execute> <size>
+enable <id>
+disable <id>
+delete <id>
 )");
   } else {
     fmt::println(stderr, "No help available on that");
@@ -402,6 +411,102 @@ void HandleDisassembleCommand(ldb::Process& process,
   PrintDisassembly(process, address, n_instructions);
 }
 
+void HandleWatchpointListCommand(ldb::Process& process,
+                                 std::span<const std::string> args) {
+  auto stoppoint_mode_to_string = [](const auto mode) {
+    switch (mode) {
+      case ldb::StoppointMode::Execute:
+        return "execute";
+      case ldb::StoppointMode::ReadWrite:
+        return "read_write";
+      case ldb::StoppointMode::Write:
+        return "write";
+      default:
+        ldb::Error::Send("Invalid stoppoint mode");
+    }
+  };
+  if (process.watchpoints().Empty()) {
+    fmt::println("No watchpoints set");
+  } else {
+    fmt::println("Current watchpoints:");
+    process.watchpoints().ForEach([&](const auto& watchpoint) {
+      fmt::println("{}: address = {:#x}, mode = {}, size = {}, {}",
+                   watchpoint.id(), watchpoint.address().addr(),
+                   stoppoint_mode_to_string(watchpoint.mode()),
+                   watchpoint.size(),
+                   watchpoint.IsEnabled() ? "enabled" : "disabled");
+    });
+  }
+}
+// watchpoint set <address> <mode> <size>
+void HandleWatchpointSetCommand(ldb::Process& process,
+                                std::span<const std::string> args) {
+  if (args.size() != 5) {
+    PrintHelp(std::vector<std::string>{"help", "watchpoint"});
+    return;
+  }
+
+  auto address = ldb::ToIntegral<std::uint64_t>(args[2], 16);
+  auto& mode_text = args[3];
+  auto size = ldb::ToIntegral<std::size_t>(args[4]);
+
+  if (!address ||
+      !(mode_text == "write" || mode_text == "rw" || mode_text == "execute")) {
+    PrintHelp(std::vector<std::string>{"help", "watchpoint"});
+    return;
+  }
+
+  ldb::StoppointMode mode;
+  if (mode_text == "write") {
+    mode = ldb::StoppointMode::Write;
+  } else if (mode_text == "rw") {
+    mode = ldb::StoppointMode::ReadWrite;
+  } else if (mode_text == "execute") {
+    mode = ldb::StoppointMode::Execute;
+  }
+  process.CreateWatchpoint(ldb::VirtAddr{*address}, mode, *size).Enable();
+}
+
+// watchpoint list
+// watchpoint set <address> <mode> <size>
+// watchpoint enable <id>
+// watchpoint disable <id>
+// watchpoint delete <id>
+void HandleWatchpointCommand(ldb::Process& process,
+                             std::span<const std::string> args) {
+  if (args.size() < 2) {
+    PrintHelp(std::vector<std::string>{"help", "watchpoint"});
+    return;
+  }
+
+  auto command = args[1];
+  if (IsPrefix(command, "list")) {
+    HandleWatchpointListCommand(process, args);
+    return;
+  }
+  if (IsPrefix(command, "set")) {
+    HandleWatchpointSetCommand(process, args);
+    return;
+  }
+
+  auto id = ldb::ToIntegral<ldb::Watchpoint::IdType>(args[2]);
+  if (!id) {
+    fmt::println(stderr, "Command expects watchpoint id");
+    return;
+  }
+  if (args.size() < 3) {
+    PrintHelp(std::vector<std::string>{"help", "watchpoint"});
+    return;
+  }
+  if (IsPrefix(command, "enable")) {
+    process.watchpoints().GetById(*id).Enable();
+  } else if (IsPrefix(command, "disable")) {
+    process.watchpoints().GetById(*id).Disable();
+  } else if (IsPrefix(command, "delete")) {
+    process.watchpoints().RemoveById(*id);
+  }
+}
+
 // handle command
 void HandleCommand(std::unique_ptr<ldb::Process>& process,
                    std::string_view line) {
@@ -425,6 +530,8 @@ void HandleCommand(std::unique_ptr<ldb::Process>& process,
     HandleMemoryCommand(*process, args);
   } else if (IsPrefix(command, "disassemble")) {
     HandleDisassembleCommand(*process, args);
+  } else if (IsPrefix(command, "watchpoint")) {
+    HandleWatchpointCommand(*process, args);
   } else {
     fmt::println("Unknown command: {}", command);
   }

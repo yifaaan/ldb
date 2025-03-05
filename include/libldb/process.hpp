@@ -4,15 +4,15 @@
 #include <sys/user.h>
 
 #include <filesystem>
+#include <libldb/bit.hpp>
 #include <libldb/breakpoint_site.hpp>
 #include <libldb/registers.hpp>
 #include <libldb/stoppoint_collection.hpp>
 #include <libldb/types.hpp>
+#include <libldb/watchpoint.hpp>
 #include <memory>
 #include <optional>
 #include <span>
-
-#include "libldb/bit.hpp"
 
 namespace ldb {
 enum class ProcessState {
@@ -100,6 +100,18 @@ class Process {
     return breakpoint_sites_;
   }
 
+  // Create a watchpoint at the given address.
+  Watchpoint& CreateWatchpoint(VirtAddr address, StoppointMode mode,
+                               std::size_t size);
+
+  // Get the collection of watchpoints.
+  StoppointCollection<Watchpoint>& watchpoints() { return watchpoints_; }
+
+  // Get the collection of watchpoints.
+  const StoppointCollection<Watchpoint>& watchpoints() const {
+    return watchpoints_;
+  }
+
   // Step the process to the next instruction.
   ldb::StopReason StepInstruction();
 
@@ -123,6 +135,10 @@ class Process {
 
   // Set a hardware breakpoint at the given address.
   int SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address);
+
+  // Set a watchpoint at the given address.
+  int SetWatchpoint(Watchpoint::IdType id, VirtAddr address, StoppointMode mode,
+                    std::size_t size);
 
   // Clear a hardware stoppoint at the given index.
   void ClearHardwareStoppoint(int index);
@@ -148,5 +164,6 @@ class Process {
   bool is_attached_ = true;
   std::unique_ptr<Registers> registers_;
   StoppointCollection<BreakpointSite> breakpoint_sites_;
+  StoppointCollection<Watchpoint> watchpoints_;
 };
 }  // namespace ldb

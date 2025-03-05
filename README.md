@@ -125,8 +125,9 @@ DR6的低4位（0-3位）分别对应DR0-DR3：
 
 ### Function Call
 
+*由于PIE，0x1000是相对于运行时加载地址的偏移量(file address)*
+
 ```
-由于PIE，0x1000是相对与运行时加载地址的偏移量(file address)
 # 例如：
 0x1000: e8 xx xx xx xx    # call指令 (xx xx xx xx 需要替换new_value)
 0x1005: ...               # 下一条指令
