@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -28,6 +29,11 @@
 #include "libldb/types.hpp"
 
 namespace {
+ldb::Process* LdbProcess = nullptr;
+
+// When ldb process receives SIGINT, stop the inferior process by sending
+// SIGSTOP to it.
+void HandleSigint(int) { kill(LdbProcess->pid(), SIGSTOP); }
 // attach to a process or a program
 std::unique_ptr<ldb::Process> Attach(int argc, const char** argv) {
   // Passing PID
@@ -575,6 +581,8 @@ int main(int argc, const char** argv) {
   }
   try {
     auto process = Attach(argc, argv);
+    LdbProcess = process.get();
+    signal(SIGINT, HandleSigint);
     MainLoop(process);
   } catch (const ldb::Error& err) {
     fmt::println("{}", err.what());

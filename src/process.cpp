@@ -113,6 +113,12 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(
     Error::SendErrno("fork failed");
   }
   if (pid == 0) {
+    // Set the inferior's process group id to itself.
+    // This is to avoid the inferior process being received the signal from
+    // the parent process.
+    if (setpgid(0, 0) < 0) {
+      ExitWithPerror(channel, "Could not set pgid");
+    }
     // Close the randomization of the address space.
     // The load virtual address of the program is fixed.
     personality(ADDR_NO_RANDOMIZE);
