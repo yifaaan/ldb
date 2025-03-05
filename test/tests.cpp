@@ -33,6 +33,10 @@ char GetProcessState(pid_t pid) {
   return line[index_of_status_indicator];
 }
 
+// 获取Section加载偏移量
+// 当file_address和file_offset不相同时，需要file_address -
+// file_offset得到偏移量， file_address: 开启PIE时相对于运行时加载地址的偏移量
+
 std::int64_t GetSectionLoadBias(std::filesystem::path path,
                                 Elf64_Addr file_address) {
   auto command = std::string{"readelf -WS "} + path.string();
@@ -44,17 +48,17 @@ std::int64_t GetSectionLoadBias(std::filesystem::path path,
   while (getline(&line, &len, pipe) != -1) {
     std::cmatch groups;
     if (std::regex_search(line, groups, text_regex)) {
-      // 预期加载的虚拟地址
-      auto address = std::stol(groups[1], nullptr, 16);
+      auto section_file_address = std::stol(groups[1], nullptr, 16);
       // 在elf文件中的偏移量
-      auto offset = std::stol(groups[2], nullptr, 16);
-      // 段的大小
+      auto section_file_offset = std::stol(groups[2], nullptr, 16);
+      // Section的大小
       auto size = std::stol(groups[3], nullptr, 16);
       // 如果文件地址在这个段内
-      if (address <= file_address && file_address < (address + size)) {
+      if (section_file_address <= file_address &&
+          file_address < (section_file_address + size)) {
         free(line);
         pclose(pipe);
-        return address - offset;
+        return section_file_address - section_file_offset;
       }
     }
     free(line);
@@ -81,7 +85,9 @@ std::int64_t GetEntryPointOffset(std::filesystem::path path) {
   Elf64_Ehdr header;
   elf_file.read(reinterpret_cast<char*>(&header), sizeof(header));
 
+  // 开启PIE时，e_entry是相对于运行时加载地址的偏移量(file address)
   auto entry_file_address = header.e_entry;
+  // 获取入口点在elf文件中的偏移量:file_address - 其所属section的加载偏移
   return entry_file_address - GetSectionLoadBias(path, entry_file_address);
 }
 
