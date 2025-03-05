@@ -254,7 +254,9 @@ ldb::StopReason ldb::Process::WaitOnSignal() {
     // to the instruction begin address to continue execution.
     auto instruction_begin = GetPc() - 1;
     if (reason.info == SIGTRAP) {
-      if (reason.trap_reason == TrapType::SoftwareBreak && breakpoint_sites_.ContainsAddress(instruction_begin) && breakpoint_sites_.GetByAddress(instruction_begin).IsEnabled()) {
+      if (reason.trap_reason == TrapType::SoftwareBreak &&
+          breakpoint_sites_.ContainsAddress(instruction_begin) &&
+          breakpoint_sites_.GetByAddress(instruction_begin).IsEnabled()) {
         SetPc(instruction_begin);
       }
     } else if (reason.trap_reason == TrapType::HardwareBreak) {

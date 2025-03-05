@@ -5,6 +5,10 @@
 
 namespace ldb {
 class Process;
+
+// Use the same mechanisms as hardware breakpoints but can make a process stop
+// when reading from and writing to a specific address, as well as executing
+// instructions at a specific address.
 class Watchpoint {
  public:
   Watchpoint() = delete;
@@ -30,7 +34,7 @@ class Watchpoint {
     return low <= address_ && address_ < high;
   }
 
-  std::uint64_t data() const { return data_;}
+  std::uint64_t data() const { return data_; }
 
   std::uint64_t previous_data() const { return previous_data_; }
 

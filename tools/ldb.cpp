@@ -96,6 +96,36 @@ ldb::Registers::Value ParseRegisterValue(const ldb::RegisterInfo& info,
   ldb::Error::Send("Invalid format");
 }
 
+std::string GetSigtrapInfo(const ldb::Process& process,
+                           ldb::StopReason reason) {
+  if (reason.trap_reason == ldb::TrapType::SoftwareBreak) {
+    auto& site = process.breakpoint_sites().GetByAddress(process.GetPc());
+    return fmt::format(" (breakpoint {})", site.id());
+  }
+  if (reason.trap_reason == ldb::TrapType::HardwareBreak) {
+    auto id = process.GetCurrentHardwareStoppoint();
+    if (id.index() == 0) {
+      return fmt::format(" (breakpoint {})", std::get<0>(id));
+    }
+
+    std::string message;
+    auto& point = process.watchpoints().GetById(std::get<1>(id));
+    message += fmt::format(" (watchpoint {})", point.id());
+
+    if (point.data() == point.previous_data()) {
+      message += fmt::format("\nValue: {:#x}", point.data());
+    } else {
+      message += fmt::format("\nOld value: {:#x}\nNew value: {:#x}",
+                             point.previous_data(), point.data());
+      return message;
+    }
+  }
+  if (reason.trap_reason == ldb::TrapType::SingleStep) {
+    return " (single step)";
+  }
+  return "";
+}
+
 void PrintStopReason(const ldb::Process& process, ldb::StopReason reason) {
   std::string message;
   switch (reason.reason) {
@@ -110,6 +140,9 @@ void PrintStopReason(const ldb::Process& process, ldb::StopReason reason) {
     case ldb::ProcessState::Stopped:
       message = fmt::format("stopped with signal {} at {:#x}",
                             sigabbrev_np(reason.info), process.GetPc().addr());
+      if (reason.info == SIGTRAP) {
+        message += GetSigtrapInfo(process, reason);
+      }
       break;
       // default:
       //   fmt::println("unknown stop reason");

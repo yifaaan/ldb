@@ -24,8 +24,11 @@ enum class ProcessState {
 
 // The reason why the child process stopped (SIGTRAP).
 enum class TrapType {
+  // ptrace(PTRACE_SINGLESTEP, ...)
   SingleStep,
+  // Software breakpoint by int3.
   SoftwareBreak,
+  // Hardware breakpoint set by DR0-DR3.
   HardwareBreak,
   Unknown,
 };
@@ -145,7 +148,7 @@ class Process {
     return FromBytes<T>(data.data());
   }
 
-  // Set a hardware breakpoint at the given address.
+  // Set a hardware breakpoint at the given address. Mode is always Execute.
   int SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address);
 
   // Set a watchpoint at the given address.
@@ -155,6 +158,8 @@ class Process {
   // Clear a hardware stoppoint at the given index.
   void ClearHardwareStoppoint(int index);
 
+  // Get the current hardware stoppoint.
+  // 0 for breakpoint, 1 for watchpoint.
   std::variant<BreakpointSite::IdType, Watchpoint::IdType>
   GetCurrentHardwareStoppoint() const;
 
