@@ -6,10 +6,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <csignal>
 #include <iterator>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
+#include <utility>
 #include <vector>
 
 #include "libldb/bit.hpp"
@@ -247,7 +249,7 @@ ldb::StopReason ldb::Process::WaitOnSignal() {
   // Only the process is attached and stopped, read all the registers.
   if (is_attached_ && state_ == ProcessState::Stopped) {
     ReadAllRegisters();
-
+    AugmentStopReason(reason);
     // When the process is stopped by int3 instruction, set the program counter
     // to the instruction begin address to continue execution.
     auto instruction_begin = GetPc() - 1;
@@ -257,6 +259,29 @@ ldb::StopReason ldb::Process::WaitOnSignal() {
     }
   }
   return reason;
+}
+
+void ldb::Process::AugmentStopReason(StopReason& reason) {
+  // Get the signal information.
+  siginfo_t info;
+  if (ptrace(PTRACE_GETSIGINFO, pid_, nullptr, &info) < 0) {
+    Error::SendErrno("Failed to get signal info");
+  }
+
+  reason.trap_reason = TrapType::Unknown;
+  if (reason.info == SIGTRAP) {
+    switch (info.si_code) {
+      case TRAP_TRACE:
+        reason.trap_reason = TrapType::SingleStep;
+        break;
+      case SI_KERNEL:
+        reason.trap_reason = TrapType::SoftwareBreak;
+        break;
+      case TRAP_HWBKPT:
+        reason.trap_reason = TrapType::HardwareBreak;
+        break;
+    }
+  }
 }
 
 void ldb::Process::WriteFprs(const user_fpregs_struct& fprs) {
@@ -516,4 +541,25 @@ void ldb::Process::ClearHardwareStoppoint(int index) {
   auto masked = control_reg & ~clear_mask;
   // Write the control register back.
   registers().WriteById(RegisterId::dr7, masked);
+}
+
+std::variant<ldb::BreakpointSite::IdType, ldb::Watchpoint::IdType>
+ldb::Process::GetCurrentHardwareStoppoint() const {
+  auto& regs = registers();
+  auto status = regs.ReadByIdAs<std::uint64_t>(RegisterId::dr6);
+  auto index = __builtin_ctzll(status);
+
+  auto id = static_cast<int>(RegisterId::dr0) + index;
+  // Get the address of the breakpoint.
+  auto addr =
+      VirtAddr{regs.ReadByIdAs<std::uint64_t>(static_cast<RegisterId>(id))};
+  using Ret = std::variant<BreakpointSite::IdType, Watchpoint::IdType>;
+  // If the address is a breakpoint address, return the breakpoint site id.
+  if (breakpoint_sites_.ContainsAddress(addr)) {
+    auto site_id = breakpoint_sites_.GetByAddress(addr).id();
+    return Ret{std::in_place_index<0>, site_id};
+  } else {
+    auto watch_id = watchpoints_.GetByAddress(addr).id();
+    return Ret{std::in_place_index<1>, watch_id};
+  }
 }

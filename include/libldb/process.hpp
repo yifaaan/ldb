@@ -22,12 +22,21 @@ enum class ProcessState {
   Terminated,
 };
 
+// The reason why the child process stopped (SIGTRAP).
+enum class TrapType {
+  SingleStep,
+  SoftwareBreak,
+  HardwareBreak,
+  Unknown,
+};
+
 // The reason why the child process stopped.
 struct StopReason {
   StopReason(int wait_status);
 
   ProcessState reason;
   std::uint8_t info;
+  std::optional<TrapType> trap_reason;
 };
 
 class Process {
@@ -55,6 +64,9 @@ class Process {
   // Wait the child process's change of state.
   // Return the reason why the child process stopped.
   StopReason WaitOnSignal();
+
+  // Augment the stop reason with the trap reason.
+  void AugmentStopReason(StopReason& reason);
 
   pid_t pid() const { return pid_; }
 
@@ -142,6 +154,9 @@ class Process {
 
   // Clear a hardware stoppoint at the given index.
   void ClearHardwareStoppoint(int index);
+
+  std::variant<BreakpointSite::IdType, Watchpoint::IdType>
+  GetCurrentHardwareStoppoint() const;
 
  private:
   Process(pid_t pid, bool terminate_on_end, bool is_attached)

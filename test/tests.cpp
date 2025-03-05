@@ -467,4 +467,10 @@ TEST_CASE("Watchpoint detects read", "[watchpoint]") {
   process->WaitOnSignal();
 
   REQUIRE(ToStringView(channel.Read()) == "Putting pineapple on pizza...\n");
+
+  process->Resume();
+  // TRAP at func
+  process->WaitOnSignal();
+
+  REQUIRE(ToStringView(channel.Read()) == "Putting pineapple on pizza...\n");
 }
