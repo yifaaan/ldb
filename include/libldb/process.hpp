@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <vector>
 
 namespace ldb {
 enum class ProcessState {
@@ -26,11 +27,31 @@ enum class ProcessState {
 enum class TrapType {
   // ptrace(PTRACE_SINGLESTEP, ...)
   SingleStep,
+
   // Software breakpoint by int3.
   SoftwareBreak,
+
   // Hardware breakpoint set by DR0-DR3.
   HardwareBreak,
+
+  // Syscall entry or exit.
+  Syscall,
+
   Unknown,
+};
+
+// The tracer to check the arguments to the syscall before it’s executed, then
+// check the return value on exit.
+struct SyscallInformation {
+  // The syscall number.
+  std::uint16_t id;
+
+  // Whether the trap is on the syscall entry or exit.
+  bool entry;
+  union {
+    std::array<std::uint64_t, 6> args;
+    std::int64_t ret;
+  };
 };
 
 // The reason why the child process stopped.
@@ -40,6 +61,43 @@ struct StopReason {
   ProcessState reason;
   std::uint8_t info;
   std::optional<TrapType> trap_reason;
+
+  // If the process stopped because of a syscall, this will be the syscall
+  // information.
+  std::optional<SyscallInformation> syscall_info;
+};
+
+class SyscallCatchPolicy {
+ public:
+  // The policy of catching syscalls.
+  enum Mode {
+    // Catch no syscall.
+    None,
+    // Catch only the syscall with the specified number.
+    Some,
+    // Catch all syscalls.
+    All,
+  };
+
+  static SyscallCatchPolicy CatchAll() { return {Mode::All, {}}; }
+
+  static SyscallCatchPolicy CatchNone() { return {Mode::None, {}}; }
+
+  static SyscallCatchPolicy CatchSome(std::vector<int> to_catch) {
+    return {Mode::Some, to_catch};
+  }
+
+  Mode mode() const { return mode_; }
+
+  const std::vector<int>& to_catch() const { return to_catch_; }
+
+ private:
+  SyscallCatchPolicy(Mode mode, std::vector<int> to_catch)
+      : mode_{mode}, to_catch_{std::move(to_catch)} {}
+
+  Mode mode_ = Mode::None;
+  // The syscall numbers to catch.
+  std::vector<int> to_catch_;
 };
 
 class Process {
@@ -163,6 +221,10 @@ class Process {
   std::variant<BreakpointSite::IdType, Watchpoint::IdType>
   GetCurrentHardwareStoppoint() const;
 
+  void SetSyscallCatchPolicy(SyscallCatchPolicy policy) {
+    syscall_catch_policy_ = std::move(policy);
+  }
+
  private:
   Process(pid_t pid, bool terminate_on_end, bool is_attached)
       : pid_{pid},
@@ -177,6 +239,11 @@ class Process {
   int SetHardwareStoppoint(VirtAddr address, StoppointMode mode,
                            std::size_t size);
 
+  // Check if we should resume from a syscall stop.
+  // If the current syscall is not one we want to trace, resume the process
+  // and return the new stop reason. Otherwise return the original reason.
+  ldb::StopReason MaybeResumeFromSyscall(const StopReason& reason);
+
  private:
   pid_t pid_ = 0;
   bool terminate_on_end_ = true;
@@ -185,5 +252,10 @@ class Process {
   std::unique_ptr<Registers> registers_;
   StoppointCollection<BreakpointSite> breakpoint_sites_;
   StoppointCollection<Watchpoint> watchpoints_;
+  SyscallCatchPolicy syscall_catch_policy_ = SyscallCatchPolicy::CatchNone();
+
+  // Whether we are waiting for a syscall exit.
+  bool expecting_syscall_exit_ = false;
 };
+
 }  // namespace ldb

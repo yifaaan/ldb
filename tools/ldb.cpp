@@ -8,10 +8,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <iterator>
 #include <libldb/error.hpp>
 #include <libldb/libldb.hpp>
 #include <libldb/parse.hpp>
@@ -26,6 +28,7 @@
 
 #include "libldb/breakpoint_site.hpp"
 #include "libldb/disassembler.hpp"
+#include "libldb/syscalls.hpp"
 #include "libldb/types.hpp"
 
 namespace {
@@ -123,6 +126,20 @@ std::string GetSigtrapInfo(const ldb::Process& process,
   if (reason.trap_reason == ldb::TrapType::SingleStep) {
     return " (single step)";
   }
+  if (reason.trap_reason == ldb::TrapType::Syscall) {
+    const auto& info = *reason.syscall_info;
+    std::string message = " ";
+    if (info.entry) {
+      message += "(syscall entry)\n";
+      message +=
+          fmt::format("syscall: {}({:#x})", ldb::SyscallIdToName(info.id),
+                      fmt::join(info.args, ","));
+    } else {
+      message += "(syscall exit)\n";
+      message += fmt::format("syscall returned: {:#x}", info.ret);
+    }
+    return message;
+  }
   return "";
 }
 
@@ -178,6 +195,7 @@ step        - Step over a single instruction
 memory      - Commands for operating on memory
 disassemble - Disassemble machine code to assembly
 watchpoint  - Commands for operating on watchpoints
+catchpoint  - Commands for operating on catchpoints
 )");
   } else if (IsPrefix(args[1], "register")) {
     fmt::println(stderr, R"(Available commands:
@@ -213,6 +231,12 @@ set <address> <write|rw|execute> <size>
 enable <id>
 disable <id>
 delete <id>
+)");
+  } else if (IsPrefix(args[1], "catchpoint")) {
+    fmt::println(stderr, R"(Available commands:
+syscall
+syscall none
+syscall <list of syscall IDs or names>
 )");
   } else {
     fmt::println(stderr, "No help available on that");
@@ -546,6 +570,42 @@ void HandleWatchpointCommand(ldb::Process& process,
   }
 }
 
+void HandleSyscallCatchpointCommand(ldb::Process& process,
+                                    std::span<const std::string> args) {
+  auto policy = ldb::SyscallCatchPolicy::CatchAll();
+  if (args.size() == 3 && args[2] == "none") {
+    policy = ldb::SyscallCatchPolicy::CatchNone();
+  } else if (args.size() >= 3) {
+    auto syscalls = Split(args[2], ',');
+    std::vector<int> to_catch;
+    to_catch.reserve(syscalls.size());
+
+    std::transform(std::begin(syscalls), std::end(syscalls),
+                   std::back_inserter(to_catch), [](const auto& call) {
+                     return isdigit(call[0])
+                                ? ldb::ToIntegral<int>(call).value()
+                                : ldb::SyscallNameToId(call);
+                   });
+    policy = ldb::SyscallCatchPolicy::CatchSome(std::move(to_catch));
+  }
+  process.SetSyscallCatchPolicy(std::move(policy));
+}
+
+// catchpoint syscall
+// catchpoint syscall none
+// catchpoint syscall <list>
+void HandleCatchpointCommand(ldb::Process& process,
+                             std::span<const std::string> args) {
+  if (args.size() < 2) {
+    PrintHelp(std::vector<std::string>{"help", "catchpoint"});
+    return;
+  }
+
+  if (IsPrefix(args[1], "syscall")) {
+    HandleSyscallCatchpointCommand(process, args);
+  }
+}
+
 // handle command
 void HandleCommand(std::unique_ptr<ldb::Process>& process,
                    std::string_view line) {
@@ -571,6 +631,8 @@ void HandleCommand(std::unique_ptr<ldb::Process>& process,
     HandleDisassembleCommand(*process, args);
   } else if (IsPrefix(command, "watchpoint")) {
     HandleWatchpointCommand(*process, args);
+  } else if (IsPrefix(command, "catchpoint")) {
+    HandleCatchpointCommand(*process, args);
   } else {
     fmt::println("Unknown command: {}", command);
   }

@@ -76,6 +76,7 @@ std::uint64_t EncodeHardwareStoppointSize(std::size_t size) {
   }
 }
 
+// Find a free hardware debug register.
 int FindFreeStoppointRegister(std::uint64_t control_reg) {
   for (int i = 0; i < 4; i++) {
     if ((control_reg & (0b11 << (i * 2))) == 0) {
@@ -84,6 +85,13 @@ int FindFreeStoppointRegister(std::uint64_t control_reg) {
   }
   ldb::Error::Send("No remaining hardware debug registers");
 }
+
+void SetPtraceOptions(pid_t pid) {
+  if (ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACESYSGOOD) < 0) {
+    ldb::Error::SendErrno("Failed to set TRACESYSGOOD option");
+  }
+}
+
 }  // namespace
 
 ldb::StopReason::StopReason(int wait_status) {
@@ -166,6 +174,7 @@ std::unique_ptr<ldb::Process> ldb::Process::Launch(
   // waitpid processes SIGTRAP for execlp
   if (debug) {
     process->WaitOnSignal();
+    SetPtraceOptions(pid);
   }
   return process;
 }
@@ -185,6 +194,7 @@ std::unique_ptr<ldb::Process> ldb::Process::Attach(pid_t pid) {
   std::unique_ptr<Process> process(
       new Process(pid, /*terminate_on_end=*/false, /*is_attached=*/true));
   process->WaitOnSignal();
+  SetPtraceOptions(process->pid());
   return process;
 }
 
@@ -230,7 +240,12 @@ void ldb::Process::Resume() {
     // Enable the breakpoint again.
     bp.Enable();
   }
-  if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0) {
+  // Whether to catch syscalls.
+  // When catch syscall, the process will trap on the syscall entry and exit.
+  auto request = syscall_catch_policy_.mode() == SyscallCatchPolicy::Mode::None
+                     ? PTRACE_CONT
+                     : PTRACE_SYSCALL;
+  if (ptrace(request, pid_, nullptr, nullptr) < 0) {
     Error::SendErrno("Could not resume");
   }
   state_ = ProcessState::Running;
@@ -264,6 +279,8 @@ ldb::StopReason ldb::Process::WaitOnSignal() {
       if (id.index() == 1) {
         watchpoints_.GetById(std::get<1>(id)).UpdateData();
       }
+    } else if (reason.trap_reason == TrapType::Syscall) {
+      reason = MaybeResumeFromSyscall(reason);
     }
   }
   return reason;
@@ -275,6 +292,36 @@ void ldb::Process::AugmentStopReason(StopReason& reason) {
   if (ptrace(PTRACE_GETSIGINFO, pid_, nullptr, &info) < 0) {
     Error::SendErrno("Failed to get signal info");
   }
+
+  // If the process stopped because of a syscall, fill the syscall information.
+  if (reason.info == (SIGTRAP | 0x80)) {
+    auto& sys_info = reason.syscall_info.emplace();
+    auto& regs = registers();
+
+    // If we are expecting a syscall exit, fill the return value.
+    if (expecting_syscall_exit_) {
+      sys_info.entry = false;
+      sys_info.id = regs.ReadByIdAs<std::uint64_t>(RegisterId::orig_rax);
+      sys_info.ret = regs.ReadByIdAs<std::int64_t>(RegisterId::rax);
+      expecting_syscall_exit_ = false;
+    } else {
+      sys_info.entry = true;
+      sys_info.id = regs.ReadByIdAs<std::uint64_t>(RegisterId::orig_rax);
+      std::array<RegisterId, 6> arg_regs = {RegisterId::rdi, RegisterId::rsi,
+                                            RegisterId::rdx, RegisterId::r10,
+                                            RegisterId::r8,  RegisterId::r9};
+      for (int i = 0; i < 6; i++) {
+        sys_info.args[i] = regs.ReadByIdAs<std::uint64_t>(arg_regs[i]);
+      }
+      expecting_syscall_exit_ = true;
+    }
+    reason.info = SIGTRAP;
+    reason.trap_reason = TrapType::Syscall;
+    return;
+  }
+
+  // We didn't stop due to a syscall. We need to reset the flag.
+  expecting_syscall_exit_ = false;
 
   reason.trap_reason = TrapType::Unknown;
   if (reason.info == SIGTRAP) {
@@ -570,4 +617,18 @@ ldb::Process::GetCurrentHardwareStoppoint() const {
     auto watch_id = watchpoints_.GetByAddress(addr).id();
     return Ret{std::in_place_index<1>, watch_id};
   }
+}
+
+ldb::StopReason ldb::Process::MaybeResumeFromSyscall(const StopReason& reason) {
+  if (syscall_catch_policy_.mode() == SyscallCatchPolicy::Mode::Some) {
+    auto& to_catch = syscall_catch_policy_.to_catch();
+    // If the syscall is not in the list of syscalls to catch, resume the
+    // process and return the new stop reason.
+    if (auto found = std::ranges::find(to_catch, reason.syscall_info->id);
+        found == std::end(to_catch)) {
+      Resume();
+      return WaitOnSignal();
+    }
+  }
+  return reason;
 }

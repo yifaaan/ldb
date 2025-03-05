@@ -10,6 +10,7 @@
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
 #include <libldb/register_info.hpp>
+#include <libldb/syscalls.hpp>
 #include <libldb/types.hpp>
 #include <regex>
 
@@ -453,7 +454,7 @@ TEST_CASE("Watchpoint detects read", "[watchpoint]") {
   // TRAP on func
   process->WaitOnSignal();
 
-  process->StepInstruction();
+  process->StepInstruction();  // std::puts("Putting pineapple on pizza...");
   auto& soft = process->CreateBreakpointSite(func, false);
   soft.Enable();
 
@@ -463,14 +464,22 @@ TEST_CASE("Watchpoint detects read", "[watchpoint]") {
   REQUIRE(reason.info == SIGTRAP);
 
   process->Resume();
-  // TRAP at func
+  // puts("Putting pepperni on pizza...");
   process->WaitOnSignal();
 
   REQUIRE(ToStringView(channel.Read()) == "Putting pineapple on pizza...\n");
 
   process->Resume();
-  // TRAP at func
+  // TRAP at 33
   process->WaitOnSignal();
+  process->Resume();
 
-  REQUIRE(ToStringView(channel.Read()) == "Putting pineapple on pizza...\n");
+  REQUIRE(ToStringView(channel.Read()) == "Putting pepperni on pizza...\n");
+}
+
+TEST_CASE("Syscall mapping works", "[syscall]") {
+  REQUIRE(SyscallIdToName(0) == "read");
+  REQUIRE(SyscallNameToId("read") == 0);
+  REQUIRE(SyscallIdToName(62) == "kill");
+  REQUIRE(SyscallNameToId("kill") == 62);
 }
