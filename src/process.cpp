@@ -253,9 +253,15 @@ ldb::StopReason ldb::Process::WaitOnSignal() {
     // When the process is stopped by int3 instruction, set the program counter
     // to the instruction begin address to continue execution.
     auto instruction_begin = GetPc() - 1;
-    if (reason.info == SIGTRAP &&
-        breakpoint_sites_.EnabledStoppointAtAddress(instruction_begin)) {
-      SetPc(instruction_begin);
+    if (reason.info == SIGTRAP) {
+      if (reason.trap_reason == TrapType::SoftwareBreak && breakpoint_sites_.ContainsAddress(instruction_begin) && breakpoint_sites_.GetByAddress(instruction_begin).IsEnabled()) {
+        SetPc(instruction_begin);
+      }
+    } else if (reason.trap_reason == TrapType::HardwareBreak) {
+      auto id = GetCurrentHardwareStoppoint();
+      if (id.index() == 1) {
+        watchpoints_.GetById(std::get<1>(id)).UpdateData();
+      }
     }
   }
   return reason;

@@ -1,5 +1,6 @@
 #include <libldb/process.hpp>
 #include <libldb/watchpoint.hpp>
+#include <utility>
 
 namespace {
 // Get the next ID for the watchpoint.
@@ -20,6 +21,7 @@ ldb::Watchpoint::Watchpoint(Process& process, VirtAddr address,
     Error::Send("Watchpoint address must be aligned to size");
   }
   id_ = GetNextId();
+  UpdateData();
 }
 
 void ldb::Watchpoint::Enable() {
@@ -35,4 +37,11 @@ void ldb::Watchpoint::Disable() {
 
   process_->ClearHardwareStoppoint(hardware_register_index_);
   is_enabled_ = false;
+}
+
+void ldb::Watchpoint::UpdateData() {
+  std::uint64_t new_data = 0;
+  auto read = process_->ReadMemory(address_, size_);
+  memcpy(&new_data, read.data(), size_);
+  previous_data_ = std::exchange(data_, new_data);
 }

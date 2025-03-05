@@ -30,6 +30,13 @@ class Watchpoint {
     return low <= address_ && address_ < high;
   }
 
+  std::uint64_t data() const { return data_;}
+
+  std::uint64_t previous_data() const { return previous_data_; }
+
+  // Update the data at the watchpoint address.
+  void UpdateData();
+
  private:
   friend Process;
   Watchpoint(Process& process, VirtAddr address, StoppointMode mode,
@@ -42,5 +49,9 @@ class Watchpoint {
   std::size_t size_;
   bool is_enabled_;
   int hardware_register_index_ = -1;
+  // Current data at the watchpoint address.
+  std::uint64_t data_ = 0;
+  // Previous data at the watchpoint address.
+  std::uint64_t previous_data_ = 0;
 };
 }  // namespace ldb
