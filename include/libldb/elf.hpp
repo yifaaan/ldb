@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "libldb/types.hpp"
+
 namespace ldb {
 class Elf {
  public:
@@ -36,6 +38,19 @@ class Elf {
   // Get the general string from .strtab or .dynstr sections.
   std::string_view GetString(std::size_t index) const;
 
+  // The difference between the load address and the file address.
+  VirtAddr load_bias() const { return load_bias_; }
+
+  // Notify the ELF that it has been loaded at a given address.
+  void NotifyLoaded(VirtAddr address) { load_bias_ = address; }
+
+  const Elf64_Shdr* GetSectionHeaderContainingAddress(FileAddr addr) const;
+
+  const Elf64_Shdr* GetSectionHeaderContainingAddress(VirtAddr addr) const;
+
+  std::optional<FileAddr> GetSectionStartFileAddress(
+      std::string_view name) const;
+
  private:
   // Parse the section headers from the ELF file.
   void ParseSectionHeaders();
@@ -57,5 +72,8 @@ class Elf {
 
   // Map of section names to section headers
   std::unordered_map<std::string_view, Elf64_Shdr*> section_header_map_;
+
+  // The difference between the load address and the file address.
+  VirtAddr load_bias_;
 };
 }  // namespace ldb

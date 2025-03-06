@@ -77,6 +77,44 @@ std::string_view ldb::Elf::GetString(std::size_t index) const {
           opt_strtab_header.value()->sh_offset + index};
 }
 
+const Elf64_Shdr* ldb::Elf::GetSectionHeaderContainingAddress(
+    FileAddr addr) const {
+  if (addr.elf() != this) return nullptr;
+
+  if (auto it = std::ranges::find_if(section_headers_,
+                                     [&addr](const auto& header) {
+                                       return header.sh_addr <= addr.addr() &&
+                                              addr.addr() < header.sh_addr +
+                                                                header.sh_size;
+                                     });
+      it != std::end(section_headers_)) {
+    return &*it;
+  }
+  return nullptr;
+}
+
+const Elf64_Shdr* ldb::Elf::GetSectionHeaderContainingAddress(
+    VirtAddr addr) const {
+  if (auto it = std::ranges::find_if(
+          section_headers_,
+          [&addr, this](const auto& header) {
+            return load_bias() + header.sh_addr <= addr &&
+                   addr < load_bias() + header.sh_addr + header.sh_size;
+          });
+      it != std::end(section_headers_)) {
+    return &*it;
+  }
+  return nullptr;
+}
+
+std::optional<ldb::FileAddr> ldb::Elf::GetSectionStartFileAddress(
+    std::string_view name) const {
+  if (auto section_header = GetSectionHeader(name); section_header) {
+    return FileAddr{*this, section_header.value()->sh_addr};
+  }
+  return std::nullopt;
+}
+
 void ldb::Elf::ParseSectionHeaders() {
   // if a file has 0xff00 sections or more, it sets
   // e_shnum to 0 and stores the number of sections in the sh_size field of the
