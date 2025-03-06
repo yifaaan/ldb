@@ -66,6 +66,17 @@ std::span<const std::byte> ldb::Elf::GetSectionContents(
   return {};
 }
 
+std::string_view ldb::Elf::GetString(std::size_t index) const {
+  auto opt_strtab_header = GetSectionHeader(".strtab");
+  if (!opt_strtab_header) {
+    opt_strtab_header = GetSectionHeader(".dynstr");
+    if (!opt_strtab_header) return "";
+  }
+
+  return {reinterpret_cast<char*>(data_) +
+          opt_strtab_header.value()->sh_offset + index};
+}
+
 void ldb::Elf::ParseSectionHeaders() {
   // if a file has 0xff00 sections or more, it sets
   // e_shnum to 0 and stores the number of sections in the sh_size field of the

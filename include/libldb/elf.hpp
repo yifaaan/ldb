@@ -33,6 +33,9 @@ class Elf {
   // Get the contents of a section.
   std::span<const std::byte> GetSectionContents(std::string_view name) const;
 
+  // Get the general string from .strtab or .dynstr sections.
+  std::string_view GetString(std::size_t index) const;
+
  private:
   // Parse the section headers from the ELF file.
   void ParseSectionHeaders();
