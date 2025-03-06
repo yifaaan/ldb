@@ -1,4 +1,5 @@
 #include <elf.h>
+#include <fcntl.h>
 
 #include <catch2/catch_test_macros.hpp>
 #include <cerrno>
@@ -482,4 +483,30 @@ TEST_CASE("Syscall mapping works", "[syscall]") {
   REQUIRE(SyscallNameToId("read") == 0);
   REQUIRE(SyscallIdToName(62) == "kill");
   REQUIRE(SyscallNameToId("kill") == 62);
+}
+
+TEST_CASE("Syscall catch points work", "[catchpoint]") {
+  auto dev_null = open("/dev/null", O_WRONLY);
+  auto process = Process::Launch("test/targets/anti_debugger", true, dev_null);
+
+  auto write_syscall = ldb::SyscallNameToId("write");
+  process->SetSyscallCatchPolicy(
+      ldb::SyscallCatchPolicy::CatchSome({write_syscall}));
+
+  process->Resume();
+  auto reason = process->WaitOnSignal();
+
+  REQUIRE(reason.reason == ldb::ProcessState::Stopped);
+  REQUIRE(reason.info == SIGTRAP);
+  REQUIRE(reason.trap_reason == ldb::TrapType::Syscall);
+  REQUIRE(reason.syscall_info->id == write_syscall);
+  REQUIRE(reason.syscall_info->entry == true);
+  process->Resume();
+  reason = process->WaitOnSignal();
+  REQUIRE(reason.reason == ldb::ProcessState::Stopped);
+  REQUIRE(reason.info == SIGTRAP);
+  REQUIRE(reason.trap_reason == ldb::TrapType::Syscall);
+  REQUIRE(reason.syscall_info->id == write_syscall);
+  REQUIRE(reason.syscall_info->entry == false);
+  close(dev_null);
 }

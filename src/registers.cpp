@@ -1,3 +1,5 @@
+#include <spdlog/spdlog.h>
+
 #include <exception>
 #include <iostream>
 #include <libldb/bit.hpp>

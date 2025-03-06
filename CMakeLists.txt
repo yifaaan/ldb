@@ -12,6 +12,7 @@ pkg_check_modules(readline REQUIRED IMPORTED_TARGET readline)
 
 find_package(fmt CONFIG REQUIRED)
 find_package(zydis CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 
 include(CTest)
 

@@ -3,6 +3,7 @@
 #include <fmt/ranges.h>
 #include <readline/history.h>
 #include <readline/readline.h>
+#include <spdlog/spdlog.h>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -107,6 +108,7 @@ std::string GetSigtrapInfo(const ldb::Process& process,
   }
   if (reason.trap_reason == ldb::TrapType::HardwareBreak) {
     auto id = process.GetCurrentHardwareStoppoint();
+
     if (id.index() == 0) {
       return fmt::format(" (breakpoint {})", std::get<0>(id));
     }
@@ -120,13 +122,14 @@ std::string GetSigtrapInfo(const ldb::Process& process,
     } else {
       message += fmt::format("\nOld value: {:#x}\nNew value: {:#x}",
                              point.previous_data(), point.data());
-      return message;
     }
+    return message;
   }
   if (reason.trap_reason == ldb::TrapType::SingleStep) {
     return " (single step)";
   }
   if (reason.trap_reason == ldb::TrapType::Syscall) {
+    SPDLOG_INFO("reason.trap_reason == ldb::TrapType::Syscall");
     const auto& info = *reason.syscall_info;
     std::string message = " ";
     if (info.entry) {
@@ -157,6 +160,7 @@ void PrintStopReason(const ldb::Process& process, ldb::StopReason reason) {
     case ldb::ProcessState::Stopped:
       message = fmt::format("stopped with signal {} at {:#x}",
                             sigabbrev_np(reason.info), process.GetPc().addr());
+      SPDLOG_INFO("reason.info: {}", reason.info);
       if (reason.info == SIGTRAP) {
         message += GetSigtrapInfo(process, reason);
       }
@@ -577,6 +581,7 @@ void HandleSyscallCatchpointCommand(ldb::Process& process,
     policy = ldb::SyscallCatchPolicy::CatchNone();
   } else if (args.size() >= 3) {
     auto syscalls = Split(args[2], ',');
+    SPDLOG_INFO("syscalls: {}", fmt::join(syscalls, ","));
     std::vector<int> to_catch;
     to_catch.reserve(syscalls.size());
 
@@ -614,6 +619,7 @@ void HandleCommand(std::unique_ptr<ldb::Process>& process,
 
   if (IsPrefix(command, "continue")) {
     process->Resume();
+    SPDLOG_INFO("continue");
     auto reason = process->WaitOnSignal();
     HandleStop(*process, reason);
   } else if (IsPrefix(command, "help")) {
@@ -670,6 +676,7 @@ void MainLoop(std::unique_ptr<ldb::Process>& process) {
 }  // namespace
 
 int main(int argc, const char** argv) {
+  spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%s:%# %!] %v");
   if (argc == 1) {
     std::cerr << "No arguments given\n";
     return -1;

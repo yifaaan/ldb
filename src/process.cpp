@@ -1,4 +1,6 @@
 #include <bits/types/struct_iovec.h>
+#include <fmt/ranges.h>
+#include <spdlog/spdlog.h>
 #include <sys/personality.h>
 #include <sys/ptrace.h>
 #include <sys/uio.h>
@@ -240,6 +242,7 @@ void ldb::Process::Resume() {
     // Enable the breakpoint again.
     bp.Enable();
   }
+
   // Whether to catch syscalls.
   // When catch syscall, the process will trap on the syscall entry and exit.
   auto request = syscall_catch_policy_.mode() == SyscallCatchPolicy::Mode::None
@@ -265,6 +268,7 @@ ldb::StopReason ldb::Process::WaitOnSignal() {
   if (is_attached_ && state_ == ProcessState::Stopped) {
     ReadAllRegisters();
     AugmentStopReason(reason);
+
     // When the process is stopped by int3 instruction, set the program counter
     // to the instruction begin address to continue execution.
     auto instruction_begin = GetPc() - 1;
@@ -273,14 +277,14 @@ ldb::StopReason ldb::Process::WaitOnSignal() {
           breakpoint_sites_.ContainsAddress(instruction_begin) &&
           breakpoint_sites_.GetByAddress(instruction_begin).IsEnabled()) {
         SetPc(instruction_begin);
+      } else if (reason.trap_reason == TrapType::HardwareBreak) {
+        auto id = GetCurrentHardwareStoppoint();
+        if (id.index() == 1) {
+          watchpoints_.GetById(std::get<1>(id)).UpdateData();
+        }
+      } else if (reason.trap_reason == TrapType::Syscall) {
+        reason = MaybeResumeFromSyscall(reason);
       }
-    } else if (reason.trap_reason == TrapType::HardwareBreak) {
-      auto id = GetCurrentHardwareStoppoint();
-      if (id.index() == 1) {
-        watchpoints_.GetById(std::get<1>(id)).UpdateData();
-      }
-    } else if (reason.trap_reason == TrapType::Syscall) {
-      reason = MaybeResumeFromSyscall(reason);
     }
   }
   return reason;
@@ -297,12 +301,20 @@ void ldb::Process::AugmentStopReason(StopReason& reason) {
   if (reason.info == (SIGTRAP | 0x80)) {
     auto& sys_info = reason.syscall_info.emplace();
     auto& regs = registers();
+    reason.info = SIGTRAP;
+    reason.trap_reason = TrapType::Syscall;
+    // if (auto found =
+    //         std::ranges::find(syscall_catch_policy_.to_catch(), sys_info.id);
+    //     found != std::end(syscall_catch_policy_.to_catch())) {
 
+    // }
     // If we are expecting a syscall exit, fill the return value.
     if (expecting_syscall_exit_) {
       sys_info.entry = false;
       sys_info.id = regs.ReadByIdAs<std::uint64_t>(RegisterId::orig_rax);
-      sys_info.ret = regs.ReadByIdAs<std::int64_t>(RegisterId::rax);
+      if (sys_info.id == 1) {
+        sys_info.ret = regs.ReadByIdAs<std::uint64_t>(RegisterId::rax);
+      }
       expecting_syscall_exit_ = false;
     } else {
       sys_info.entry = true;
@@ -315,8 +327,6 @@ void ldb::Process::AugmentStopReason(StopReason& reason) {
       }
       expecting_syscall_exit_ = true;
     }
-    reason.info = SIGTRAP;
-    reason.trap_reason = TrapType::Syscall;
     return;
   }
 
@@ -622,6 +632,7 @@ ldb::Process::GetCurrentHardwareStoppoint() const {
 ldb::StopReason ldb::Process::MaybeResumeFromSyscall(const StopReason& reason) {
   if (syscall_catch_policy_.mode() == SyscallCatchPolicy::Mode::Some) {
     auto& to_catch = syscall_catch_policy_.to_catch();
+
     // If the syscall is not in the list of syscalls to catch, resume the
     // process and return the new stop reason.
     if (auto found = std::ranges::find(to_catch, reason.syscall_info->id);
