@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <libldb/elf.hpp>
 #include <libldb/error.hpp>
 
@@ -31,11 +32,38 @@ ldb::Elf::Elf(const std::filesystem::path& path) : path_{path} {
   std::copy(data_, data_ + sizeof(header_), AsBytes(header_));
 
   ParseSectionHeaders();
+  BuildSectionNameMap();
 }
 
 ldb::Elf::~Elf() {
   munmap(data_, file_size_);
   close(fd_);
+}
+
+std::string_view ldb::Elf::GetSectionName(std::size_t index) const {
+  // The Section name string table, which lives in the .shstrtab section
+  const auto& section_name_string_table_header =
+      section_headers_[header_.e_shstrndx];
+  return {reinterpret_cast<char*>(data_) +
+          section_name_string_table_header.sh_offset + index};
+}
+
+std::optional<const Elf64_Shdr*> ldb::Elf::GetSectionHeader(
+    std::string_view name) const {
+  if (section_header_map_.contains(name)) {
+    return section_header_map_.at(name);
+  }
+  return std::nullopt;
+}
+
+std::span<const std::byte> ldb::Elf::GetSectionContents(
+    std::string_view name) const {
+  if (auto header = GetSectionHeader(name); header) {
+    return {
+        reinterpret_cast<const std::byte*>(data_ + header.value()->sh_offset),
+        header.value()->sh_size};
+  }
+  return {};
 }
 
 void ldb::Elf::ParseSectionHeaders() {
@@ -50,4 +78,11 @@ void ldb::Elf::ParseSectionHeaders() {
   std::copy(data_ + header_.e_shoff,
             data_ + header_.e_shoff + n_header * sizeof(Elf64_Shdr),
             reinterpret_cast<std::byte*>(section_headers_.data()));
+}
+
+void ldb::Elf::BuildSectionNameMap() {
+  std::ranges::for_each(section_headers_, [this](auto& header) {
+    auto name = GetSectionName(header.sh_name);
+    section_header_map_[name] = &header;
+  });
 }
