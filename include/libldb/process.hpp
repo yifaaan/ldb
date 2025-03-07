@@ -226,6 +226,11 @@ class Process {
     syscall_catch_policy_ = std::move(policy);
   }
 
+  // Get the auxv of the process. It contains the Virtual Address of the entry
+  // point.
+  // type->value
+  std::unordered_map<uint64_t, std::uint64_t> GetAuxv() const;
+
  private:
   Process(pid_t pid, bool terminate_on_end, bool is_attached)
       : pid_{pid},
@@ -244,10 +249,6 @@ class Process {
   // If the current syscall is not one we want to trace, resume the process
   // and return the new stop reason. Otherwise return the original reason.
   ldb::StopReason MaybeResumeFromSyscall(const StopReason& reason);
-
-  // Get the auxv of the process.
-  // type->value
-  std::unordered_map<uint64_t, std::uint64_t> GetAuxv() const;
 
  private:
   pid_t pid_ = 0;
