@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <unordered_map>
 #include <vector>
 
 namespace ldb {
@@ -243,6 +244,10 @@ class Process {
   // If the current syscall is not one we want to trace, resume the process
   // and return the new stop reason. Otherwise return the original reason.
   ldb::StopReason MaybeResumeFromSyscall(const StopReason& reason);
+
+  // Get the auxv of the process.
+  // type->value
+  std::unordered_map<uint64_t, std::uint64_t> GetAuxv() const;
 
  private:
   pid_t pid_ = 0;

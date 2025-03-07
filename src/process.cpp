@@ -1,6 +1,5 @@
 #include <bits/types/struct_iovec.h>
-#include <fmt/ranges.h>
-#include <spdlog/spdlog.h>
+#include <elf.h>
 #include <sys/personality.h>
 #include <sys/ptrace.h>
 #include <sys/uio.h>
@@ -9,18 +8,18 @@
 #include <unistd.h>
 
 #include <csignal>
+#include <fstream>
 #include <iterator>
+#include <libldb/bit.hpp>
+#include <libldb/breakpoint_site.hpp>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
+#include <libldb/register_info.hpp>
+#include <libldb/types.hpp>
+#include <libldb/watchpoint.hpp>
 #include <utility>
 #include <vector>
-
-#include "libldb/bit.hpp"
-#include "libldb/breakpoint_site.hpp"
-#include "libldb/register_info.hpp"
-#include "libldb/types.hpp"
-#include "libldb/watchpoint.hpp"
 
 namespace {
 
@@ -642,4 +641,20 @@ ldb::StopReason ldb::Process::MaybeResumeFromSyscall(const StopReason& reason) {
     }
   }
   return reason;
+}
+
+std::unordered_map<uint64_t, std::uint64_t> ldb::Process::GetAuxv() const {
+  auto file = std::ifstream{"/proc" + std::to_string(pid_) + "/auxv"};
+  std::unordered_map<std::uint64_t, std::uint64_t> ret;
+  std::uint64_t key, value;
+
+  auto read = [&](auto& value) {
+    file.read(reinterpret_cast<char*>(&value), sizeof(value));
+  };
+
+  for (read(key); key != AT_NULL; read(key)) {
+    read(value);
+    ret.emplace(key, value);
+  }
+  return ret;
 }

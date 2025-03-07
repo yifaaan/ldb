@@ -3,13 +3,12 @@
 #include <elf.h>
 
 #include <filesystem>
+#include <libldb/types.hpp>
 #include <map>
 #include <optional>
 #include <span>
 #include <unordered_map>
 #include <vector>
-
-#include "libldb/types.hpp"
 
 namespace ldb {
 class Elf {
