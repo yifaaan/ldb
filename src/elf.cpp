@@ -1,3 +1,4 @@
+#include <cxxabi.h>
 #include <elf.h>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -5,10 +6,9 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <libldb/bit.hpp>
 #include <libldb/elf.hpp>
 #include <libldb/error.hpp>
-
-#include "libldb/bit.hpp"
 
 ldb::Elf::Elf(const std::filesystem::path& path) : path_{path} {
   if ((fd_ = open(path.c_str(), O_LARGEFILE | O_RDONLY)) < 0) {
@@ -33,6 +33,8 @@ ldb::Elf::Elf(const std::filesystem::path& path) : path_{path} {
 
   ParseSectionHeaders();
   BuildSectionNameMap();
+  ParseSymbolTable();
+  BuildSymbolMap();
 }
 
 ldb::Elf::~Elf() {
@@ -134,4 +136,80 @@ void ldb::Elf::BuildSectionNameMap() {
     auto name = GetSectionName(header.sh_name);
     section_header_map_[name] = &header;
   });
+}
+
+void ldb::Elf::ParseSymbolTable() {
+  auto opt_symtab_header = GetSectionHeader(".symtab");
+  if (!opt_symtab_header) {
+    opt_symtab_header = GetSectionHeader(".dynsym");
+    if (!opt_symtab_header) return;
+  }
+  auto symtab_header = *opt_symtab_header;
+  symbol_table_.reserve(symtab_header->sh_size / sizeof(Elf64_Sym));
+  std::copy(data_ + symtab_header->sh_offset,
+            data_ + symtab_header->sh_offset + symtab_header->sh_size,
+            reinterpret_cast<std::byte*>(symbol_table_.data()));
+}
+
+void ldb::Elf::BuildSymbolMap() {
+  std::ranges::for_each(symbol_table_, [this](auto& symbol) {
+    auto mangled_name = GetString(symbol.st_name);
+    int demangl_status;
+    auto demangled_name = abi::__cxa_demangle(mangled_name.data(), nullptr,
+                                              nullptr, &demangl_status);
+    if (demangl_status == 0) {
+      symbol_name_map_.insert({demangled_name, &symbol});
+      free(demangled_name);
+    }
+    symbol_name_map_.insert({mangled_name, &symbol});
+
+    if (symbol.st_value != 0 && symbol.st_name != 0 &&
+        ELF64_ST_TYPE(symbol.st_info) != STT_TLS) {
+      auto addr_range =
+          std::pair{FileAddr{*this, symbol.st_value},
+                    FileAddr{*this, symbol.st_value + symbol.st_size}};
+      symbol_addr_map_.insert({addr_range, &symbol});
+    }
+  });
+}
+
+std::vector<const Elf64_Sym*> ldb::Elf::GetSymbolsByName(
+    std::string_view name) const {
+  std::vector<const Elf64_Sym*> ret;
+  auto [begin, end] = symbol_name_map_.equal_range(name);
+  std::ranges::transform(begin, end, std::back_inserter(ret),
+                         [](const auto& p) { return p.second; });
+  return ret;
+}
+
+std::optional<const Elf64_Sym*> ldb::Elf::GetSymbolAtAddress(
+    FileAddr addr) const {
+  if (addr.elf() != this || !symbol_addr_map_.contains({addr, {}}))
+    return std::nullopt;
+  return symbol_addr_map_.at({addr, {}});
+}
+
+std::optional<const Elf64_Sym*> ldb::Elf::GetSymbolAtAddress(
+    VirtAddr addr) const {
+  return GetSymbolAtAddress(addr.ToFileAddr(*this));
+}
+
+std::optional<const Elf64_Sym*> ldb::Elf::GetSymbolContainingAddress(
+    FileAddr addr) const {
+  if (addr.elf() != this || symbol_addr_map_.empty()) return std::nullopt;
+  if (auto it = symbol_addr_map_.lower_bound({addr, {}});
+      it != std::end(symbol_addr_map_)) {
+    auto [begin, end] = it->first;
+    if (begin == addr) return it->second;
+    if (it == std::begin(symbol_addr_map_)) return std::nullopt;
+    it--;
+    auto [s, e] = it->first;
+    if (s < addr && addr < e) return it->second;
+  }
+  return std::nullopt;
+}
+
+std::optional<const Elf64_Sym*> ldb::Elf::GetSymbolContainingAddress(
+    VirtAddr addr) const {
+  return GetSymbolContainingAddress(addr.ToFileAddr(*this));
 }
