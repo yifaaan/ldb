@@ -1,6 +1,7 @@
 #include <cxxabi.h>
 #include <elf.h>
 #include <fcntl.h>
+#include <spdlog/spdlog.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -21,8 +22,9 @@ ldb::Elf::Elf(const std::filesystem::path& path) : path_{path} {
   }
   file_size_ = stats.st_size;
 
-  void* ret;
-  if ((ret = mmap(nullptr, file_size_, PROT_READ, MAP_SHARED, fd_, 0))) {
+  void* ret = nullptr;
+  if ((ret = mmap(nullptr, file_size_, PROT_READ, MAP_SHARED, fd_, 0)) ==
+      MAP_FAILED) {
     close(fd_);
     Error::SendErrno("Could not mmap ELF file");
   }
@@ -97,6 +99,13 @@ const Elf64_Shdr* ldb::Elf::GetSectionHeaderContainingAddress(
 
 const Elf64_Shdr* ldb::Elf::GetSectionHeaderContainingAddress(
     VirtAddr addr) const {
+  // SPDLOG_INFO("load_bias: {}", load_bias().addr());
+  // SPDLOG_INFO("section_headers_.size(): {}", section_headers_.size());
+  // SPDLOG_INFO("addr: {}", addr.addr());
+  // for (const auto& header : section_headers_) {
+  //   SPDLOG_INFO("begin: {}, end: {}", header.sh_addr + load_bias().addr(),
+  //               header.sh_addr + header.sh_size + load_bias().addr());
+  // }
   if (auto it = std::ranges::find_if(
           section_headers_,
           [&addr, this](const auto& header) {
@@ -122,6 +131,7 @@ void ldb::Elf::ParseSectionHeaders() {
   // e_shnum to 0 and stores the number of sections in the sh_size field of the
   // first section header.
   auto n_header = header_.e_shnum;
+
   if (n_header == 0 && header_.e_shentsize != 0) {
     n_header = FromBytes<Elf64_Shdr>(data_ + header_.e_shoff).sh_size;
   }
@@ -145,7 +155,8 @@ void ldb::Elf::ParseSymbolTable() {
     if (!opt_symtab_header) return;
   }
   auto symtab_header = *opt_symtab_header;
-  symbol_table_.reserve(symtab_header->sh_size / sizeof(Elf64_Sym));
+  symbol_table_.resize(symtab_header->sh_size / sizeof(Elf64_Sym));
+
   std::copy(data_ + symtab_header->sh_offset,
             data_ + symtab_header->sh_offset + symtab_header->sh_size,
             reinterpret_cast<std::byte*>(symbol_table_.data()));
@@ -196,7 +207,17 @@ std::optional<const Elf64_Sym*> ldb::Elf::GetSymbolAtAddress(
 
 std::optional<const Elf64_Sym*> ldb::Elf::GetSymbolContainingAddress(
     FileAddr addr) const {
+  // SPDLOG_INFO("addr: {}", addr.addr());
+  // SPDLOG_INFO("symbol_addr_map_.size(): {}", symbol_addr_map_.size());
+  // SPDLOG_INFO("this: {}, addr.elf(): {}", fmt::ptr(this),
+  // fmt::ptr(addr.elf()));
   if (addr.elf() != this || symbol_addr_map_.empty()) return std::nullopt;
+
+  // for (auto it = symbol_addr_map_.begin(); it != symbol_addr_map_.end();
+  // it++) {
+  //   SPDLOG_INFO("it->first.first: {}, it->first.second: {}",
+  //               it->first.first.addr(), it->first.second.addr());
+  // }
   if (auto it = symbol_addr_map_.lower_bound({addr, {}});
       it != std::end(symbol_addr_map_)) {
     auto [begin, end] = it->first;
@@ -206,10 +227,15 @@ std::optional<const Elf64_Sym*> ldb::Elf::GetSymbolContainingAddress(
     auto [s, e] = it->first;
     if (s < addr && addr < e) return it->second;
   }
+  // SPDLOG_INFO("not found");
   return std::nullopt;
 }
 
 std::optional<const Elf64_Sym*> ldb::Elf::GetSymbolContainingAddress(
     VirtAddr addr) const {
-  return GetSymbolContainingAddress(addr.ToFileAddr(*this));
+  // SPDLOG_INFO("addr: {}", addr.addr());
+  auto file_addr = addr.ToFileAddr(*this);
+  // SPDLOG_INFO("file_addr: {}", file_addr.addr());
+  // file_addr.elf()->PrintInfo();
+  return GetSymbolContainingAddress(file_addr);
 }

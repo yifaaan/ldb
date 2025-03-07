@@ -7,7 +7,9 @@ std::unique_ptr<ldb::Elf> CreateLoadedElf(const ldb::Process& process,
   auto auxv = process.GetAuxv();
 
   auto elf = std::make_unique<ldb::Elf>(path);
-  elf->NotifyLoaded(ldb::VirtAddr{auxv[AT_ENTRY]} - elf->header().e_entry);
+  // SPDLOG_INFO("auxv[AT_ENTRY]: {}", auxv[AT_ENTRY]);
+  // SPDLOG_INFO("elf->header().e_entry: {}", elf->header().e_entry);
+  elf->NotifyLoaded(ldb::VirtAddr{auxv[AT_ENTRY] - elf->header().e_entry});
   return elf;
 }
 }  // namespace

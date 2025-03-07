@@ -1,3 +1,4 @@
+#include <elf.h>
 #include <fmt/base.h>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
@@ -15,22 +16,22 @@
 #include <cstring>
 #include <iostream>
 #include <iterator>
+#include <libldb/breakpoint_site.hpp>
+#include <libldb/disassembler.hpp>
 #include <libldb/error.hpp>
 #include <libldb/libldb.hpp>
 #include <libldb/parse.hpp>
 #include <libldb/process.hpp>
 #include <libldb/register_info.hpp>
+#include <libldb/syscalls.hpp>
+#include <libldb/target.hpp>
+#include <libldb/types.hpp>
 #include <span>
 #include <sstream>
 #include <string>
 #include <type_traits>
 #include <variant>
 #include <vector>
-
-#include "libldb/breakpoint_site.hpp"
-#include "libldb/disassembler.hpp"
-#include "libldb/syscalls.hpp"
-#include "libldb/types.hpp"
 
 namespace {
 ldb::Process* LdbProcess = nullptr;
@@ -39,18 +40,18 @@ ldb::Process* LdbProcess = nullptr;
 // SIGSTOP to it.
 void HandleSigint(int) { kill(LdbProcess->pid(), SIGSTOP); }
 // attach to a process or a program
-std::unique_ptr<ldb::Process> Attach(int argc, const char** argv) {
+std::unique_ptr<ldb::Target> Attach(int argc, const char** argv) {
   // Passing PID
   if (argc == 3 && argv[1] == std::string_view("-p")) {
     pid_t pid = std::atoi(argv[2]);
-    return ldb::Process::Attach(pid);
+    return ldb::Target::Attach(pid);
   } else {
     // Passing program name.
     // We need to fork a child process to execute the program.
     const char* program_path = argv[1];
-    auto process = ldb::Process::Launch(program_path);
-    fmt::println("Launched process with PID {}", process->pid());
-    return process;
+    auto target = ldb::Target::Launch(program_path);
+    fmt::println("Launched process with PID {}", target->process().pid());
+    return target;
   }
 }
 
@@ -129,7 +130,6 @@ std::string GetSigtrapInfo(const ldb::Process& process,
     return " (single step)";
   }
   if (reason.trap_reason == ldb::TrapType::Syscall) {
-    SPDLOG_INFO("reason.trap_reason == ldb::TrapType::Syscall");
     const auto& info = *reason.syscall_info;
     std::string message = " ";
     if (info.entry) {
@@ -146,7 +146,28 @@ std::string GetSigtrapInfo(const ldb::Process& process,
   return "";
 }
 
-void PrintStopReason(const ldb::Process& process, ldb::StopReason reason) {
+std::string GetSignalStopReason(const ldb::Target& target,
+                                ldb::StopReason reason) {
+  auto& process = target.process();
+
+  auto message = fmt::format("stopped with signal {} at {:#x}",
+                             sigabbrev_np(reason.info), process.GetPc().addr());
+
+  // Get the symbol name at the current PC.
+  auto& elf = target.elf();
+  auto pc = process.GetPc();
+  auto func = elf.GetSymbolContainingAddress(pc);
+  // If the symbol is a function, add the function name to the message.
+  if (func && ELF64_ST_TYPE(func.value()->st_info) == STT_FUNC) {
+    message += fmt::format(" ({})", elf.GetString(func.value()->st_name));
+  }
+  if (reason.info == SIGTRAP) {
+    message += GetSigtrapInfo(process, reason);
+  }
+  return message;
+}
+
+void PrintStopReason(const ldb::Target& target, ldb::StopReason reason) {
   std::string message;
   switch (reason.reason) {
     case ldb::ProcessState::Exited:
@@ -158,18 +179,13 @@ void PrintStopReason(const ldb::Process& process, ldb::StopReason reason) {
           fmt::format("terminated with signal {}", sigabbrev_np(reason.info));
       break;
     case ldb::ProcessState::Stopped:
-      message = fmt::format("stopped with signal {} at {:#x}",
-                            sigabbrev_np(reason.info), process.GetPc().addr());
-      SPDLOG_INFO("reason.info: {}", reason.info);
-      if (reason.info == SIGTRAP) {
-        message += GetSigtrapInfo(process, reason);
-      }
+      message = GetSignalStopReason(target, reason);
       break;
       // default:
       //   fmt::println("unknown stop reason");
       //   break;
   }
-  fmt::println("Process {} {}", process.pid(), message);
+  fmt::println("Process {} {}", target.process().pid(), message);
 }
 
 void PrintDisassembly(ldb::Process& process, ldb::VirtAddr address,
@@ -181,10 +197,10 @@ void PrintDisassembly(ldb::Process& process, ldb::VirtAddr address,
   }
 }
 
-void HandleStop(ldb::Process& process, ldb::StopReason reason) {
-  PrintStopReason(process, reason);
+void HandleStop(ldb::Target& target, ldb::StopReason reason) {
+  PrintStopReason(target, reason);
   if (reason.reason == ldb::ProcessState::Stopped) {
-    PrintDisassembly(process, process.GetPc(), 5);
+    PrintDisassembly(target.process(), target.process().GetPc(), 5);
   }
 }
 
@@ -581,7 +597,6 @@ void HandleSyscallCatchpointCommand(ldb::Process& process,
     policy = ldb::SyscallCatchPolicy::CatchNone();
   } else if (args.size() >= 3) {
     auto syscalls = Split(args[2], ',');
-    SPDLOG_INFO("syscalls: {}", fmt::join(syscalls, ","));
     std::vector<int> to_catch;
     to_catch.reserve(syscalls.size());
 
@@ -612,16 +627,16 @@ void HandleCatchpointCommand(ldb::Process& process,
 }
 
 // handle command
-void HandleCommand(std::unique_ptr<ldb::Process>& process,
+void HandleCommand(std::unique_ptr<ldb::Target>& target,
                    std::string_view line) {
   auto args = Split(line, ' ');
   auto command = args[0];
+  auto process = &target->process();
 
   if (IsPrefix(command, "continue")) {
     process->Resume();
-    SPDLOG_INFO("continue");
     auto reason = process->WaitOnSignal();
-    HandleStop(*process, reason);
+    HandleStop(*target, reason);
   } else if (IsPrefix(command, "help")) {
     PrintHelp(args);
   } else if (IsPrefix(command, "register")) {
@@ -630,7 +645,7 @@ void HandleCommand(std::unique_ptr<ldb::Process>& process,
     HandleBreakpointCommand(*process, args);
   } else if (IsPrefix(command, "step")) {
     auto reason = process->StepInstruction();
-    HandleStop(*process, reason);
+    HandleStop(*target, reason);
   } else if (IsPrefix(command, "memory")) {
     HandleMemoryCommand(*process, args);
   } else if (IsPrefix(command, "disassemble")) {
@@ -644,7 +659,7 @@ void HandleCommand(std::unique_ptr<ldb::Process>& process,
   }
 }
 
-void MainLoop(std::unique_ptr<ldb::Process>& process) {
+void MainLoop(std::unique_ptr<ldb::Target>& target) {
   // For now, the child process is paused.
   // We can accept commands from the user.
   char* line = nullptr;
@@ -666,7 +681,7 @@ void MainLoop(std::unique_ptr<ldb::Process>& process) {
     // Handle the command.
     if (!line_str.empty()) {
       try {
-        HandleCommand(process, line_str);
+        HandleCommand(target, line_str);
       } catch (const ldb::Error& err) {
         fmt::println("{}", err.what());
       }
@@ -682,10 +697,10 @@ int main(int argc, const char** argv) {
     return -1;
   }
   try {
-    auto process = Attach(argc, argv);
-    LdbProcess = process.get();
+    auto target = Attach(argc, argv);
+    LdbProcess = &target->process();
     signal(SIGINT, HandleSigint);
-    MainLoop(process);
+    MainLoop(target);
   } catch (const ldb::Error& err) {
     fmt::println("{}", err.what());
   }

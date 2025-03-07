@@ -1,6 +1,7 @@
 #pragma once
 
 #include <elf.h>
+#include <spdlog/spdlog.h>
 
 #include <filesystem>
 #include <libldb/types.hpp>
@@ -70,6 +71,14 @@ class Elf {
   // Get the symbol containing a given virtual address.
   std::optional<const Elf64_Sym*> GetSymbolContainingAddress(
       VirtAddr addr) const;
+
+  // Debug function to print the symbol map.
+  void PrintInfo() const {
+    SPDLOG_INFO("path: {}", path_.string());
+    SPDLOG_INFO("load_bias: {}", load_bias_.addr());
+    SPDLOG_INFO("section_headers_.size(): {}", section_headers_.size());
+    SPDLOG_INFO("symbol_addr_map_.size(): {}", symbol_addr_map_.size());
+  }
 
  private:
   // Parse the section headers from the ELF file.

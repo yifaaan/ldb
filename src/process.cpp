@@ -644,7 +644,7 @@ ldb::StopReason ldb::Process::MaybeResumeFromSyscall(const StopReason& reason) {
 }
 
 std::unordered_map<uint64_t, std::uint64_t> ldb::Process::GetAuxv() const {
-  auto file = std::ifstream{"/proc" + std::to_string(pid_) + "/auxv"};
+  auto file = std::ifstream{"/proc/" + std::to_string(pid_) + "/auxv"};
   std::unordered_map<std::uint64_t, std::uint64_t> ret;
   std::uint64_t key, value;
 
