@@ -39,6 +39,7 @@ struct Abbrev {
   std::vector<AttrSpec> attrs;
 };
 
+class Die;
 class Dwarf;
 // .debug_info section is a list of compile units.
 // Each compile unit has a header and a list of DIEs.
@@ -74,7 +75,10 @@ class CompileUnit {
 
   std::span<const std::byte> data() const { return data_; }
 
-  const std::unordered_map<std::uint64_t, ldb::Abbrev>& abbrev_table() const;
+  const std::unordered_map<std::uint64_t, ldb::Abbrev>& abbrev_table();
+
+  // The compile unit's root DIE.
+  Die root();
 
  private:
   Dwarf* dwarf_ = nullptr;
@@ -106,5 +110,63 @@ class Dwarf {
       abbrev_tables_;
 
   std::vector<std::unique_ptr<CompileUnit>> compile_units_;
+};
+
+// DIE A (函数)
+// +------------------------+
+// | Abbrev Code (ULEB128) |  // 1: DW_TAG_subprogram
+// +------------------------+
+// | Attribute Values:      |
+// |   DW_AT_name: "main"   |
+// |   DW_AT_low_pc: 0x1000  |
+// |   DW_AT_high_pc: 0x1100  |
+// +------------------------+
+// | Children: yes          |  // has_children = 1
+// +------------------------+
+
+//   // 子项 DIE B (参数)
+//   DIE B
+//   +------------------------+
+//   | Abbrev Code (ULEB128) |  // 2: DW_TAG_formal_parameter
+//   +------------------------+
+//   | Attribute Values:      |
+//   |   DW_AT_name: "arg1"   |
+//   |   DW_AT_type: DW_TYPE_int |
+//   +------------------------+
+//   | Children: no           |  // has_children = 0
+//   +------------------------+
+
+//   // NULL 终止
+//   DIE NULL
+//   +------------------------+
+//   | Abbrev Code: 0        |  // 终止标记
+//   +------------------------+
+class Die {
+ public:
+  explicit Die(const std::byte* next) : next_{next} {}
+
+  Die(const std::byte* position, const CompileUnit* compile_unit,
+      const Abbrev* abbrev, std::vector<const std::byte*> attr_locations,
+      const std::byte* next)
+      : position_{position},
+        compile_unit_{compile_unit},
+        abbrev_{abbrev},
+        attr_locations_{std::move(attr_locations)},
+        next_{next} {}
+
+  const CompileUnit* compile_unit() const { return compile_unit_; }
+
+  const Abbrev* abbrev() const { return abbrev_; }
+
+  const std::byte* next() const { return next_; }
+
+  const std::byte* position() const { return position_; }
+
+ private:
+  const std::byte* position_ = nullptr;
+  const CompileUnit* compile_unit_ = nullptr;
+  const Abbrev* abbrev_ = nullptr;
+  const std::byte* next_ = nullptr;
+  std::vector<const std::byte*> attr_locations_;
 };
 }  // namespace ldb
