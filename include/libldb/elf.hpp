@@ -14,7 +14,7 @@
 namespace ldb {
 class Elf {
  public:
-  explicit Elf(const std::filesystem::path& path);
+  Elf(const std::filesystem::path& path);
   ~Elf();
 
   Elf(const Elf&) = delete;

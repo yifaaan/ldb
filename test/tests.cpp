@@ -12,6 +12,7 @@
 #include <libldb/process.hpp>
 #include <libldb/register_info.hpp>
 #include <libldb/syscalls.hpp>
+#include <libldb/target.hpp>
 #include <libldb/types.hpp>
 #include <regex>
 
@@ -509,4 +510,21 @@ TEST_CASE("Syscall catch points work", "[catchpoint]") {
   REQUIRE(reason.syscall_info->id == write_syscall);
   REQUIRE(reason.syscall_info->entry == false);
   close(dev_null);
+}
+
+TEST_CASE("ELF parser works", "[elf]") {
+  auto path = "test/targets/hello_ldb";
+  ldb::Elf elf{path};
+  auto entry = elf.header().e_entry;
+
+  auto sym = elf.GetSymbolAtAddress(FileAddr{elf, entry});
+  auto name = elf.GetString(sym.value()->st_name);
+  REQUIRE(name == "_start");
+  auto syms = elf.GetSymbolsByName("_start");
+  name = elf.GetString(syms.at(0)->st_name);
+  REQUIRE(name == "_start");
+  elf.NotifyLoaded(VirtAddr{0xcafecafe});
+  sym = elf.GetSymbolAtAddress(VirtAddr{0xcafecafe + entry});
+  name = elf.GetString(sym.value()->st_name);
+  REQUIRE(name == "_start");
 }
