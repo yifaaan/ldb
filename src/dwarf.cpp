@@ -2,6 +2,7 @@
 #include <libldb/bit.hpp>
 #include <libldb/dwarf.hpp>
 #include <libldb/elf.hpp>
+#include <libldb/error.hpp>
 #include <span>
 
 namespace {
@@ -146,7 +147,58 @@ std::unordered_map<std::uint64_t, ldb::Abbrev> ParseAbbrevTable(
 
   return table;
 }
+
+// Parse compile unit header.
+std::unique_ptr<ldb::CompileUnit> ParseCompileUnit(ldb::Dwarf& dwarf,
+                                                   const ldb::Elf& elf,
+                                                   Cursor& cursor) {
+  auto start = cursor.positon();
+  auto unit_length = cursor.u32();
+  auto version = cursor.u16();
+  auto abbrev_offset = cursor.u32();
+  auto address_size = cursor.u8();
+
+  if (unit_length == 0xffffffff) {
+    ldb::Error::Send("Only DWARF32 is supported");
+  }
+  if (version != 4) {
+    ldb::Error::Send("Only DWARF4 is supported");
+  }
+  if (address_size != 8) {
+    ldb::Error::Send("Only 64-bit address size is supported");
+  }
+
+  // Plus the size of unit_length.
+  unit_length += sizeof(std::uint32_t);
+  std::span<const std::byte> header{start, unit_length};
+  return std::make_unique<ldb::CompileUnit>(
+      dwarf, header, static_cast<std::size_t>(abbrev_offset));
+}
+
+// Parse compile units.
+std::vector<std::unique_ptr<ldb::CompileUnit>> ParseCompileUnits(
+    ldb::Dwarf& dwarf, const ldb::Elf& elf) {
+  auto debug_info = elf.GetSectionContents(".debug_info");
+  Cursor cursor{debug_info};
+
+  std::vector<std::unique_ptr<ldb::CompileUnit>> compile_units;
+  while (!cursor.Finished()) {
+    auto unit = ParseCompileUnit(dwarf, elf, cursor);
+    cursor += unit->data().size();
+    compile_units.emplace_back(std::move(unit));
+  }
+  return compile_units;
+}
 }  // namespace
+
+const std::unordered_map<std::uint64_t, ldb::Abbrev>&
+ldb::CompileUnit::abbrev_table() const {
+  return dwarf_->GetAbbrevTable(abbrev_offset_);
+}
+
+ldb::Dwarf::Dwarf(const ldb::Elf& elf) : elf_{&elf} {
+  compile_units_ = ParseCompileUnits(*this, elf);
+}
 
 const std::unordered_map<std::uint64_t, ldb::Abbrev>&
 ldb::Dwarf::GetAbbrevTable(std::size_t offset) {
