@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <libldb/types.hpp>
 #include <memory>
 #include <optional>
 #include <span>
@@ -39,6 +40,45 @@ struct Abbrev {
   std::uint64_t tag;
   std::uint64_t children;
   std::vector<AttrSpec> attrs;
+};
+
+class CompileUnit;
+class Die;
+class Attr {
+ public:
+  Attr(const CompileUnit* compile_unit, std::uint64_t type, std::uint64_t form,
+       const std::byte* location)
+      : compile_unit_{compile_unit},
+        type_{type},
+        form_{form},
+        location_{location} {}
+
+  std::uint64_t name() const { return type_; }
+
+  std::uint64_t form() const { return form_; }
+
+  // The attribute is DW_FORM_addr
+  FileAddr AsAddress() const;
+
+  // The attribute is DW_FORM_sec_offset
+  std::uint32_t AsSectionOffset() const;
+
+  // The attribute is DW_FORM_block
+  std::span<const std::byte> AsBlock() const;
+
+  std::uint64_t AsInt() const;
+
+  std::string_view AsString() const;
+
+  // The attribute is DW_FORM_ref_addr: a reference to a DIE in the same compile
+  // unit.
+  Die AsReference() const;
+
+ private:
+  const CompileUnit* compile_unit_;
+  std::uint64_t type_;
+  std::uint64_t form_;
+  const std::byte* location_;
 };
 
 class Die;
@@ -114,6 +154,8 @@ class Dwarf {
   std::vector<std::unique_ptr<CompileUnit>> compile_units_;
 };
 
+// DIE 在 .debug_info 节中的结构非常紧凑，不包含 form 信息
+// 因此需要通过 abbrev_table 来获取 form 信息
 // DIE A (函数)
 // +------------------------+
 // | Abbrev Code (ULEB128) |  // 1: DW_TAG_subprogram
@@ -163,6 +205,12 @@ class Die {
   const std::byte* next() const { return next_; }
 
   const std::byte* position() const { return position_; }
+
+  // Check if the DIE contains the attribute.
+  bool Contains(std::uint64_t attribute) const;
+
+  // Get the attribute value.
+  Attr operator[](std::uint64_t attribute) const;
 
   class ChildrenRange;
   ChildrenRange children() const;

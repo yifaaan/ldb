@@ -252,6 +252,7 @@ std::vector<std::unique_ptr<ldb::CompileUnit>> ParseCompileUnits(
   return compile_units;
 }
 
+// DIE 在 .debug_info 节中的结构非常紧凑，不包含 form 信息
 ldb::Die ParseDie(const ldb::CompileUnit& compile_unit, Cursor cursor) {
   auto die_start = cursor.positon();
   auto abbrev_code = cursor.uleb128();
@@ -260,6 +261,8 @@ ldb::Die ParseDie(const ldb::CompileUnit& compile_unit, Cursor cursor) {
     return ldb::Die{next};
   }
   const auto& abbrev_table = compile_unit.abbrev_table();
+
+  /* DIE Definition */
   // DIE 1:
   //   tag: DW_TAG_subprogram
   //   has_children: yes
@@ -276,6 +279,7 @@ ldb::Die ParseDie(const ldb::CompileUnit& compile_unit, Cursor cursor) {
   //     - name: DW_AT_low_pc, form: DW_FORM_addr
   //     - name: DW_AT_high_pc, form: DW_FORM_addr
 
+  /* Abbrev table Definition */
   // abbrev_code 1:
   // tag: DW_TAG_subprogram
   // has_children: yes
@@ -283,6 +287,15 @@ ldb::Die ParseDie(const ldb::CompileUnit& compile_unit, Cursor cursor) {
   //   - name: DW_AT_name, form: DW_FORM_string
   //   - name: DW_AT_low_pc, form: DW_FORM_addr
   //   - name: DW_AT_high_pc, form: DW_FORM_addr
+
+  /* Store structure */
+  //   +----------------------+
+  // | 缩写码(abbrev_code)  | ULEB128 编码
+  // +----------------------+
+  // | 属性值 1            | 格式取决于对应的 form
+  // | 属性值 2            | 格式取决于对应的 form
+  // | ...                 |
+  // +----------------------+
 
   // Use abbrev_table to get the abbrev.
   //   DIE 1:
@@ -311,6 +324,127 @@ ldb::Die ParseDie(const ldb::CompileUnit& compile_unit, Cursor cursor) {
 }
 }  // namespace
 
+ldb::FileAddr ldb::Attr::AsAddress() const {
+  Cursor cursor{{location_, std::to_address(std::end(compile_unit_->data()))}};
+  if (form_ != DW_FORM_addr) {
+    Error::Send("Invalid address type");
+  }
+  auto elf = compile_unit_->dwarf()->elf();
+  return FileAddr{*elf, cursor.u64()};
+}
+
+std::uint32_t ldb::Attr::AsSectionOffset() const {
+  Cursor cursor{{location_, std::to_address(std::end(compile_unit_->data()))}};
+  if (form_ != DW_FORM_sec_offset) {
+    Error::Send("Invalid section offset type");
+  }
+  return cursor.u32();
+}
+
+std::uint64_t ldb::Attr::AsInt() const {
+  Cursor cursor{{location_, std::to_address(std::end(compile_unit_->data()))}};
+  switch (form_) {
+    case DW_FORM_data1:
+      return cursor.u8();
+    case DW_FORM_data2:
+      return cursor.u16();
+    case DW_FORM_data4:
+      return cursor.u32();
+    case DW_FORM_data8:
+      return cursor.u64();
+    case DW_FORM_udata:
+      return cursor.uleb128();
+    default:
+      Error::Send("Invalid integer type");
+  }
+}
+
+std::span<const std::byte> ldb::Attr::AsBlock() const {
+  std::size_t size;
+  Cursor cursor{{location_, std::to_address(std::end(compile_unit_->data()))}};
+  switch (form_) {
+    case DW_FORM_block1:
+      size = cursor.u8();
+      break;
+    case DW_FORM_block2:
+      size = cursor.u16();
+      break;
+    case DW_FORM_block4:
+      size = cursor.u32();
+      break;
+    case DW_FORM_block:
+      size = cursor.uleb128();
+      break;
+    default:
+      Error::Send("Invalid block type");
+  }
+  return {cursor.positon(), size};
+}
+
+ldb::Die ldb::Attr::AsReference() const {
+  Cursor cursor{{location_, std::to_address(std::end(compile_unit_->data()))}};
+  // The offset is relative to the compile unit start.
+  std::size_t offset;
+  switch (form_) {
+    case DW_FORM_ref1:
+      offset = cursor.u8();
+      break;
+    case DW_FORM_ref2:
+      offset = cursor.u16();
+      break;
+    case DW_FORM_ref4:
+      offset = cursor.u32();
+      break;
+    case DW_FORM_ref8:
+      offset = cursor.u64();
+      break;
+    case DW_FORM_udata:
+      offset = cursor.uleb128();
+      break;
+    case DW_FORM_ref_addr: {
+      // DW_FORM_ref_addr 的偏移量是相对于整个 .debug_info 节的绝对偏移量
+      offset = cursor.u32();
+      auto section_content =
+          compile_unit_->dwarf()->elf()->GetSectionContents(".debug_info");
+      auto die_pos = std::next(std::begin(section_content), offset);
+      const auto& compile_units = compile_unit_->dwarf()->compile_units();
+      // 找到包含该DIE的编译单元
+      auto cu_found = std::ranges::find_if(compile_units, [&](const auto& cu) {
+        return std::begin(cu->data()) <= die_pos &&
+               die_pos < std::end(cu->data());
+      });
+      auto end = std::end(cu_found->get()->data());
+      Cursor ref_cursor{{std::to_address(die_pos), std::to_address(end)}};
+      return ParseDie(*cu_found->get(), ref_cursor);
+    }
+    default:
+      Error::Send("Invalid reference type");
+  }
+  Cursor ref_cursor{{std::next(std::begin(compile_unit_->data()), offset),
+                     std::end(compile_unit_->data())}};
+  return ParseDie(*compile_unit_, ref_cursor);
+}
+
+std::string_view ldb::Attr::AsString() const {
+  Cursor cursor{{location_, std::to_address(std::end(compile_unit_->data()))}};
+  switch (form_) {
+    // 直接从当前位置读取 null 终止的字符串
+    case DW_FORM_string:
+      return cursor.string();
+    // 存储一个 4 字节的偏移量，该偏移量指向 .debug_str 节中的位置
+    case DW_FORM_strp: {
+      auto offset = cursor.u32();
+      auto section_content =
+          compile_unit_->dwarf()->elf()->GetSectionContents(".debug_str");
+      Cursor stab_cursor{{std::next(std::begin(section_content), offset),
+                          std::end(section_content)}};
+      return stab_cursor.string();
+    }
+    default:
+      Error::Send("Invalid string type");
+  }
+}
+
 const std::unordered_map<std::uint64_t, ldb::Abbrev>&
 ldb::CompileUnit::abbrev_table() const {
   return dwarf_->GetAbbrevTable(abbrev_offset_);
@@ -333,6 +467,25 @@ ldb::Dwarf::GetAbbrevTable(std::size_t offset) {
     abbrev_tables_.emplace(offset, ParseAbbrevTable(*elf_, offset));
   }
   return abbrev_tables_.at(offset);
+}
+
+bool ldb::Die::Contains(std::uint64_t attribute) const {
+  const auto& attr_specs = abbrev_entry_->attrs;
+  return std::ranges::find_if(attr_specs, [=](const auto& attr_spec) {
+           return attr_spec.attr == attribute;
+         }) != std::end(attr_specs);
+}
+
+ldb::Attr ldb::Die::operator[](std::uint64_t attribute) const {
+  const auto& attr_specs = abbrev_entry_->attrs;
+  auto it = std::ranges::find_if(attr_specs, [=](const auto& attr_spec) {
+    return attr_spec.attr == attribute;
+  });
+  if (it == std::end(attr_specs)) {
+    ldb::Error::Send("Attribute not found");
+  }
+  return {compile_unit_, it->attr, it->form,
+          attr_locations_[std::distance(std::begin(attr_specs), it)]};
 }
 
 ldb::Die::ChildrenRange::iterator::iterator(const ldb::Die& die) {
