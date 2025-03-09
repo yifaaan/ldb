@@ -506,11 +506,14 @@ bool ldb::Die::ChildrenRange::iterator::operator==(const iterator& rhs) const {
 ldb::Die::ChildrenRange::iterator&
 ldb::Die::ChildrenRange::iterator::operator++() {
   if (!die_.has_value() || !die_->abbrev_entry()) return *this;
-  if (!die_->abbrev_entry()->children) {
+  if (!die_->abbrev_entry()->has_children) {
     // No children, just move to the next DIE.
     Cursor next_cursor{{die_->next(), std::to_address(std::end(
                                           die_->compile_unit()->data()))}};
     die_ = ParseDie(*die_->compile_unit_, next_cursor);
+  } else if (die_->Contains(DW_AT_sibling)) {
+    // 如果当前DIE包含DW_AT_sibling属性，则移动到下一个兄弟DIE
+    die_ = die_.value()[DW_AT_sibling].AsReference();
   } else {
     // Has children, find the first child.
     iterator sub_children{*die_};

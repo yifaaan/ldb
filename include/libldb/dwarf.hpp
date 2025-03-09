@@ -38,7 +38,7 @@ struct AttrSpec {
 struct Abbrev {
   std::uint64_t code;
   std::uint64_t tag;
-  std::uint64_t children;
+  std::uint64_t has_children;
   std::vector<AttrSpec> attrs;
 };
 
@@ -255,7 +255,7 @@ class Die::ChildrenRange {
   };
 
   iterator begin() const {
-    if (die_.abbrev_entry_->children) {
+    if (die_.abbrev_entry_->has_children) {
       return iterator{die_};
     }
     return end();
