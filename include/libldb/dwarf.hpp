@@ -81,6 +81,53 @@ class Attr {
   const std::byte* location_;
 };
 
+class CompileUnit;
+// base address selector
+// +--------------------+--------------------+
+// | 全部位设为 1       | 新基址            |
+// +--------------------+--------------------+
+//   0xFFFFFFFFFFFFFFFF    （实际基地址值）
+
+// range list
+// +--------------------+--------------------+
+// | 起始偏移量         | 结束偏移量         |
+// +--------------------+--------------------+
+
+// end of list
+// +--------------------+--------------------+
+// | 0                  | 0                  |
+// +--------------------+--------------------+
+
+// 0xFFFFFFFFFFFFFFFF 0x0000000000400000  // 基址选择器，设置基址为 0x400000
+// 0x0000000000000010 0x0000000000000020  // 范围 1：0x400010-0x400020
+// 0x0000000000000030 0x0000000000000040  // 范围 2：0x400030-0x400040
+// 0xFFFFFFFFFFFFFFFF 0x0000000000500000  // 新基址选择器，更改基址为 0x500000
+// 0x0000000000000005 0x0000000000000015  // 范围 3：0x500005-0x500015
+// 0x0000000000000000 0x0000000000000000  // 结束指示器
+class RangeList {
+ public:
+  RangeList(const CompileUnit* compile_unit, std::span<const std::byte> data,
+            FileAddr base_addr)
+      : compile_unit_{compile_unit}, data_{data}, base_addr_{base_addr} {}
+
+  struct Entry {
+    FileAddr low;
+    FileAddr high;
+
+    bool Contains(FileAddr addr) const { return low <= addr && addr < high; }
+  };
+
+  class iterator;
+  iterator begin() const;
+  iterator end() const;
+  bool Contains(FileAddr addr) const;
+
+ private:
+  const CompileUnit* compile_unit_;
+  std::span<const std::byte> data_;
+  FileAddr base_addr_;
+};
+
 class Die;
 class Dwarf;
 // .debug_info section is a list of compile units.
@@ -212,6 +259,9 @@ class Die {
   // Get the attribute value.
   Attr operator[](std::uint64_t attribute) const;
 
+  FileAddr LowPc() const;
+  FileAddr HighPc() const;
+
   class ChildrenRange;
   ChildrenRange children() const;
 
@@ -241,8 +291,8 @@ class Die::ChildrenRange {
 
     explicit iterator(const Die& die);
 
-    const Die& operator*() const { return *die_; }
-    const Die* operator->() const { return &die_.value(); }
+    reference operator*() const { return *die_; }
+    pointer operator->() const { return &die_.value(); }
 
     iterator& operator++();
     iterator operator++(int);
@@ -265,5 +315,40 @@ class Die::ChildrenRange {
 
  private:
   Die die_;
+};
+
+class RangeList::iterator {
+ public:
+  using value_type = RangeList::Entry;
+  using reference = const RangeList::Entry&;
+  using pointer = const RangeList::Entry*;
+  using difference_type = std::ptrdiff_t;
+  using iterator_category = std::forward_iterator_tag;
+
+  iterator() = default;
+  iterator(const iterator&) = default;
+  iterator& operator=(const iterator&) = default;
+
+  iterator(const CompileUnit* cu, std::span<const std::byte> data,
+           FileAddr base_addr);
+
+  reference operator*() const { return current_; }
+
+  pointer operator->() const { return &current_; }
+
+  bool operator==(const iterator& rhs) const {
+    return position_ == rhs.position_;
+  }
+  bool operator!=(const iterator& rhs) const { return !(*this == rhs); }
+
+  iterator& operator++();
+  iterator operator++(int);
+
+ private:
+  const CompileUnit* compile_unit_ = nullptr;
+  std::span<const std::byte> data_;
+  FileAddr base_addr_;
+  const std::byte* position_ = nullptr;
+  Entry current_;
 };
 }  // namespace ldb

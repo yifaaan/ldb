@@ -488,6 +488,21 @@ ldb::Attr ldb::Die::operator[](std::uint64_t attribute) const {
           attr_locations_[std::distance(std::begin(attr_specs), it)]};
 }
 
+ldb::FileAddr ldb::Die::LowPc() const {
+  return operator[](DW_AT_low_pc).AsAddress();
+}
+
+ldb::FileAddr ldb::Die::HighPc() const {
+  auto attr = operator[](DW_AT_high_pc);
+  ldb::FileAddr addr;
+  if (attr.form() == DW_FORM_addr) {
+    addr = attr.AsAddress();
+  } else {
+    addr = LowPc() + attr.AsInt();
+  }
+  return {*compile_unit_->dwarf()->elf(), addr.addr()};
+}
+
 ldb::Die::ChildrenRange::iterator::iterator(const ldb::Die& die) {
   auto end = die.compile_unit()->data().end();
   Cursor next_cursor{{die.next(), std::to_address(end)}};
@@ -536,4 +551,49 @@ ldb::Die::ChildrenRange::iterator ldb::Die::ChildrenRange::iterator::operator++(
 
 ldb::Die::ChildrenRange ldb::Die::children() const {
   return ChildrenRange{*this};
+}
+
+ldb::RangeList::iterator::iterator(const CompileUnit* cu,
+                                   std::span<const std::byte> data,
+                                   FileAddr base_addr)
+    : compile_unit_{cu},
+      data_{data},
+      base_addr_{base_addr},
+      position_{std::to_address(std::begin(data))} {
+  ++(*this);
+}
+
+ldb::RangeList::iterator& ldb::RangeList::iterator::operator++() {
+  // 0xFFFFFFFFFFFFFFFF 0x0000000000400000  // 基址选择器，设置基址为 0x400000
+  // 0x0000000000000010 0x0000000000000020  // 范围 1：0x400010-0x400020
+  // 0x0000000000000030 0x0000000000000040  // 范围 2：0x400030-0x400040
+  // 0xFFFFFFFFFFFFFFFF 0x0000000000500000  // 新基址选择器，更改基址为 0x500000
+  // 0x0000000000000005 0x0000000000000015  // 范围 3：0x500005-0x500015
+  // 0x0000000000000000 0x0000000000000000  // 结束指示器
+  auto elf = compile_unit_->dwarf()->elf();
+  static constexpr auto base_addr_flag = 0xFFFFFFFFFFFFFFFF;
+
+  Cursor cursor{{position_, std::to_address(std::end(data_))}};
+  while (true) {
+    current_.low = FileAddr{*elf, cursor.u64()};
+    current_.high = FileAddr{*elf, cursor.u64()};
+    if (current_.low.addr() == base_addr_flag) {
+      base_addr_ = current_.high;
+    } else if (current_.low.addr() == 0 && current_.high.addr() == 0) {
+      position_ = nullptr;
+      break;
+    } else {
+      position_ = cursor.positon();
+      current_.low += base_addr_.addr();
+      current_.high += base_addr_.addr();
+      break;
+    }
+  }
+  return *this;
+}
+
+ldb::RangeList::iterator ldb::RangeList::iterator::operator++(int) {
+  auto tmp = *this;
+  ++(*this);
+  return tmp;
 }
