@@ -25,7 +25,9 @@ class Cursor {
 
   const std::byte* positon() const { return position_; }
 
-  bool Finished() const { return position_ >= data_.data() + data_.size(); }
+  bool Finished() const {
+    return position_ >= std::to_address(std::end(data_));
+  }
 
   template <typename T>
   T FixedInt() {
@@ -250,7 +252,7 @@ std::vector<std::unique_ptr<ldb::CompileUnit>> ParseCompileUnits(
   return compile_units;
 }
 
-ldb::Die ParseDie(ldb::CompileUnit& compile_unit, Cursor cursor) {
+ldb::Die ParseDie(const ldb::CompileUnit& compile_unit, Cursor cursor) {
   auto die_start = cursor.positon();
   auto abbrev_code = cursor.uleb128();
   if (abbrev_code == 0) {
@@ -310,7 +312,7 @@ ldb::Die ParseDie(ldb::CompileUnit& compile_unit, Cursor cursor) {
 }  // namespace
 
 const std::unordered_map<std::uint64_t, ldb::Abbrev>&
-ldb::CompileUnit::abbrev_table() {
+ldb::CompileUnit::abbrev_table() const {
   return dwarf_->GetAbbrevTable(abbrev_offset_);
 }
 
@@ -331,4 +333,51 @@ ldb::Dwarf::GetAbbrevTable(std::size_t offset) {
     abbrev_tables_.emplace(offset, ParseAbbrevTable(*elf_, offset));
   }
   return abbrev_tables_.at(offset);
+}
+
+ldb::Die::ChildrenRange::iterator::iterator(const ldb::Die& die) {
+  auto end = die.compile_unit()->data().end();
+  Cursor next_cursor{{die.next(), std::to_address(end)}};
+  die_ = ParseDie(*die.compile_unit_, next_cursor);
+}
+
+bool ldb::Die::ChildrenRange::iterator::operator==(const iterator& rhs) const {
+  auto lhs_null = !die_.has_value() || !die_->abbrev_entry();
+  auto rhs_null = !rhs.die_.has_value() || !rhs.die_->abbrev_entry();
+  if (lhs_null && rhs_null) return true;
+  if (lhs_null || rhs_null) return false;
+  return die_->abbrev_entry() == rhs.die_->abbrev_entry() &&
+         die_->next() == rhs->next();
+}
+
+ldb::Die::ChildrenRange::iterator&
+ldb::Die::ChildrenRange::iterator::operator++() {
+  if (!die_.has_value() || !die_->abbrev_entry()) return *this;
+  if (!die_->abbrev_entry()->children) {
+    // No children, just move to the next DIE.
+    Cursor next_cursor{{die_->next(), std::to_address(std::end(
+                                          die_->compile_unit()->data()))}};
+    die_ = ParseDie(*die_->compile_unit_, next_cursor);
+  } else {
+    // Has children, find the first child.
+    iterator sub_children{*die_};
+    // Skip all sub-children.
+    while (sub_children->abbrev_entry_) ++sub_children;
+    Cursor next_cursor{
+        {sub_children->next(),
+         std::to_address(std::end(die_->compile_unit()->data()))}};
+    die_ = ParseDie(*die_->compile_unit_, next_cursor);
+  }
+  return *this;
+}
+
+ldb::Die::ChildrenRange::iterator ldb::Die::ChildrenRange::iterator::operator++(
+    int) {
+  auto tmp = *this;
+  ++(*this);
+  return tmp;
+}
+
+ldb::Die::ChildrenRange ldb::Die::children() const {
+  return ChildrenRange{*this};
 }

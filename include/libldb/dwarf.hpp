@@ -4,7 +4,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
+#include <optional>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -75,7 +77,7 @@ class CompileUnit {
 
   std::span<const std::byte> data() const { return data_; }
 
-  const std::unordered_map<std::uint64_t, ldb::Abbrev>& abbrev_table();
+  const std::unordered_map<std::uint64_t, ldb::Abbrev>& abbrev_table() const;
 
   // The compile unit's root DIE.
   Die root();
@@ -150,23 +152,70 @@ class Die {
       const std::byte* next)
       : position_{position},
         compile_unit_{compile_unit},
-        abbrev_{abbrev},
+        abbrev_entry_{abbrev},
         attr_locations_{std::move(attr_locations)},
         next_{next} {}
 
   const CompileUnit* compile_unit() const { return compile_unit_; }
 
-  const Abbrev* abbrev() const { return abbrev_; }
+  const Abbrev* abbrev_entry() const { return abbrev_entry_; }
 
   const std::byte* next() const { return next_; }
 
   const std::byte* position() const { return position_; }
 
+  class ChildrenRange;
+  ChildrenRange children() const;
+
  private:
   const std::byte* position_ = nullptr;
   const CompileUnit* compile_unit_ = nullptr;
-  const Abbrev* abbrev_ = nullptr;
+  const Abbrev* abbrev_entry_ = nullptr;
   const std::byte* next_ = nullptr;
   std::vector<const std::byte*> attr_locations_;
+};
+
+class Die::ChildrenRange {
+ public:
+  explicit ChildrenRange(Die die) : die_{std::move(die)} {}
+
+  class iterator {
+   public:
+    using value_type = Die;
+    using reference = const Die&;
+    using pointer = const Die*;
+    using difference_type = std::ptrdiff_t;
+    using iterator_category = std::forward_iterator_tag;
+
+    iterator() = default;
+    iterator(const iterator&) = default;
+    iterator& operator=(const iterator&) = default;
+
+    explicit iterator(const Die& die);
+
+    const Die& operator*() const { return *die_; }
+    const Die* operator->() const { return &die_.value(); }
+
+    iterator& operator++();
+    iterator operator++(int);
+
+    bool operator==(const iterator& rhs) const;
+    bool operator!=(const iterator& rhs) const { return !(*this == rhs); }
+
+   private:
+    std::optional<Die> die_;
+  };
+
+  iterator begin() const {
+    if (die_.abbrev_entry_->children) {
+      return iterator{die_};
+    }
+    return end();
+  }
+
+  iterator end() const { return {}; }
+
+ private:
+  Die die_;
 };
 }  // namespace ldb
