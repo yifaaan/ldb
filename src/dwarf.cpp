@@ -445,12 +445,28 @@ std::string_view ldb::Attr::AsString() const {
   }
 }
 
+ldb::RangeList ldb::Attr::AsRangeList() const {
+  auto section_content =
+      compile_unit_->dwarf()->elf()->GetSectionContents(".debug_ranges");
+  // For DW_AT_ranges, the value is a section offset.
+  auto offset = AsSectionOffset();
+  std::span<const std::byte> data{std::begin(section_content) + offset,
+                                  std::end(section_content)};
+
+  // Root die contains DW_AT_low_pc and DW_AT_high_pc or DW_AT_ranges.
+  auto root = compile_unit_->root();
+
+  FileAddr base_address =
+      root.Contains(DW_AT_low_pc) ? root[DW_AT_low_pc].AsAddress() : FileAddr{};
+  return {compile_unit_, data, base_address};
+}
+
 const std::unordered_map<std::uint64_t, ldb::Abbrev>&
 ldb::CompileUnit::abbrev_table() const {
   return dwarf_->GetAbbrevTable(abbrev_offset_);
 }
 
-ldb::Die ldb::CompileUnit::root() {
+ldb::Die ldb::CompileUnit::root() const {
   std::size_t header_size = 11;
   // Point to the first DIE.
   Cursor cursor{data_.subspan(header_size)};
@@ -489,18 +505,44 @@ ldb::Attr ldb::Die::operator[](std::uint64_t attribute) const {
 }
 
 ldb::FileAddr ldb::Die::LowPc() const {
-  return operator[](DW_AT_low_pc).AsAddress();
+  if (Contains(DW_AT_ranges)) {
+    return operator[](DW_AT_ranges).AsRangeList().begin()->low;
+  } else if (Contains(DW_AT_low_pc)) {
+    return operator[](DW_AT_low_pc).AsAddress();
+  }
+  Error::Send("DIE does not have low pc");
 }
 
 ldb::FileAddr ldb::Die::HighPc() const {
-  auto attr = operator[](DW_AT_high_pc);
-  ldb::FileAddr addr;
-  if (attr.form() == DW_FORM_addr) {
-    addr = attr.AsAddress();
-  } else {
-    addr = LowPc() + attr.AsInt();
+  if (Contains(DW_AT_ranges)) {
+    auto range = operator[](DW_AT_ranges).AsRangeList();
+    auto begin = range.begin();
+    while (std::next(begin) != std::end(range)) ++begin;
+    return begin->high;
+
+  } else if (Contains(DW_AT_high_pc)) {
+    auto attr = operator[](DW_AT_high_pc);
+    if (attr.form() == DW_FORM_addr) {
+      // Absolute address.
+      return attr.AsAddress();
+    } else {
+      // Relative to the low pc.
+      return LowPc() + attr.AsInt();
+    }
   }
-  return {*compile_unit_->dwarf()->elf(), addr.addr()};
+  Error::Send("DIE does not have high pc");
+}
+
+bool ldb::Die::ContainsAddress(FileAddr addr) const {
+  if (addr.elf() != compile_unit_->dwarf()->elf()) {
+    return false;
+  }
+  if (Contains(DW_AT_ranges)) {
+    return (*this)[DW_AT_ranges].AsRangeList().Contains(addr);
+  } else if (Contains(DW_AT_low_pc)) {
+    return LowPc() <= addr && addr < HighPc();
+  }
+  return false;
 }
 
 ldb::Die::ChildrenRange::iterator::iterator(const ldb::Die& die) {
@@ -551,6 +593,17 @@ ldb::Die::ChildrenRange::iterator ldb::Die::ChildrenRange::iterator::operator++(
 
 ldb::Die::ChildrenRange ldb::Die::children() const {
   return ChildrenRange{*this};
+}
+
+ldb::RangeList::iterator ldb::RangeList::begin() const {
+  return {compile_unit_, data_, base_addr_};
+}
+
+ldb::RangeList::iterator ldb::RangeList::end() const { return {}; }
+
+bool ldb::RangeList::Contains(FileAddr addr) const {
+  return std::ranges::any_of(begin(), end(),
+                             [=](const auto& e) { return e.Contains(addr); });
 }
 
 ldb::RangeList::iterator::iterator(const CompileUnit* cu,

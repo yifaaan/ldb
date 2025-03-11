@@ -44,6 +44,8 @@ struct Abbrev {
 
 class CompileUnit;
 class Die;
+class RangeList;
+// A die has a list of attributes.
 class Attr {
  public:
   Attr(const CompileUnit* compile_unit, std::uint64_t type, std::uint64_t form,
@@ -73,6 +75,9 @@ class Attr {
   // The attribute is DW_FORM_ref_addr: a reference to a DIE in the same compile
   // unit.
   Die AsReference() const;
+
+  // The attribute is DW_AT_ranges. Then the value is a section offset.
+  RangeList AsRangeList() const;
 
  private:
   const CompileUnit* compile_unit_;
@@ -104,6 +109,8 @@ class CompileUnit;
 // 0xFFFFFFFFFFFFFFFF 0x0000000000500000  // 新基址选择器，更改基址为 0x500000
 // 0x0000000000000005 0x0000000000000015  // 范围 3：0x500005-0x500015
 // 0x0000000000000000 0x0000000000000000  // 结束指示器
+
+// In section .debug_ranges, to
 class RangeList {
  public:
   RangeList(const CompileUnit* compile_unit, std::span<const std::byte> data,
@@ -167,7 +174,7 @@ class CompileUnit {
   const std::unordered_map<std::uint64_t, ldb::Abbrev>& abbrev_table() const;
 
   // The compile unit's root DIE.
-  Die root();
+  Die root() const;
 
  private:
   Dwarf* dwarf_ = nullptr;
@@ -261,6 +268,8 @@ class Die {
 
   FileAddr LowPc() const;
   FileAddr HighPc() const;
+
+  bool ContainsAddress(FileAddr addr) const;
 
   class ChildrenRange;
   ChildrenRange children() const;
