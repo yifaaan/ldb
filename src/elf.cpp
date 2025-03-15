@@ -10,6 +10,7 @@
 #include <libldb/bit.hpp>
 #include <libldb/elf.hpp>
 #include <libldb/error.hpp>
+#include <libldb/dwarf.hpp>
 
 ldb::Elf::Elf(const std::filesystem::path& path) : path_{path} {
   if ((fd_ = open(path.c_str(), O_LARGEFILE | O_RDONLY)) < 0) {
@@ -37,6 +38,7 @@ ldb::Elf::Elf(const std::filesystem::path& path) : path_{path} {
   BuildSectionNameMap();
   ParseSymbolTable();
   BuildSymbolMap();
+  dwarf_ = std::make_unique<Dwarf>(*this);
 }
 
 ldb::Elf::~Elf() {

@@ -12,6 +12,7 @@
 #include <vector>
 
 namespace ldb {
+class Dwarf;
 class Elf {
  public:
   Elf(const std::filesystem::path& path);
@@ -72,6 +73,9 @@ class Elf {
   std::optional<const Elf64_Sym*> GetSymbolContainingAddress(
       VirtAddr addr) const;
 
+  Dwarf& dwarf() { return *dwarf_; }
+  const Dwarf& dwarf() const { return *dwarf_; }
+
   // Debug function to print the symbol map.
   void PrintInfo() const {
     SPDLOG_INFO("path: {}", path_.string());
@@ -123,5 +127,7 @@ class Elf {
   // Map of symbol addresses to symbol table entries
   std::map<std::pair<FileAddr, FileAddr>, Elf64_Sym*, decltype(RangeComparator)>
       symbol_addr_map_;
+
+  std::unique_ptr<Dwarf> dwarf_;
 };
 }  // namespace ldb

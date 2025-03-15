@@ -197,7 +197,24 @@ class Dwarf {
     return compile_units_;
   }
 
+  const CompileUnit* CompileUnitContainingAddress(FileAddr address) const;
+
+  std::optional<Die> FunctionContainingAddress(FileAddr address) const;
+
+  std::vector<Die> FindFunctions(std::string name) const;
+
  private:
+  // Indexing the entire set of DIEs
+  void Index() const;
+
+  // Indexing a single DIE
+  void IndexDie(const Die& current) const;
+
+  struct IndexEntry {
+    const CompileUnit* compile_unit;
+    const std::byte* position;
+  };
+
   const Elf* elf_;
 
   // One compile unit has one abbrev table.
@@ -206,6 +223,8 @@ class Dwarf {
       abbrev_tables_;
 
   std::vector<std::unique_ptr<CompileUnit>> compile_units_;
+
+  mutable std::unordered_multimap<std::string, IndexEntry> function_index_;
 };
 
 // DIE 在 .debug_info 节中的结构非常紧凑，不包含 form 信息
@@ -270,6 +289,8 @@ class Die {
   FileAddr HighPc() const;
 
   bool ContainsAddress(FileAddr addr) const;
+
+  std::optional<std::string_view> Name() const;
 
   class ChildrenRange;
   ChildrenRange children() const;

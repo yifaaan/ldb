@@ -485,6 +485,64 @@ ldb::Dwarf::GetAbbrevTable(std::size_t offset) {
   return abbrev_tables_.at(offset);
 }
 
+
+const ldb::CompileUnit* ldb::Dwarf::CompileUnitContainingAddress(FileAddr address) const {
+  for (const auto& cu : compile_units_) {
+    if (cu->root().ContainsAddress(address)) {
+      return cu.get();
+    }
+  }
+  return nullptr;
+}
+
+std::optional<ldb::Die> ldb::Dwarf::FunctionContainingAddress(FileAddr address) const {
+  Index();
+  for (auto& [name, entry] : function_index_) {
+    Cursor cursor{{entry.position, std::to_address(std::end(entry.compile_unit->data()))}};
+    auto d = ParseDie(*entry.compile_unit, cursor);
+    if (d.ContainsAddress(address) && d.abbrev_entry()->tag == DW_TAG_subprogram) {
+      return d;
+    }
+  }
+  return std::nullopt;
+}
+
+std::vector<ldb::Die> ldb::Dwarf::FindFunctions(std::string name) const {
+  Index();
+  std::vector<Die> found;
+  auto [begin, end] = function_index_.equal_range(name);
+  std::ranges::transform(begin, end, std::back_inserter(found), [](auto& p) {
+    auto [name, entry] = p;
+    Cursor cursor{{entry.position, std::to_address(std::end(entry.compile_unit->data()))}};
+    return ParseDie(*entry.compile_unit, cursor);
+  });
+  return found;
+}
+
+void ldb::Dwarf::Index() const {
+  if (!function_index_.empty()) {
+    return;
+  }
+  for (const auto& cu : compile_units_) {
+    IndexDie(cu->root());
+  }
+}
+
+void ldb::Dwarf::IndexDie(const ldb::Die& current) const {
+  bool has_range = current.Contains(DW_AT_low_pc) && current.Contains(DW_AT_high_pc);
+  bool is_function = current.abbrev_entry()->tag == DW_TAG_subprogram || current.abbrev_entry()->tag == DW_TAG_inlined_subroutine;
+  if (has_range && is_function) {
+    if (auto name = current.Name(); name) {
+      IndexEntry entry{current.compile_unit(), current.position()};
+      function_index_.emplace(*name, entry);
+    }
+  }
+  for (auto child : current.children()) {
+    IndexDie(child);
+  }
+}
+
+
 bool ldb::Die::Contains(std::uint64_t attribute) const {
   const auto& attr_specs = abbrev_entry_->attrs;
   return std::ranges::find_if(attr_specs, [=](const auto& attr_spec) {
@@ -543,6 +601,22 @@ bool ldb::Die::ContainsAddress(FileAddr addr) const {
     return LowPc() <= addr && addr < HighPc();
   }
   return false;
+}
+
+std::optional<std::string_view> ldb::Die::Name() const {
+  // Function name
+  if (Contains(DW_AT_name)) {
+    return operator[](DW_AT_name).AsString();
+  }
+  // External name, reference to another DIE
+  if (Contains(DW_AT_specification)) {
+    return operator[](DW_AT_specification).AsReference().Name();
+  }
+  // Inline function, reference to another DIE
+  if (Contains(DW_AT_abstract_origin)) {
+    return operator[](DW_AT_abstract_origin).AsReference().Name();
+  }
+  return std::nullopt;
 }
 
 ldb::Die::ChildrenRange::iterator::iterator(const ldb::Die& die) {
