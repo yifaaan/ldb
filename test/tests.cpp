@@ -16,6 +16,8 @@
 #include <libldb/types.hpp>
 #include <regex>
 
+#include <libldb/detail/dwarf.h>
+
 using namespace ldb;
 namespace {
 // Check if the process exists.
@@ -527,4 +529,52 @@ TEST_CASE("ELF parser works", "[elf]") {
   sym = elf.GetSymbolAtAddress(VirtAddr{0xcafecafe + entry});
   name = elf.GetString(sym.value()->st_name);
   REQUIRE(name == "_start");
+}
+
+#include <libldb/dwarf.hpp>
+
+TEST_CASE("Correct DWARF language", "[dwarf]") {
+  auto path = "test/targets/hello_ldb";
+  ldb::Elf elf{path};
+  auto& compile_units = elf.dwarf().compile_units();
+  REQUIRE(compile_units.size() == 1);
+
+  auto& cu = compile_units[0];
+  auto language = cu->root()[DW_AT_language].AsInt();
+  REQUIRE(language == DW_LANG_C_plus_plus);
+}
+
+TEST_CASE("Iterator DWARF", "[dwarf]") {
+  auto path = "test/targets/hello_ldb";
+  ldb::Elf elf{path};
+  auto& compile_units = elf.dwarf().compile_units();
+  REQUIRE(compile_units.size() == 1);
+
+  auto& cu = compile_units[0];
+  std::size_t count = 0;
+  for (auto& die : cu->root().children()) {
+    auto a = die.abbrev_entry();
+    REQUIRE(a->code != 0);
+    count++;
+  }
+  REQUIRE(count > 0);
+}
+
+TEST_CASE("Find main", "[dwarf]") {
+  auto path = "test/targets/multi_cu";
+  ldb::Elf elf{path};
+  ldb::Dwarf dwarf{elf};
+
+  bool found = false;
+  for (auto& cu : dwarf.compile_units()) {
+    for (auto& die : cu->root().children()) {
+      if (die.abbrev_entry()->tag == DW_TAG_subprogram && die.Contains(DW_AT_name)) {
+        auto name = die[DW_AT_name].AsString();
+        if (name == "main") {
+          found = true;
+        }
+      }
+    }
+  }
+  REQUIRE(found);
 }

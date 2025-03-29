@@ -6,7 +6,7 @@
 #include <libldb/elf.hpp>
 #include <libldb/error.hpp>
 #include <span>
-
+#include <format>
 namespace {
 class Cursor {
  public:
@@ -53,7 +53,7 @@ class Cursor {
   std::int64_t s64() { return FixedInt<std::int64_t>(); }
 
   std::string_view string() {
-    auto null_terminator =
+    const auto null_terminator =
         std::find(position_, data_.data() + data_.size(), std::byte{0});
     std::string_view ret{reinterpret_cast<const char*>(position_),
                          static_cast<std::size_t>(null_terminator - position_)};
@@ -75,18 +75,18 @@ class Cursor {
   }
 
   std::int64_t sleb128() {
-    std::int64_t result = 0;
+    std::uint64_t result = 0;
     int shift = 0;
     std::uint8_t byte = 0;
     do {
       byte = s8();
-      auto mask = static_cast<std::int64_t>(byte & 0x7f);
+      auto mask = static_cast<std::uint64_t>(byte & 0x7f);
       result |= mask << shift;
       shift += 7;
     } while ((byte & 0x80) != 0);
 
     if ((shift < sizeof(result) * 8) && (byte & 0x40) != 0) {
-      result |= ~static_cast<std::int64_t>(0) << shift;
+      result |= (~static_cast<std::uint64_t>(0) << shift);
     }
     return result;
   }
@@ -145,7 +145,7 @@ class Cursor {
         SkipForm(uleb128());
         break;
       default:
-        ldb::Error::Send("Unrecognized DWARF form");
+        ldb::Error::Send(std::format("Unrecognized DWARF form: {}", form));
     }
   }
 
@@ -207,6 +207,7 @@ std::unordered_map<std::uint64_t, ldb::Abbrev> ParseAbbrevTable(
 
   } while (code != 0);
 
+  
   return table;
 }
 
@@ -234,7 +235,7 @@ std::unique_ptr<ldb::CompileUnit> ParseCompileUnit(ldb::Dwarf& dwarf,
   unit_length += sizeof(std::uint32_t);
   std::span<const std::byte> data{start, unit_length};
   return std::make_unique<ldb::CompileUnit>(
-      dwarf, data, static_cast<std::size_t>(abbrev_offset));
+      dwarf, data, abbrev_offset);
 }
 
 // Parse compile units.
@@ -311,6 +312,20 @@ ldb::Die ParseDie(const ldb::CompileUnit& compile_unit, Cursor cursor) {
   //     - "function2"
   //     - 0x2000
   //     - 0x2100
+  // 使用 find() 查找缩写码
+  auto abbrev_it = abbrev_table.find(abbrev_code);
+
+  // 检查是否找到了缩写码
+  if (abbrev_it == abbrev_table.end()) {
+    // 缩写码未找到，可以记录错误并返回一个无效的 DIE
+    // 例如，使用 SPDLOG 或其他日志库:
+    // SPDLOG_WARN("Unknown abbreviation code: {} in CU at offset {}", abbrev_code, ...);
+    
+    // 跳过这个无效的 DIE，或者返回一个表示错误的 DIE
+    // 这里我们简单地返回一个标记结束的 DIE
+    auto next = cursor.positon(); // 可能需要根据 DWARF 规范调整如何跳过
+    return ldb::Die{next}; 
+  }
   const auto& abbrev = abbrev_table.at(abbrev_code);
   std::vector<const std::byte*> attr_locations;
   attr_locations.reserve(abbrev.attrs.size());
@@ -409,13 +424,15 @@ ldb::Die ldb::Attr::AsReference() const {
       auto die_pos = std::next(std::begin(section_content), offset);
       const auto& compile_units = compile_unit_->dwarf()->compile_units();
       // 找到包含该DIE的编译单元
-      auto cu_found = std::ranges::find_if(compile_units, [&](const auto& cu) {
+      auto cu_found = [=](const auto& cu) {
         return std::begin(cu->data()) <= die_pos &&
                die_pos < std::end(cu->data());
-      });
-      auto end = std::end(cu_found->get()->data());
+      };
+      auto cu_for_offset = std::find_if(std::begin(compile_units), std::end(compile_units), cu_found);
+      
+      auto end = std::end(cu_for_offset->get()->data());
       Cursor ref_cursor{{std::to_address(die_pos), std::to_address(end)}};
-      return ParseDie(*cu_found->get(), ref_cursor);
+      return ParseDie(**cu_for_offset, ref_cursor);
     }
     default:
       Error::Send("Invalid reference type");
@@ -469,7 +486,8 @@ ldb::CompileUnit::abbrev_table() const {
 ldb::Die ldb::CompileUnit::root() const {
   std::size_t header_size = 11;
   // Point to the first DIE.
-  Cursor cursor{data_.subspan(header_size)};
+  // Cursor cursor{data_.subspan(header_size)};
+  Cursor cursor{{std::to_address(std::begin(data_) + header_size), std::to_address(std::end(data_))}};
   return ParseDie(*this, cursor);
 }
 
@@ -485,8 +503,8 @@ ldb::Dwarf::GetAbbrevTable(std::size_t offset) {
   return abbrev_tables_.at(offset);
 }
 
-
-const ldb::CompileUnit* ldb::Dwarf::CompileUnitContainingAddress(FileAddr address) const {
+const ldb::CompileUnit* ldb::Dwarf::CompileUnitContainingAddress(
+    FileAddr address) const {
   for (const auto& cu : compile_units_) {
     if (cu->root().ContainsAddress(address)) {
       return cu.get();
@@ -495,12 +513,15 @@ const ldb::CompileUnit* ldb::Dwarf::CompileUnitContainingAddress(FileAddr addres
   return nullptr;
 }
 
-std::optional<ldb::Die> ldb::Dwarf::FunctionContainingAddress(FileAddr address) const {
+std::optional<ldb::Die> ldb::Dwarf::FunctionContainingAddress(
+    FileAddr address) const {
   Index();
   for (auto& [name, entry] : function_index_) {
-    Cursor cursor{{entry.position, std::to_address(std::end(entry.compile_unit->data()))}};
+    Cursor cursor{{entry.position,
+                   std::to_address(std::end(entry.compile_unit->data()))}};
     auto d = ParseDie(*entry.compile_unit, cursor);
-    if (d.ContainsAddress(address) && d.abbrev_entry()->tag == DW_TAG_subprogram) {
+    if (d.ContainsAddress(address) &&
+        d.abbrev_entry()->tag == DW_TAG_subprogram) {
       return d;
     }
   }
@@ -513,7 +534,8 @@ std::vector<ldb::Die> ldb::Dwarf::FindFunctions(std::string name) const {
   auto [begin, end] = function_index_.equal_range(name);
   std::ranges::transform(begin, end, std::back_inserter(found), [](auto& p) {
     auto [name, entry] = p;
-    Cursor cursor{{entry.position, std::to_address(std::end(entry.compile_unit->data()))}};
+    Cursor cursor{{entry.position,
+                   std::to_address(std::end(entry.compile_unit->data()))}};
     return ParseDie(*entry.compile_unit, cursor);
   });
   return found;
@@ -529,8 +551,10 @@ void ldb::Dwarf::Index() const {
 }
 
 void ldb::Dwarf::IndexDie(const ldb::Die& current) const {
-  bool has_range = current.Contains(DW_AT_low_pc) && current.Contains(DW_AT_high_pc);
-  bool is_function = current.abbrev_entry()->tag == DW_TAG_subprogram || current.abbrev_entry()->tag == DW_TAG_inlined_subroutine;
+  bool has_range =
+      current.Contains(DW_AT_low_pc) || current.Contains(DW_AT_ranges);
+  bool is_function = current.abbrev_entry()->tag == DW_TAG_subprogram ||
+                     current.abbrev_entry()->tag == DW_TAG_inlined_subroutine;
   if (has_range && is_function) {
     if (auto name = current.Name(); name) {
       IndexEntry entry{current.compile_unit(), current.position()};
@@ -542,7 +566,6 @@ void ldb::Dwarf::IndexDie(const ldb::Die& current) const {
   }
 }
 
-
 bool ldb::Die::Contains(std::uint64_t attribute) const {
   const auto& attr_specs = abbrev_entry_->attrs;
   return std::ranges::find_if(attr_specs, [=](const auto& attr_spec) {
@@ -552,14 +575,13 @@ bool ldb::Die::Contains(std::uint64_t attribute) const {
 
 ldb::Attr ldb::Die::operator[](std::uint64_t attribute) const {
   const auto& attr_specs = abbrev_entry_->attrs;
-  auto it = std::ranges::find_if(attr_specs, [=](const auto& attr_spec) {
-    return attr_spec.attr == attribute;
-  });
-  if (it == std::end(attr_specs)) {
-    ldb::Error::Send("Attribute not found");
+  for (std::size_t i = 0; i < attr_specs.size(); i++) {
+    if (attr_specs[i].attr == attribute) {
+      return {compile_unit_, attr_specs[i].attr, attr_specs[i].form,
+              attr_locations_[i]};
+    }
   }
-  return {compile_unit_, it->attr, it->form,
-          attr_locations_[std::distance(std::begin(attr_specs), it)]};
+  Error::Send("Attribute not found");
 }
 
 ldb::FileAddr ldb::Die::LowPc() const {
@@ -642,10 +664,14 @@ ldb::Die::ChildrenRange::iterator::operator++() {
     Cursor next_cursor{{die_->next(), std::to_address(std::end(
                                           die_->compile_unit()->data()))}};
     die_ = ParseDie(*die_->compile_unit_, next_cursor);
-  } else if (die_->Contains(DW_AT_sibling)) {
-    // 如果当前DIE包含DW_AT_sibling属性，则移动到下一个兄弟DIE
-    die_ = die_.value()[DW_AT_sibling].AsReference();
-  } else {
+  } 
+  // else if (die_->Contains(DW_AT_sibling)) {
+  //   // 如果当前DIE包含DW_AT_sibling属性，则移动到下一个兄弟DIE
+  //     auto& die = die_.value();
+  //     auto attr = die[DW_AT_sibling];
+  //       die_ = attr.AsReference();
+  // } 
+  else {
     // Has children, find the first child.
     iterator sub_children{*die_};
     // Skip all sub-children.
@@ -698,7 +724,7 @@ ldb::RangeList::iterator& ldb::RangeList::iterator::operator++() {
   // 0x0000000000000005 0x0000000000000015  // 范围 3：0x500005-0x500015
   // 0x0000000000000000 0x0000000000000000  // 结束指示器
   auto elf = compile_unit_->dwarf()->elf();
-  static constexpr auto base_addr_flag = 0xFFFFFFFFFFFFFFFF;
+  static constexpr auto base_addr_flag = ~static_cast<std::uint64_t>(0);
 
   Cursor cursor{{position_, std::to_address(std::end(data_))}};
   while (true) {

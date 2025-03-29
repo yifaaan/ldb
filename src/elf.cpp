@@ -157,7 +157,7 @@ void ldb::Elf::ParseSymbolTable() {
     if (!opt_symtab_header) return;
   }
   auto symtab_header = *opt_symtab_header;
-  symbol_table_.resize(symtab_header->sh_size / sizeof(Elf64_Sym));
+  symbol_table_.resize(symtab_header->sh_size / symtab_header->sh_entsize);
 
   std::copy(data_ + symtab_header->sh_offset,
             data_ + symtab_header->sh_offset + symtab_header->sh_size,
