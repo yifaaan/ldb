@@ -1,15 +1,11 @@
 add_library(libldb
-    libldb.cpp 
-    process.cpp 
-    pipe.cpp
-    registers.cpp breakpoint_site.cpp disassembler.cpp watchpoint.cpp syscalls.cpp elf.cpp types.cpp target.cpp dwarf.cpp)
+    libldb.cpp
+    )
 add_library(ldb::libldb ALIAS libldb)
 
 set_target_properties(libldb PROPERTIES OUTPUT_NAME ldb)
 
 target_compile_features(libldb PUBLIC cxx_std_20)
-
-target_link_libraries(libldb PRIVATE Zydis::Zydis spdlog::spdlog)
 
 target_include_directories(
     libldb 

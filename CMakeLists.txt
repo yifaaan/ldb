@@ -2,17 +2,9 @@ cmake_minimum_required(VERSION 3.19)
 set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_TOOLCHAIN_FILE "~/vcpkg/scripts/buildsystems/vcpkg.cmake")
-project(ldb LANGUAGES CXX ASM)
-
-set(CMAKE_EXPORT_COMPILE_COMMANDS true)
+project(ldb LANGUAGES CXX)
 
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(readline REQUIRED IMPORTED_TARGET readline)
-
-find_package(fmt CONFIG REQUIRED)
-find_package(zydis CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
 
 include(CTest)
 

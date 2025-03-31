@@ -1,5 +1,5 @@
 add_executable(ldb ldb.cpp) 
-target_link_libraries(ldb PRIVATE ldb::libldb PkgConfig::readline fmt::fmt)
+target_link_libraries(ldb PRIVATE ldb::libldb)
 
 include(GNUInstallDirs)
 install(

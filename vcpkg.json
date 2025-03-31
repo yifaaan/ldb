@@ -1,9 +1,7 @@
 {
   "dependencies": [
-    "catch2",
-    "fmt",
-    "readline",
-    "zydis",
-    "spdlog"
+
+    "readline"
+
   ]
 }
