@@ -37,6 +37,21 @@ ldb -p <pid>
 #### Attaching Function
 Same as `gdb` and `lldb`.
 
+```shell
+while sleep 5; do echo "I'm alive!"; done&
+[1] 1247
+$ tools/ldb -p 1247
+```
+
+每次需要输入c，才会输出一次"I'm alive!"。
+
+调试器调用 ptrace(PTRACE_CONT, pid, nullptr, nullptr)，让 bash 进程继续执行。
+bash 继续运行循环，执行 echo "I'm alive!"，打印出一行输出。
+echo 完成后，bash 收到 SIGCHLD 信号。
+因为 bash 被 ptrace 跟踪，这个 SIGCHLD 导致 bash 暂停。
+调试器的 waitpid 捕获到这个暂停状态，程序回到等待用户输入的状态。
+结果就是：你只看到一次 "I'm alive!"，然后进程又停了，需要再次输入 continue。
+
 ```bash
 break set 0xcafecafe
 continue

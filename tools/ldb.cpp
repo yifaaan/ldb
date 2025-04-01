@@ -16,10 +16,10 @@ namespace
 	std::vector<std::string_view> Split(std::string_view sv, char delim)
 	{
 		std::vector<std::string_view> splits;
-		std::size_t index;
+		std::size_t index = 0;
 		while (true)
 		{
-			auto delimIndex = sv.find(delim);
+			auto delimIndex = sv.find(delim, index);
 			if (delimIndex != std::string::npos)
 			{
 				splits.emplace_back(sv.substr(index, delimIndex - index));
@@ -49,6 +49,7 @@ namespace
 	}
 
 
+	// wait the [pid] has changed state
 	void WaitOnSignal(pid_t pid)
 	{
 		int waitStatus;
@@ -87,6 +88,7 @@ namespace
 				std::cerr << "Invalid pid\n";
 				return -1;
 			}
+			// kernel send a SIGSTOP to pid
 			if (ptrace(PTRACE_ATTACH, pid, /*addr=*/nullptr, /*data=*/nullptr) < 0)
 			{
 				std::perror("Could not attach to process");
