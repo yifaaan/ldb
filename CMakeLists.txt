@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 3.19)
-set(CMAKE_CXX_STANDARD 20)
-
-set(CMAKE_TOOLCHAIN_FILE "~/vcpkg/scripts/buildsystems/vcpkg.cmake")
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_TOOLCHAIN_FILE ~/vcpkg/scripts/buildsystems/vcpkg.cmake)
 project(ldb LANGUAGES CXX)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(readline REQUIRED IMPORTED_TARGET readline)
+
+
+#find_package( CONFIG REQUIRED)
 
 
 include(CTest)

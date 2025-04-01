@@ -2,18 +2,39 @@
 
 LDB is a debugging tool for C++ programs.
 
-## Notes
 
-### Attaching to a Process
+## Attaching to a Process
+
+### Process Interaction
+
+#### ptrace
+
+*inferior process* refer to the process which we want to debug.
+
+```C++
+long ptrace(enum __ptrace_request request, pid_t pid, void* addr, void* data);
+```
+
+For request parameter:
+
+- **PTRACE_PEEKDATA**: Reads 8 bytes of memory at the given address.
+- **PTRACE_ATTACH**: Attach to the existing process(pid).
+- **PTRACE_GETREGS**: Retrieves the current values of all CPU registers.
+- **PTRACE_CONT**: Continue the execution of a process that is currently halted.
+
+Call `PTRACE_ATTACH`, the kernel will send the process a `SIGSTOP` to pause its execution.
+
+### Launching and Attaching to Processes
 
 ```bash
-# Attach to a program
+# Launching a named program and attaching to it by running:
 ldb <program name>
 # Attach to an existing process
 ldb -p <pid>
 ```
 
-### Handling User Input
+
+#### Attaching Function
 Same as `gdb` and `lldb`.
 
 ```bash
