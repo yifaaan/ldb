@@ -6,16 +6,75 @@
 
 #include <iostream>
 #include <string>
-
+#include <vector>
 
 #include <readline/readline.h>
 #include <readline/history.h>
 
 namespace
 {
+	std::vector<std::string_view> Split(std::string_view sv, char delim)
+	{
+		std::vector<std::string_view> splits;
+		std::size_t index;
+		while (true)
+		{
+			auto delimIndex = sv.find(delim);
+			if (delimIndex != std::string::npos)
+			{
+				splits.emplace_back(sv.substr(index, delimIndex - index));
+				index = delimIndex + 1;
+			}
+			else
+			{
+				splits.emplace_back(sv.substr(index));
+				break;
+			}
+		}
+		return splits;
+	}
+
+	bool IsPrefix(std::string_view str, std::string_view of)
+	{
+		return of.starts_with(str);
+	}
+
+	void Resume(pid_t pid)
+	{
+		if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) < 0)
+		{
+			std::cerr << "Couldn't continue\n";
+			std::exit(-1);
+		}
+	}
+
+
+	void WaitOnSignal(pid_t pid)
+	{
+		int waitStatus;
+		int options = 0;
+		// wait the child to be stopped before main
+		if (waitpid(pid, &waitStatus, options) < 0)
+		{
+			std::perror("waitpid failed");
+			std::exit(-1);
+		}
+	}
+
 	void HandleCommand(pid_t pid, std::string_view line)
 	{
-		std::cout << line;
+		auto args = Split(line, ' ');
+		auto command = args[0];
+
+		if (IsPrefix(command, "continue"))
+		{
+			Resume(pid);
+			WaitOnSignal(pid);
+		}
+		else
+		{
+			std::cerr << "Unknown command\n";
+		}
 	}
 
 	pid_t Attach(int argc, const char** argv)
