@@ -2,3 +2,4 @@
 .vs
 build
 vcpkg_installed
+out

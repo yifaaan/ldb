@@ -1,15 +1,19 @@
-
-#include <unistd.h>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
+#include <signal.h>
 
 #include <iostream>
 #include <string>
 #include <vector>
+#include <format>
 
 #include <readline/readline.h>
 #include <readline/history.h>
+
+#include <libldb/process.hpp>
+#include <libldb/error.hpp>
 
 namespace
 {
@@ -39,38 +43,36 @@ namespace
 		return of.starts_with(str);
 	}
 
-	void Resume(pid_t pid)
+
+	void PrintStopReason(const ldb::Process& process, ldb::StopReason reason)
 	{
-		if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) < 0)
+		std::cout << std::format("Process {} ", process.Pid());
+
+		switch (reason.reason)
 		{
-			std::cerr << "Couldn't continue\n";
-			std::exit(-1);
+		case ldb::ProcessState::exited:
+			std::cout << std::format("exited with status {}\n", static_cast<int>(reason.info));
+			break;
+		case ldb::ProcessState::terminated:
+			std::cout << std::format("terminated with signal {}\n", sigabbrev_np(reason.info));
+			break;
+		case ldb::ProcessState::stopped:
+			std::cout << std::format("stopped with signal {}\n", sigabbrev_np(reason.info));
+			break;
 		}
+
 	}
 
-
-	// wait the [pid] has changed state
-	void WaitOnSignal(pid_t pid)
-	{
-		int waitStatus;
-		int options = 0;
-		// wait the child to be stopped before main
-		if (waitpid(pid, &waitStatus, options) < 0)
-		{
-			std::perror("waitpid failed");
-			std::exit(-1);
-		}
-	}
-
-	void HandleCommand(pid_t pid, std::string_view line)
+	void HandleCommand(std::unique_ptr<ldb::Process>& process, std::string_view line)
 	{
 		auto args = Split(line, ' ');
 		auto command = args[0];
 
 		if (IsPrefix(command, "continue"))
 		{
-			Resume(pid);
-			WaitOnSignal(pid);
+			process->Resume();
+			auto reason = process->WaitOnSignal();
+			PrintStopReason(*process, reason);
 		}
 		else
 		{
@@ -78,66 +80,23 @@ namespace
 		}
 	}
 
-	pid_t Attach(int argc, const char** argv)
+	std::unique_ptr<ldb::Process> Attach(int argc, const char** argv)
 	{
-		pid_t pid = 0;
 		if (argc == 3 && argv[1] == std::string_view{ "-p" })
 		{
-			if (pid = std::atoi(argv[2]); pid <= 0)
-			{
-				std::cerr << "Invalid pid\n";
-				return -1;
-			}
-			// kernel send a SIGSTOP to pid
-			if (ptrace(PTRACE_ATTACH, pid, /*addr=*/nullptr, /*data=*/nullptr) < 0)
-			{
-				std::perror("Could not attach to process");
-				return -1;
-			}
+			pid_t pid = std::atoi(argv[2]);
+			return ldb::Process::Attach(pid);
 		}
 		else
 		{
 			const char* programPath = argv[1];
-			if ((pid = fork()) < 0)
-			{
-				std::perror("fork failed");
-				return -1;
-			}
-			if (pid == 0)
-			{
-				if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
-				{
-					std::perror("Tracing failed");
-					return -1;
-				}
-				// because of `PTRACE_TRACEME`, the child will stop before executing its main function
-				if (execlp(programPath, programPath, nullptr) < 0)
-				{
-					std::perror("Exec failed");
-					return -1;
-				}
-			}
+			return ldb::Process::Launch(programPath);
 		}
-		return pid;
 	}
 }
 
-int main(int argc, const char** argv)
+void MainLoop(std::unique_ptr<ldb::Process>& process)
 {
-	if (argc == 1)
-	{
-		std::cerr << "No arguments given\n";
-		return -1;
-	}
-	pid_t pid = Attach(argc, argv);
-
-	int waitStatus;
-	int options = 0;
-	// wait the child to be stopped before main
-	if (waitpid(pid, &waitStatus, options) < 0)
-	{
-		std::perror("waitpid failed");
-	}
 	// handle user input command
 	char* line = nullptr;
 	while ((line = readline("ldb> ")) != nullptr)
@@ -161,7 +120,34 @@ int main(int argc, const char** argv)
 		if (!lineString.empty())
 		{
 			// string converts to string_view because of the conversion function [std::string::operator std::string_view()]
-			HandleCommand(pid, lineString);
+			try
+			{
+				HandleCommand(process, lineString);
+			}
+			catch (const ldb::Error& err)
+			{
+				std::cout << err.what() << '\n';
+			}
 		}
 	}
+}
+
+int main(int argc, const char** argv)
+{
+	if (argc == 1)
+	{
+		std::cerr << "No arguments given\n";
+		return -1;
+	}
+	
+	try
+	{
+		auto process = Attach(argc, argv);
+		MainLoop(process);
+	}
+	catch (const ldb::Error& err)
+	{
+		std::cout << err.what() << '\n';
+	}
+	
 }
