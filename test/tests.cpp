@@ -51,7 +51,6 @@ TEST_CASE("Process::Launch no such program", "[process]")
 	REQUIRE_THROWS_AS(Process::Launch("you_do_not_have_to_be_good"), Error);
 }
 
-#include <iostream>
 TEST_CASE("Process::Attach success", "[process]")
 {
 	auto target = Process::Launch("targets/run_endlessly", false);
@@ -62,4 +61,42 @@ TEST_CASE("Process::Attach success", "[process]")
 TEST_CASE("Process::Attach invalid PID", "[process]")
 {
 	REQUIRE_THROWS_AS(Process::Attach(0), Error);
+}
+
+TEST_CASE("Process::Resume success", "[process]")
+{
+	{
+		auto proc = Process::Launch("targets/run_endlessly");
+		auto status = GetProcessStatus(proc->Pid());
+		// tracing stop
+		REQUIRE((status == 't'));
+
+		proc->Resume();
+		status = GetProcessStatus(proc->Pid());
+		// running or sleeping in an interruptible wait
+		REQUIRE((status == 'R' || status == 'S'));
+	}
+
+	{
+		auto target = Process::Launch("targets/run_endlessly", false);
+		auto status = GetProcessStatus(target->Pid());
+		REQUIRE((status == 'R' || status == 'S'));
+
+		auto proc = Process::Attach(target->Pid());
+		status = GetProcessStatus(target->Pid());
+		REQUIRE((status == 't'));
+		proc->Resume();
+		status = GetProcessStatus(target->Pid());
+		REQUIRE((status == 'R' || status == 'S'));
+	}
+}
+
+TEST_CASE("Process::Resume already terminated", "[process]")
+{
+	auto proc = Process::Launch("targets/end_immediately");
+	// tracing stop then resume and end immediately
+	proc->Resume();
+	// terminated
+	proc->WaitOnSignal();
+	REQUIRE_THROWS_AS(proc->Resume(), Error);
 }
