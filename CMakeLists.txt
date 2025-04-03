@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_TOOLCHAIN_FILE ~/vcpkg/scripts/buildsystems/vcpkg.cmake)
+##set(CMAKE_MAKE_PROGRAM "Ninja")
 project(ldb LANGUAGES CXX)
 
 find_package(PkgConfig REQUIRED)

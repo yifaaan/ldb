@@ -6,7 +6,7 @@
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
-
+#include <libldb/registers.hpp>
 
 namespace
 {

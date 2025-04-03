@@ -52,6 +52,16 @@ echo 完成后，bash 收到 echo进程的 SIGCHLD 信号。
 调试器的 waitpid 捕获到这个暂停状态，程序回到等待用户输入的状态。
 结果就是：你只看到一次 "I'm alive!"，然后进程又停了，需要再次输入 continue。
 
+
+## Registers
+
+### FR
+
+`st_space[32]` for st/mm
+
+`xmm_space[64]` for xmm
+
+
 ```bash
 break set 0xcafecafe
 continue
