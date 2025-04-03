@@ -33,7 +33,19 @@ namespace ldb
 	class Process
 	{
 	public:
-		static std::unique_ptr<Process> Launch(std::filesystem::path path);
+		/// <summary>
+		/// launch a process
+		/// </summary>
+		/// <param name="path">program path</param>
+		/// <param name="debug">whether attch it or not</param>
+		/// <returns></returns>
+		static std::unique_ptr<Process> Launch(std::filesystem::path path, bool debug = true);
+
+		/// <summary>
+		/// attach a existing process
+		/// </summary>
+		/// <param name="pid"></param>
+		/// <returns></returns>
 		static std::unique_ptr<Process> Attach(pid_t pid);
 
 		Process() = delete;
@@ -57,9 +69,10 @@ namespace ldb
 		ProcessState State() const { return state; }
 
 	private:
-		Process(pid_t _pid, bool _terminateOnEnd)
+		Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
 			: pid(_pid)
 			, terminateOnEnd(_terminateOnEnd)
+			, isAttached(_isAttached)
 		{
 		}
 
@@ -72,5 +85,10 @@ namespace ldb
 		bool terminateOnEnd = true;
 
 		ProcessState state = ProcessState::stopped;
+
+		/// <summary>
+		/// whether debug the launched process or not
+		/// </summary>
+		bool isAttached = true;
 	};
 }

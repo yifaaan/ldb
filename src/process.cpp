@@ -25,7 +25,7 @@ namespace
 
 namespace ldb
 {
-	std::unique_ptr<Process> Process::Launch(std::filesystem::path path)
+	std::unique_ptr<Process> Process::Launch(std::filesystem::path path, bool debug)
 	{
 		// channle for son process to send error message back to the parent process
 		Pipe channel(/*closeOnExec*/true);
@@ -38,7 +38,7 @@ namespace ldb
 		if (pid == 0)
 		{
 			channel.CloseRead();
-			if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
+			if (debug && ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
 			{
 				ExitWithPerror(channel, "Tracing failed");
 			}
@@ -48,11 +48,11 @@ namespace ldb
 				ExitWithPerror(channel, "execlp failed");
 			}
 		}
+
 		channel.CloseWrite();
 		// once there is no error in the child process, the read() will return immediately because of [closeOnExec] and [exit]
 		auto errMsg = channel.Read();
 		channel.CloseRead();
-
 		// error occured in the child process
 		if (!errMsg.empty())
 		{
@@ -60,8 +60,12 @@ namespace ldb
 			auto chars = reinterpret_cast<char*>(errMsg.data());
 			Error::Send({ chars, errMsg.size() });
 		}
-		std::unique_ptr<Process> process{ new Process{pid, /*terminateOnEnd*/true} };
-		process->WaitOnSignal();
+
+		std::unique_ptr<Process> process{ new Process{pid, /*terminateOnEnd*/true, debug} };
+		if (debug)
+		{
+			process->WaitOnSignal();
+		}
 		return process;
 	}
 
@@ -76,7 +80,7 @@ namespace ldb
 			Error::SendErrno("Could not attach");
 		}
 
-		std::unique_ptr<Process> process{ new Process{pid, /*terminateOnEnd*/false} };
+		std::unique_ptr<Process> process{ new Process{pid, /*terminateOnEnd*/false, /*isAttached*/true} };
 		process->WaitOnSignal();
 		return process;
 	}
@@ -86,14 +90,17 @@ namespace ldb
 		if (pid != 0)
 		{
 			int status;
-			// inferior must be stopped before cal PTRACE_DETACH
-			if (state == ProcessState::running)
+			if (isAttached)
 			{
-				kill(pid, SIGSTOP);
-				waitpid(pid, &status, 0);
+				// inferior must be stopped before cal PTRACE_DETACH
+				if (state == ProcessState::running)
+				{
+					kill(pid, SIGSTOP);
+					waitpid(pid, &status, 0);
+				}
+				ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+				kill(pid, SIGCONT);
 			}
-			ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
-			kill(pid, SIGCONT);
 			if (terminateOnEnd)
 			{
 				kill(pid, SIGKILL);

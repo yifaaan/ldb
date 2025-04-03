@@ -1,1 +1,1 @@
-
+add_executable (run_endlessly run_endlessly.cpp)
