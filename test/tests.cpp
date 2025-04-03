@@ -21,3 +21,10 @@ TEST_CASE("Process::Launch success", "[process]")
 	auto proc = Process::Launch("yes");
 	REQUIRE(ProcessExists(proc->Pid()));
 }
+
+#include <libldb/error.hpp>
+
+TEST_CASE("Process::Launch no such program", "[process]")
+{
+	REQUIRE_THROWS_AS(Process::Launch("you_do_not_have_to_be_good"), Error);
+}
