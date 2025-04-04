@@ -1,14 +1,12 @@
 cmake_minimum_required(VERSION 3.19)
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_TOOLCHAIN_FILE ~/vcpkg/scripts/buildsystems/vcpkg.cmake)
-##set(CMAKE_MAKE_PROGRAM "Ninja")
+
 project(ldb LANGUAGES CXX)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(readline REQUIRED IMPORTED_TARGET readline)
-
-
-#find_package( CONFIG REQUIRED)
 
 
 include(CTest)
@@ -18,5 +16,5 @@ add_subdirectory("tools")
 
 if(BUILD_TESTING)
     find_package(Catch2 CONFIG REQUIRED) 
-    add_subdirectory ("test") 
+    add_subdirectory("test") 
 endif()

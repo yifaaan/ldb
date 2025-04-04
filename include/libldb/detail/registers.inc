@@ -89,7 +89,7 @@ DEFINE_GPR_8L(r14b, r14), DEFINE_GPR_8L(r15b, r15),
 #define DEFINE_FP_ST(number) \
     DEFINE_REGISTER(st ## number, (33 + number), 16,\
      (FPR_OFFSET(st_space) + number*16), RegisterType::fpr,\
-     RegisterFormat::long_double)
+     RegisterFormat::longDouble)
 
 #define DEFINE_FP_MM(number) \
     DEFINE_REGISTER(mm ## number, (41 + number), 8,\

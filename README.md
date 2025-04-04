@@ -2,6 +2,7 @@
 
 LDB is a debugging tool for C++ programs.
 
+cmake .. -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake
 
 ## Attaching to a Process
 

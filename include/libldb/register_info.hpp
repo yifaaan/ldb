@@ -3,7 +3,7 @@
 #include <sys/user.h>
 
 #include <string_view>
-#include <cstddef>
+#include <cstdint>
 #include <algorithm>
 #include <string_view>
 
@@ -50,19 +50,15 @@ namespace ldb
 	inline constexpr const RegisterInfo registerInfos[] =
 	{
 		#define DEFINE_REGISTER(name,dwarf_id,size,offset,type,format) \
-		{RegisterId::name, #name, dwarf_id, size, offset, type, format},
+		{RegisterId::name, #name, dwarf_id, size, offset, type, format}
 		#include <libldb/detail/registers.inc>
 		#undef DEFINE_REGISTER
 	};
 
 	const RegisterInfo& RegisterInfoBy(auto&& f)
 	{
-		auto it = std::find_if(std::begin(registerInfos), std::end(registerInfos), f);
-		if (it == std::end(registerInfos))
-		{
-			Error::Send("Can't find register info");
-		}
-		return *it;
+		if (auto it = std::ranges::find_if(registerInfos, f); it != std::end(registerInfos)) return *it;
+		Error::Send("Can't find register info");
 	}
 
 	inline const RegisterInfo& RegisterInfoById(RegisterId id)
