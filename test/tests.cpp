@@ -128,10 +128,16 @@ TEST_CASE("Write register works", "[register]")
 
 
 	// mm0
-	
-	regs.WriteById(RegisterId::mm0, 0xff);
+	regs.WriteById(RegisterId::mm0, 0xccaaff);
 	proc->Resume(); // print the contents of mm0 then trap
 	proc->WaitOnSignal();
 	output = channel.Read();
-	REQUIRE(ToStringView(output) ==  "0xff");
+	REQUIRE(ToStringView(output) ==  "0xccaaff");
+
+	// xmm0
+	regs.WriteById(RegisterId::xmm0, 42.2434);
+	proc->Resume(); // print the contents of xmm0 then trap
+	proc->WaitOnSignal();
+	output = channel.Read();
+	REQUIRE(ToStringView(output) == "42.2434");
 }

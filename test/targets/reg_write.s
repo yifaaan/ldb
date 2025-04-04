@@ -3,7 +3,7 @@
 .section .data
 
 hex_format: .asciz "%#x"
-
+float_format: .asciz "%.4f"
 .section .text
 
 .macro trap
@@ -44,6 +44,13 @@ main:
 	call fflush@plt
 	trap
 
+	# print contents of xmm0
+	leaq float_format(%rip), %rdi
+	movq $1, %rax
+	call printf@plt
+	movq $0, %rdi
+	call fflush@plt
+	trap
 	
 	popq %rbp
     movq $0, %rax
