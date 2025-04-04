@@ -117,12 +117,21 @@ TEST_CASE("Write register works", "[register]")
 	// self trap by call kill
 
 
+	// rsi
 	auto& regs = proc->GetRegisters();
 	regs.WriteById(RegisterId::rsi, 0xcafecafe);
-
-	proc->Resume();
+	proc->Resume(); // print the contents of rsi then trap
 	proc->WaitOnSignal();
-
 	auto output = channel.Read();
 	REQUIRE(ToStringView(output) == "0xcafecafe");
+
+
+
+	// mm0
+	
+	regs.WriteById(RegisterId::mm0, 0xff);
+	proc->Resume(); // print the contents of mm0 then trap
+	proc->WaitOnSignal();
+	output = channel.Read();
+	REQUIRE(ToStringView(output) ==  "0xff");
 }

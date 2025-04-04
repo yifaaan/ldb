@@ -32,9 +32,19 @@ main:
 	call printf@plt
 	movq $0, %rdi
 	call fflush@plt
-	trap
-	
 
+	trap
+
+	# print contents of mm0
+	movq %mm0, %rsi
+	leaq hex_format(%rip), %rdi
+	movq $0, %rax
+	call printf@plt
+	movq $0, %rdi
+	call fflush@plt
+	trap
+
+	
 	popq %rbp
     movq $0, %rax
     ret

@@ -59,7 +59,6 @@ namespace ldb
 		{
 			Error::SendErrno("Could not read from pipe");
 		}
-
 		auto bytes = reinterpret_cast<std::byte*>(buf);
 		return { bytes, bytes + nread };
 	}

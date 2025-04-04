@@ -40,6 +40,7 @@ namespace ldb
 			channel.CloseRead();
 			if (stdoutReplacement)
 			{
+				//close(STDOUT_FILENO);
 				if (dup2(*stdoutReplacement, STDOUT_FILENO) < 0)
 				{
 					ExitWithPerror(channel, "stdout replacement failed");

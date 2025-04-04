@@ -68,6 +68,53 @@ The syscall ID goes in rax; subsequent arguments go in rdi,
 rsi, rdx, r10, r8, and r9; and the return value of the syscall is stored in rax.
 
 
+```ass
+
+movq %mm0, %rsi
+# movq: "Move Quadword" 指令，用于移动 64 位（8 字节）的数据。
+
+
+leaq hex_format(%rip), %rdi
+# leaq: "Load Effective Address Quadword" 指令。它计算源操作数的内存地址，并将该地址（而不是地址处的内容）加载到目的寄存器中。
+# hex_format(%rip): 源操作数。这是 RIP 相对寻址。它表示 "标签 hex_format 的地址相对于当前指令指针（%rip）的偏移量"。这是一种在位置无关代码 (PIC) 中访问全局或静态数据的常用方式。`hex_format` 很有可能是一个指向数据段中字符串的标签。
+# %rdi: 目的操作数。通用 64 位寄存器。
+# 含义：计算标签 `hex_format` 的有效内存地址，并将这个地址存储到 rdi 寄存器中。
+#       根据 System V AMD64 ABI，rdi 寄存器用于传递函数的 *第一个* 整数/指针参数。
+#       结合上一条指令和接下来的 `call printf`，我们可以推断 `hex_format` 指向的是一个格式化字符串，用于 `printf` 函数，很可能是类似 `"%016llx\n"` 或 `"%p\n"` 的形式，以便将 rsi 中的 64 位值以十六进制格式打印出来。
+
+movq $0, %rax
+# movq: 移动 64 位数据。
+# $0: 源操作数。一个立即数 0。
+# %rax: 目的操作数。通用 64 位寄存器。
+# 含义：将立即数 0 移动到 rax 寄存器中。
+#       根据 System V AMD64 ABI，对于可变参数函数（如 `printf`），rax 寄存器需要包含传递给该函数的 *向量寄存器* (XMM/YMM/ZMM) 的数量。因为这里我们没有通过向量寄存器传递浮点或向量参数（mm0 不是调用约定中定义的向量寄存器），所以需要将 rax 设置为 0。
+
+call printf@plt
+# call: 调用指令。它将下一条指令的地址压入栈中（作为返回地址），然后跳转到目标地址执行。
+# printf@plt: 目标地址。这表示调用 C 标准库中的 `printf` 函数。`@plt` 后缀表示这是通过过程链接表 (Procedure Linkage Table) 进行的调用。PLT 是动态链接中用于解析共享库函数实际地址的一种机制。
+# 含义：调用 `printf` 函数。根据之前的设置：
+#        - rdi (第一个参数) 指向格式化字符串 (位于 hex_format)。
+#        - rsi (第二个参数) 包含原始 mm0 寄存器的值。
+#        - rax (向量寄存器计数) 为 0。
+#       因此，这条指令会按照 `hex_format` 指定的格式打印出 mm0 的内容。
+
+movq $0, %rdi
+# movq: 移动 64 位数据。
+# $0: 源操作数，立即数 0。在 C 语言上下文中，通常表示 NULL 指针。
+# %rdi: 目的操作数。
+# 含义：将 rdi 寄存器设置为 0。这是为下一个函数调用 `fflush` 准备第一个参数。
+
+call fflush@plt
+# call: 调用指令。
+# fflush@plt: 调用 C 标准库中的 `fflush` 函数，同样通过 PLT。
+# 含义：调用 `fflush` 函数。根据之前的设置，rdi (第一个参数) 为 0 (NULL)。
+#       当 `fflush` 的参数为 NULL 时，它会刷新 *所有* 打开的输出流的缓冲区（例如标准输出 stdout）。这确保了之前 `printf` 的输出能立即显示出来，特别是当 stdout 是行缓冲或全缓冲，并且 `printf` 的格式化字符串末尾没有换行符 `\n` 时，这个调用尤其有用。
+
+trap
+# trap: 这通常是 `int3` 指令的一个别名，即中断 3。
+# 含义：产生一个断点中断。如果程序在调试器下运行，这会导致程序暂停执行，让开发者可以检查状态。如果程序正常运行（没有调试器附加），这通常会导致程序异常终止，并可能显示 "Trace/breakpoint trap" 之类的消息。这常用于调试目的，在代码的特定点强制停止。
+```
+
 ```bash
 break set 0xcafecafe
 continue

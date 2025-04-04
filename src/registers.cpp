@@ -100,6 +100,7 @@ namespace ldb
 		// so write all fprs at once
 		if (info.type == RegisterType::fpr)
 		{
+			//std::cout << "Writing FPRs " << "value: " << val.index() << '\n';
 			process->WriteFprs(data.i387);
 		}
 		else
