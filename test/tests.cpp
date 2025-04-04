@@ -8,6 +8,8 @@
 
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
+#include <libldb/pipe.hpp>
+#include <libldb/bit.hpp>
 
 using namespace ldb;
 
@@ -99,4 +101,28 @@ TEST_CASE("Process::Resume already terminated", "[process]")
 	// terminated
 	proc->WaitOnSignal();
 	REQUIRE_THROWS_AS(proc->Resume(), Error);
+}
+
+TEST_CASE("Write register works", "[register]")
+{
+	bool closeOnExec = false;
+	Pipe channel{ closeOnExec };
+
+	auto proc = Process::Launch("targets/reg_write", true, channel.GetWrite());
+	channel.CloseWrite();
+
+	proc->Resume();
+	proc->WaitOnSignal();
+
+	// self trap by call kill
+
+
+	auto& regs = proc->GetRegisters();
+	regs.WriteById(RegisterId::rsi, 0xcafecafe);
+
+	proc->Resume();
+	proc->WaitOnSignal();
+
+	auto output = channel.Read();
+	REQUIRE(ToStringView(output) == "0xcafecafe");
 }

@@ -25,7 +25,7 @@ namespace
 
 namespace ldb
 {
-	std::unique_ptr<Process> Process::Launch(std::filesystem::path path, bool debug)
+	std::unique_ptr<Process> Process::Launch(std::filesystem::path path, bool debug, std::optional<int> stdoutReplacement)
 	{
 		// channle for son process to send error message back to the parent process
 		Pipe channel(/*closeOnExec*/true);
@@ -38,6 +38,13 @@ namespace ldb
 		if (pid == 0)
 		{
 			channel.CloseRead();
+			if (stdoutReplacement)
+			{
+				if (dup2(*stdoutReplacement, STDOUT_FILENO) < 0)
+				{
+					ExitWithPerror(channel, "stdout replacement failed");
+				}
+			}
 			if (debug && ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
 			{
 				ExitWithPerror(channel, "Tracing failed");

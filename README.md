@@ -62,6 +62,11 @@ echo 完成后，bash 收到 echo进程的 SIGCHLD 信号。
 
 `xmm_space[64]` for xmm
 
+## Assembly
+
+The syscall ID goes in rax; subsequent arguments go in rdi,
+rsi, rdx, r10, r8, and r9; and the return value of the syscall is stored in rax.
+
 
 ```bash
 break set 0xcafecafe

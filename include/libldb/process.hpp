@@ -42,7 +42,7 @@ namespace ldb
 		/// <param name="path">program path</param>
 		/// <param name="debug">whether attch it or not</param>
 		/// <returns></returns>
-		static std::unique_ptr<Process> Launch(std::filesystem::path path, bool debug = true);
+		static std::unique_ptr<Process> Launch(std::filesystem::path path, bool debug = true, std::optional<int> stdoutReplacement = std::nullopt);
 
 		/// <summary>
 		/// attach a existing process

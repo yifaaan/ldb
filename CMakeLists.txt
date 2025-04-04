@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 set(CMAKE_CXX_STANDARD 23)
 
-project(ldb LANGUAGES CXX)
+project(ldb LANGUAGES CXX ASM)
 
 
 find_package(PkgConfig REQUIRED)
