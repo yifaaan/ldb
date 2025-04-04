@@ -6,6 +6,9 @@
 #include <memory>
 #include <cstdint>
 
+
+#include <libldb/registers.hpp>
+
 namespace ldb
 {
 	enum class ProcessState
@@ -68,13 +71,23 @@ namespace ldb
 
 		ProcessState State() const { return state; }
 
+
+
+		Registers& GetRegisters() { return *registers; }
+		const Registers& GetRegisters() const { return *registers; }
+
+		void WriteUserArea(std::size_t offset, std::uint64_t data);
+
 	private:
 		Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
 			: pid(_pid)
 			, terminateOnEnd(_terminateOnEnd)
 			, isAttached(_isAttached)
+			, registers(new Registers(*this))
 		{
 		}
+
+		void ReadAllRegisters();
 
 	private:
 		pid_t pid = 0;
@@ -90,5 +103,7 @@ namespace ldb
 		/// whether debug the launched process or not
 		/// </summary>
 		bool isAttached = true;
+
+		std::unique_ptr<Registers> registers;
 	};
 }

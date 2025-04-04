@@ -128,6 +128,10 @@ namespace ldb
 		}
 		StopReason reason(waitStatus);
 		state = reason.reason;
+		if (isAttached && state == ProcessState::stopped)
+		{
+			ReadAllRegisters();
+		}
 		return reason;
 	}
 
@@ -147,6 +151,36 @@ namespace ldb
 		{
 			reason = ProcessState::stopped;
 			info = WSTOPSIG(waitStatus);
+		}
+	}
+
+	void Process::ReadAllRegisters()
+	{
+		if (ptrace(PTRACE_GETREGS, pid, nullptr, &GetRegisters().data.regs) < 0)
+		{
+			Error::SendErrno("Could not read GPR registers");
+		}
+		if (ptrace(PTRACE_GETFPREGS, pid, nullptr, &GetRegisters().data.i387) < 0)
+		{
+			Error::SendErrno("Could not read FPR registers");
+		}
+		for (int i = 0; i < 8; i++)
+		{
+			// read debug registers
+			auto id = static_cast<int>(RegisterId::dr0) + i;
+			auto info = RegisterInfoById(static_cast<RegisterId>(id));
+			errno = 0;
+			std::int64_t data = ptrace(PTRACE_PEEKUSER, pid, info.offset, nullptr);
+			if (errno != 0) Error::SendErrno("Could not read debug register");
+			GetRegisters().data.u_debugreg[i] = data;
+		}
+	}
+
+	void Process::WriteUserArea(std::size_t offset, std::uint64_t data)
+	{
+		if (ptrace(PTRACE_POKEUSER, pid, offset, data))
+		{
+			Error::SendErrno("Could not write to user area");
 		}
 	}
 }

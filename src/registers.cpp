@@ -1,8 +1,10 @@
 #pragma once
 
-#include "libldb/types.hpp"
+#include <iostream>
+
 #include <libldb/bit.hpp>
 #include <libldb/registers.hpp>
+#include <libldb/process.hpp>
 
 namespace ldb
 {
@@ -37,5 +39,27 @@ namespace ldb
         {
             return FromBytes<Byte128>(bytes + info.offset);
         }
+    }
+
+    void Registers::Write(const RegisterInfo& info, Value val)
+    {
+        // update the data
+        auto bytes = AsBytes(data);
+        std::visit([&](auto& v)
+        {
+            if (sizeof(v) == info.size)
+            {
+                auto valBytes = AsBytes(v);
+                std::copy(valBytes, valBytes + sizeof(v), bytes + info.offset);
+            }
+            else
+            {
+                std::cerr << "ldb::Registers::Write called with mismatched register and value size";
+                std::terminate();
+            }
+        }, val);
+
+        // write to the inferior's registers
+        process->WriteUserArea(info.offset, FromBytes<std::uint64_t>(bytes + info.offset));
     }
 }
