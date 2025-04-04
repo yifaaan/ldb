@@ -78,6 +78,9 @@ namespace ldb
 
 		void WriteUserArea(std::size_t offset, std::uint64_t data);
 
+		void WriteFprs(const user_fpregs_struct& fprs);
+		void WriteGprs(const user_regs_struct& gprs);
+
 	private:
 		Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
 			: pid(_pid)

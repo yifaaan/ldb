@@ -183,4 +183,20 @@ namespace ldb
 			Error::SendErrno("Could not write to user area");
 		}
 	}
+
+	void Process::WriteFprs(const user_fpregs_struct& fprs)
+	{
+		if (ptrace(PTRACE_SETFPREGS, pid, nullptr, &fprs) < 0)
+		{
+			Error::SendErrno("Could not write floating point registers");
+		}
+	}
+
+	void Process::WriteGprs(const user_regs_struct& gprs)
+	{
+		if (ptrace(PTRACE_SETREGS, pid, nullptr, &gprs) < 0)
+		{
+			Error::SendErrno("Could not write general purpose registers");
+		}
+	}
 }

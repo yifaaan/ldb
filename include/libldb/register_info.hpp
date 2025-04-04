@@ -5,7 +5,6 @@
 #include <string_view>
 #include <cstdint>
 #include <algorithm>
-#include <string_view>
 
 #include <libldb/error.hpp>
 
@@ -75,6 +74,4 @@ namespace ldb
 	{
 		return RegisterInfoBy([dwarfId](const RegisterInfo& info) { return info.dwarfId == dwarfId; });
 	}
-
-
 }

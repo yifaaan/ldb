@@ -3,7 +3,6 @@ set(CMAKE_CXX_STANDARD 23)
 
 project(ldb LANGUAGES CXX)
 
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(readline REQUIRED IMPORTED_TARGET readline)
