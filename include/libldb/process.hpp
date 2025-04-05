@@ -1,13 +1,11 @@
 #pragma once
 
-#include <sys/types.h>
-
 #include <filesystem>
-#include <memory>
 #include <cstdint>
 
 
 #include <libldb/registers.hpp>
+#include <libldb/types.hpp>
 
 namespace ldb
 {
@@ -70,6 +68,12 @@ namespace ldb
 		pid_t Pid() const { return pid; }
 
 		ProcessState State() const { return state; }
+
+		VirtAddr GetPc() const
+		{
+			auto pc = GetRegisters().ReadByIdAs<std::uint64_t>(RegisterId::rip);
+			return VirtAddr{ pc };
+		}
 
 
 

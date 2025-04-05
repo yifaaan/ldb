@@ -8,6 +8,7 @@
 namespace ldb
 {
 	template <typename I>
+	requires std::integral<I> || std::same_as<I, std::byte>
 	std::optional<I> ToIntegral(std::string_view sv, int base = 10)
 	{
 		auto begin = sv.begin();
@@ -15,7 +16,7 @@ namespace ldb
 		{
 			begin += 2;
 		}
-		if constexpr (std::is_same_v<I, std::byte>)
+		if constexpr (std::same_as<I, std::byte>)
 		{
 			std::uint8_t value;
 			auto [ptr, ec] = std::from_chars(begin, sv.end(), value, base);
@@ -32,7 +33,7 @@ namespace ldb
 	}
 
 
-	template <typename F>
+	template <std::floating_point F>
 	std::optional<F> ToFloat(std::string_view sv)
 	{
 		F ret;

@@ -65,6 +65,10 @@ namespace
 			{
 				return ldb::ToFloat<double>(text).value();
 			}
+			else if (info.format == ldb::RegisterFormat::longDouble)
+			{
+				return ldb::ToFloat<long double>(text).value();
+			}
 			else if (info.format == ldb::RegisterFormat::vector)
 			{
 				if (info.size == 8)
@@ -86,20 +90,20 @@ namespace
 
 	void PrintStopReason(const ldb::Process& process, ldb::StopReason reason)
 	{
-		std::cout << std::format("Process {} ", process.Pid());
-
+		std::string message;
 		switch (reason.reason)
 		{
 		case ldb::ProcessState::exited:
-			std::cout << std::format("exited with status {}\n", static_cast<int>(reason.info));
+			message = fmt::format("exited with status {}", static_cast<int>(reason.info));
 			break;
 		case ldb::ProcessState::terminated:
-			std::cout << std::format("terminated with signal {}\n", sigabbrev_np(reason.info));
+			message = fmt::format("terminated with signal {}", sigabbrev_np(reason.info));
 			break;
 		case ldb::ProcessState::stopped:
-			std::cout << std::format("stopped with signal {}\n", sigabbrev_np(reason.info));
+			message = fmt::format("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), process.GetPc().Addr());
 			break;
 		}
+		fmt::print("Process {} {}\n", process.Pid(), message);
 	}
 
 	void PrintHelp(const std::vector<std::string_view>& args)
