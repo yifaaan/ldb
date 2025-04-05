@@ -56,6 +56,12 @@ echo 完成后，bash 收到 echo进程的 SIGCHLD 信号。
 
 ## Registers
 
+```shell
+register read <register name>
+register read all
+register write <register name> <value>
+```
+
 ### FR
 
 `st_space[32]` for st/mm

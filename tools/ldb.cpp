@@ -63,6 +63,30 @@ namespace
 
 	}
 
+	void PrintHelp(const std::vector<std::string_view>& args)
+	{
+		if (args.size() == 1)
+		{
+			std::cerr << R"(Available commands:
+continue	- Resume the process
+register	- Commands for operating on registers
+)";
+		}
+		else if (IsPrefix(args[1], "registers"))
+		{
+			std::cerr << R"(Available commands:
+read
+read <register>
+read all
+write <register> <value>
+)";
+		}
+		else
+		{
+			std::cerr << "No help available on that\n";
+		}
+	}
+
 	void HandleCommand(std::unique_ptr<ldb::Process>& process, std::string_view line)
 	{
 		auto args = Split(line, ' ');
@@ -73,6 +97,10 @@ namespace
 			process->Resume();
 			auto reason = process->WaitOnSignal();
 			PrintStopReason(*process, reason);
+		}
+		else if (IsPrefix(command, "help"))
+		{
+			PrintHelp(args);
 		}
 		else
 		{

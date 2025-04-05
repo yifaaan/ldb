@@ -181,5 +181,4 @@ TEST_CASE("Read register works", "[register]")
 
 	// st0
 	REQUIRE(regs.ReadByIdAs<long double>(RegisterId::st0) == 64.125L);
-
 }
