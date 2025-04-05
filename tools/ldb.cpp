@@ -12,6 +12,9 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+#include <fmt/format.h>
+#include <fmt/ranges.h>
+
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
 
@@ -87,6 +90,80 @@ write <register> <value>
 		}
 	}
 
+	void HandleRegisterRead(ldb::Process& process, const std::vector<std::string_view>& args)
+	{
+		auto format = [](auto t)
+		{
+			if constexpr (std::is_floating_point_v<decltype(t)>)
+			{
+				return fmt::format("{}", t);
+			}
+			else if constexpr (std::is_integral_v<decltype(t)>)
+			{
+				return fmt::format("{:#0{}x}", t, sizeof(t) * 2 + 2);
+			}
+			else
+			{
+				return fmt::format("[{:#04x}]", fmt::join(t, ","));
+			}
+		};
+		if (args.size() == 2 || (args.size() == 3 && args[2] == "all"))
+		{
+			for (const auto& info : ldb::registerInfos)
+			{
+				auto shouldPrint = (args.size() == 3 || info.type == ldb::RegisterType::gpr && info.name != "orig_rax");
+				if (!shouldPrint) continue;
+				auto value = process.GetRegisters().Read(info);
+				fmt::print("{}:\t{}\n", info.name, std::visit(format, value));
+			}
+		}
+		else if (args.size() == 3)
+		{
+			try
+			{
+				auto info = ldb::RegisterInfoByName(args[2]);
+				auto value = process.GetRegisters().Read(info);
+				fmt::print("{}:\t{}\n", info.name, std::visit(format, value));
+			}
+			catch (ldb::Error& err)
+			{
+				std::cerr << "No such register\n";
+				return;
+			}
+		}
+		else
+		{
+			PrintHelp({ "help", "register" });
+		}
+	}
+
+	void HandleRegisterWrite(ldb::Process& process, const std::vector<std::string_view>& args)
+	{
+
+	}
+
+	void HandleRegisterCommand(ldb::Process& process, const std::vector<std::string_view>& args)
+	{
+		if (args.size() < 2)
+		{
+			PrintHelp({ "help", "register" });
+			return;
+		}
+
+		if (IsPrefix(args[1], "read"))
+		{
+			HandleRegisterRead(process, args);
+		}
+		else if (IsPrefix(args[1], "write"))
+		{
+			HandleRegisterWrite(process, args);
+		}
+		else
+		{
+			PrintHelp({ "help", "register" });
+		}
+	}
+
 	void HandleCommand(std::unique_ptr<ldb::Process>& process, std::string_view line)
 	{
 		auto args = Split(line, ' ');
@@ -101,6 +178,10 @@ write <register> <value>
 		else if (IsPrefix(command, "help"))
 		{
 			PrintHelp(args);
+		}
+		else if (IsPrefix(command, "register"))
+		{
+			HandleRegisterCommand(*process, args);
 		}
 		else
 		{
