@@ -17,6 +17,7 @@
 
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
+#include <libldb/parse.hpp>
 
 namespace
 {
@@ -46,6 +47,42 @@ namespace
 		return of.starts_with(str);
 	}
 
+	ldb::Registers::Value ParseRegisterValue(const ldb::RegisterInfo& info, std::string_view text)
+	{
+		try
+		{
+			if (info.format == ldb::RegisterFormat::uint)
+			{
+				switch (info.size)
+				{
+				case 1: return ldb::ToIntegral<std::uint8_t>(text, 16).value();
+				case 2: return ldb::ToIntegral<std::uint16_t>(text, 16).value();
+				case 4: return ldb::ToIntegral<std::uint32_t>(text, 16).value();
+				case 8: return ldb::ToIntegral<std::uint64_t>(text, 16).value();
+				}
+			}
+			else if (info.format == ldb::RegisterFormat::doubleFloat)
+			{
+				return ldb::ToFloat<double>(text).value();
+			}
+			else if (info.format == ldb::RegisterFormat::vector)
+			{
+				if (info.size == 8)
+				{
+					return ldb::ParseVector<8>(text);
+				}
+				else if (info.size == 16)
+				{
+					return ldb::ParseVector<16>(text);
+				}
+			}
+		}
+		catch (...)
+		{
+
+		}
+		ldb::Error::Send("Invalid format");
+	}
 
 	void PrintStopReason(const ldb::Process& process, ldb::StopReason reason)
 	{
@@ -63,7 +100,6 @@ namespace
 			std::cout << std::format("stopped with signal {}\n", sigabbrev_np(reason.info));
 			break;
 		}
-
 	}
 
 	void PrintHelp(const std::vector<std::string_view>& args)
@@ -139,7 +175,22 @@ write <register> <value>
 
 	void HandleRegisterWrite(ldb::Process& process, const std::vector<std::string_view>& args)
 	{
-
+		if (args.size() != 4)
+		{
+			PrintHelp({ "help", "register" });
+			return;
+		}
+		try
+		{
+			auto info = ldb::RegisterInfoByName(args[2]);
+			auto value = ParseRegisterValue(info, args[3]);
+			process.GetRegisters().Write(info, value);
+		}
+		catch (ldb::Error& err)
+		{
+			std::cerr << err.what() << '\n';
+			return;
+		}
 	}
 
 	void HandleRegisterCommand(ldb::Process& process, const std::vector<std::string_view>& args)
