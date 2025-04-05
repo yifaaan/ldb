@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstdint>
-
 #include <libldb/types.hpp>
 
 namespace ldb
@@ -39,6 +37,6 @@ namespace ldb
 		Process* process;
 		VirtAddr address;
 		bool isEnabled;
-		std::_Fnv1a_append_bytes savedData;
+		std::byte savedData{};
 	};
 }

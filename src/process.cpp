@@ -207,4 +207,13 @@ namespace ldb
 			Error::SendErrno("Could not write general purpose registers");
 		}
 	}
+
+	auto& Process::CreateBreakpointSite(VirtAddr address)
+	{
+		if (breakpointSites.ContainsAddress(address))
+		{
+			Error::Send("Breakpoint site already created at address " + std::to_string(address.Addr()));
+		}
+		return breakpointSites.Push(std::unique_ptr<BreakpointSite>{ new BreakpointSite(*this, address) });
+	}
 }

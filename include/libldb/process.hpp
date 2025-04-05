@@ -6,6 +6,8 @@
 
 #include <libldb/registers.hpp>
 #include <libldb/types.hpp>
+#include <libldb/breakpoint_site.hpp>
+#include <libldb/stoppoint_collection.hpp>
 
 namespace ldb
 {
@@ -85,6 +87,11 @@ namespace ldb
 		void WriteFprs(const user_fpregs_struct& fprs);
 		void WriteGprs(const user_regs_struct& gprs);
 
+		auto& CreateBreakpointSite(VirtAddr address);
+
+		auto& BreakpointSites() { return breakpointSites; }
+		const auto& BreakpointSites() const { return breakpointSites; }
+
 	private:
 		Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
 			: pid(_pid)
@@ -112,5 +119,10 @@ namespace ldb
 		bool isAttached = true;
 
 		std::unique_ptr<Registers> registers;
+
+		/// <summary>
+		/// physical breakpoint sites
+		/// </summary>
+		StoppointCollection<BreakpointSite> breakpointSites;
 	};
 }

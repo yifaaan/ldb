@@ -121,6 +121,23 @@ trap
 # 含义：产生一个断点中断。如果程序在调试器下运行，这会导致程序暂停执行，让开发者可以检查状态。如果程序正常运行（没有调试器附加），这通常会导致程序异常终止，并可能显示 "Trace/breakpoint trap" 之类的消息。这常用于调试目的，在代码的特定点强制停止。
 ```
 
+## Software Breakpoints
+
+Hardware breakpoints involve **setting architecture-specific registers** to
+produce breaks for you, whereas software breakpoints involve **modifying the
+machine instructions** in the process’s memory.
+
+- Hardware breakpoints trigger breaks if a given address is executed, written to, or read from.
+- Software breakpoints trigger breaks on execution only.
+
+Use `ptrace` to read and write memory. On x64, we can overwrite the instruction at the address with the `int3` instruction.
+
+When the processor executes the `int3` instruction, it passes control to the breakpoint interrupt handler, which-in the case of Linux-signals the p
+
+`WaitOnSignal()` can listen for signals being sent to the inferior process by the argument `waitStatus`。
+
+### Logical Breakpoint `ldb::Breakpoint` and Physical Breakpoint `ldb::BreakpointSite`
+It may be associated with several locations. For example, set a breakpoint in the function `ToString()`. There are many overloads of `ToString()` with differenct types, so we need to create multiple physical breakpoints for each overload.
 ```bash
 break set 0xcafecafe
 continue
