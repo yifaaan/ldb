@@ -140,4 +140,13 @@ TEST_CASE("Write register works", "[register]")
 	proc->WaitOnSignal();
 	output = channel.Read();
 	REQUIRE(ToStringView(output) == "42.2434");
+
+	// x87
+	regs.WriteById(RegisterId::st0, 42.24l);
+	regs.WriteById(RegisterId::fsw, std::uint16_t{ 0b0011100000000000 });
+	regs.WriteById(RegisterId::ftw, std::uint16_t{ 0b0011111111111111 });
+	proc->Resume(); // print the contents of st0 then trap
+	proc->WaitOnSignal();
+	output = channel.Read();
+	REQUIRE(ToStringView(output) == "42.24");
 }

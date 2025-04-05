@@ -4,6 +4,7 @@
 
 hex_format: .asciz "%#x"
 float_format: .asciz "%.4f"
+long_float_format: .asciz "%.2Lf"
 .section .text
 
 .macro trap
@@ -51,6 +52,19 @@ main:
 	movq $0, %rdi
 	call fflush@plt
 	trap
+
+
+	# print contents of st0
+	subq $16, %rsp
+	fstpt (%rsp)
+	leaq long_float_format(%rip), %rdi
+	movq $0, %rax
+	call printf@plt
+	movq $0, %rdi
+	call fflush@plt
+	addq $16, %rsp
+	trap
+
 	
 	popq %rbp
     movq $0, %rax
