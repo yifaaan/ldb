@@ -40,4 +40,22 @@ namespace ldb
 		}
 		isEnabled = true;
 	}
+
+	void BreakpointSite::Disable()
+	{
+		if (!isEnabled) return;
+
+		errno = 0;
+		std::uint64_t data = ptrace(PTRACE_PEEKDATA, process->Pid(), address, nullptr);
+		if (errno != 0)
+		{
+			Error::SendErrno("Disabling breakpoint site failed");
+		}
+		auto restoredData = (data & ~0xff) | static_cast<std::uint8_t>(savedData);
+		if (ptrace(PTRACE_POKEDATA, process->Pid(), address, nullptr) < 0)
+		{
+			Error::SendErrno("Disabling breakpoint site failed");
+		}
+		isEnabled = false;
+	}
 }
