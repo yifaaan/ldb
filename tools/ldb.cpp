@@ -243,6 +243,43 @@ write <register> <value>
 			}
 			return;
 		}
+
+		if (args.size() < 3)
+		{
+			PrintHelp({ "help", "breakpoint" });
+			return;
+		}
+
+		if (IsPrefix(command, "set"))
+		{
+			auto address = ldb::ToIntegral<std::uint64_t>(args[2], 16);
+			if (!address)
+			{
+				fmt::print(stderr, "Breakpoint command expectes address in hexadecimal, prefixed with '0x'\n");
+				return;
+			}
+			process.CreateBreakpointSite(ldb::VirtAddr{ *address }).Enable();
+			return;
+		}
+
+		auto id = ldb::ToIntegral<ldb::BreakpointSite::IdType>(args[2]);
+		if (!id)
+		{
+			std::cerr << "Command expects breakpoint id";
+			return;
+		}
+		if (IsPrefix(command, "enable"))
+		{
+			process.BreakpointSites().GetById(*id).Enable();
+		}
+		else if (IsPrefix(command, "disable"))
+		{
+			process.BreakpointSites().GetById(*id).Disable();
+		}
+		else if (IsPrefix(command, "delete"))
+		{
+			process.BreakpointSites().RemoveById(*id);
+		}
 	}
 
 	void HandleCommand(std::unique_ptr<ldb::Process>& process, std::string_view line)
