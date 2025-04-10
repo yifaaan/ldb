@@ -182,3 +182,108 @@ TEST_CASE("Read register works", "[register]")
 	// st0
 	REQUIRE(regs.ReadByIdAs<long double>(RegisterId::st0) == 64.125L);
 }
+
+TEST_CASE("Can create breakpoint site", "[breakpoint]")
+{
+	auto proc = Process::Launch("targets/run_endlessly");
+	auto& site = proc->CreateBreakpointSite(VirtAddr{ 42 });
+	REQUIRE(site.Address().Addr() == 42);
+}
+
+TEST_CASE("Breakpoint site ids increase", "[breakpoint]")
+{
+	auto proc = Process::Launch("targets/run_endlessly");
+
+	auto& s1 = proc->CreateBreakpointSite(VirtAddr{ 42 });
+	REQUIRE(s1.Address().Addr() == 42);
+	auto& s2 = proc->CreateBreakpointSite(VirtAddr{ 43 });
+	REQUIRE(s2.Id() == s1.Id() + 1);
+	auto& s3 = proc->CreateBreakpointSite(VirtAddr{ 44 });
+	REQUIRE(s3.Id() == s1.Id() + 2);
+	auto& s4 = proc->CreateBreakpointSite(VirtAddr{ 45 });
+	REQUIRE(s4.Id() == s1.Id() + 3);
+}
+
+TEST_CASE("Can find breakpoint site", "[breakpoint]")
+{
+	auto proc = Process::Launch("targets/run_endlessly");
+	const auto& cproc = *proc;
+
+	proc->CreateBreakpointSite(VirtAddr{ 42 });
+	proc->CreateBreakpointSite(VirtAddr{ 43 });
+	proc->CreateBreakpointSite(VirtAddr{ 44 });
+	proc->CreateBreakpointSite(VirtAddr{ 45 });
+
+	auto& s1 = proc->BreakpointSites().GetByAddress(VirtAddr{ 44 });
+	REQUIRE(proc->BreakpointSites().ContainsAddress(VirtAddr{ 44 }));
+	REQUIRE(s1.Address().Addr() == 44);
+
+	auto& cs1 = cproc.BreakpointSites().GetByAddress(VirtAddr{ 44 });
+	REQUIRE(cproc.BreakpointSites().ContainsAddress(VirtAddr{ 44 }));
+	REQUIRE(cs1.Address().Addr() == 44);
+
+	auto& s2 = proc->BreakpointSites().GetById(s1.Id() + 1);
+	REQUIRE(proc->BreakpointSites().ContainsId(s1.Id() + 1));
+	REQUIRE(s2.Id() == s1.Id() + 1);
+	REQUIRE(s2.Address().Addr() == 45);
+
+	auto& cs2 = proc->BreakpointSites().GetById(s1.Id() + 1);
+	REQUIRE(cproc.BreakpointSites().ContainsId(s1.Id() + 1));
+	REQUIRE(cs2.Id() == cs1.Id() + 1);
+	REQUIRE(cs2.Address().Addr() == 45);
+}
+
+TEST_CASE("Cannot find breakpoint site", "[breakpoint]")
+{
+	auto proc = Process::Launch("targets/run_endlessly");
+	const auto& cproc = *proc;
+
+	REQUIRE_THROWS_AS(proc->BreakpointSites().GetByAddress(VirtAddr{ 42 }), Error);
+	REQUIRE_THROWS_AS(proc->BreakpointSites().GetById(42), Error);
+	REQUIRE_THROWS_AS(cproc.BreakpointSites().GetByAddress(VirtAddr{ 42 }), Error);
+	REQUIRE_THROWS_AS(cproc.BreakpointSites().GetById(42), Error);
+}
+
+TEST_CASE("Breakpoint site list size and emptiness", "[breakpoint]")
+{
+	auto proc = Process::Launch("targets/run_endlessly");
+	const auto& cproc = *proc;
+
+	REQUIRE(proc->BreakpointSites().Size() == 0);
+	REQUIRE(proc->BreakpointSites().Empty());
+	REQUIRE(cproc.BreakpointSites().Size() == 0);
+	REQUIRE(cproc.BreakpointSites().Empty());
+
+	proc->CreateBreakpointSite(VirtAddr{ 42 });
+	REQUIRE(!proc->BreakpointSites().Empty());
+	REQUIRE(proc->BreakpointSites().Size() == 1);
+	REQUIRE(!cproc.BreakpointSites().Empty());
+	REQUIRE(cproc.BreakpointSites().Size() == 1);
+
+	proc->CreateBreakpointSite(VirtAddr{ 43 });
+	REQUIRE(!proc->BreakpointSites().Empty());
+	REQUIRE(proc->BreakpointSites().Size() == 2);
+	REQUIRE(!cproc.BreakpointSites().Empty());
+	REQUIRE(cproc.BreakpointSites().Size() == 2);
+}
+
+TEST_CASE("Can iterate breakpoint sites", "[breakpoint]")
+{
+	auto proc = Process::Launch("targets/run_endlessly");
+	const auto& cproc = *proc;
+
+	proc->CreateBreakpointSite(VirtAddr{ 42 });
+	proc->CreateBreakpointSite(VirtAddr{ 43 });
+	proc->CreateBreakpointSite(VirtAddr{ 44 });
+	proc->CreateBreakpointSite(VirtAddr{ 45 });
+
+	proc->BreakpointSites().ForEach([addr = 42](auto& site) mutable
+	{
+		REQUIRE(site.Address().Addr() == addr++);
+	});
+
+	cproc.BreakpointSites().ForEach([addr = 42](auto& site) mutable
+	{
+		REQUIRE(site.Address().Addr() == addr++);
+	});
+}

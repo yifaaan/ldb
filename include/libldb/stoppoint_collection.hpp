@@ -18,7 +18,7 @@ namespace ldb
 	class StoppointCollection
 	{
 	public:
-		auto& Push(std::unique_ptr<Stoppoint> bs);
+		auto Push(std::unique_ptr<Stoppoint> bs) -> Stoppoint&;
 
 		auto ContainsId(Stoppoint::IdType id) const;
 		auto ContainsAddress(VirtAddr address) const;
@@ -52,7 +52,7 @@ namespace ldb
 	};
 
 	template <typename Stoppoint>
-	auto& StoppointCollection<Stoppoint>::Push(std::unique_ptr<Stoppoint> bs)
+	auto StoppointCollection<Stoppoint>::Push(std::unique_ptr<Stoppoint> bs) -> Stoppoint&
 	{
 		stoppoints.push_back(std::move(bs));
 		return *stoppoints.back();

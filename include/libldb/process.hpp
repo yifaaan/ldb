@@ -87,7 +87,7 @@ namespace ldb
 		void WriteFprs(const user_fpregs_struct& fprs);
 		void WriteGprs(const user_regs_struct& gprs);
 
-		auto& CreateBreakpointSite(VirtAddr address);
+		auto CreateBreakpointSite(VirtAddr address) -> BreakpointSite&;
 
 		auto& BreakpointSites() { return breakpointSites; }
 		const auto& BreakpointSites() const { return breakpointSites; }

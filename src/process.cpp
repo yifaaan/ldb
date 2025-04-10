@@ -208,7 +208,7 @@ namespace ldb
 		}
 	}
 
-	auto& Process::CreateBreakpointSite(VirtAddr address)
+	auto Process::CreateBreakpointSite(VirtAddr address) -> BreakpointSite&
 	{
 		if (breakpointSites.ContainsAddress(address))
 		{

@@ -2,20 +2,20 @@
   "version": 3,
   "configurePresets": [
     {
-      "name": "linux-debug",
-      "displayName": "Linux Debug",
-      "description": "Target the Windows Subsystem for Linux (WSL) or a remote Linux system.",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/",
-      "installDir": "${sourceDir}/out/install/${presetName}",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" },
-      "toolchainFile": "/home/smooth/vcpkg/scripts/buildsystems/vcpkg.cmake",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      },
-      "vendor": { "microsoft.com/VisualStudioRemoteSettings/CMake/1.0": { "sourceDir": "$env{HOME}/.vs/$ms{projectDirName}" } }
+        "name": "linux-debug",
+        "displayName": "Linux Debug",
+        "description": "Target the Windows Subsystem for Linux (WSL) or a remote Linux system.",
+        "generator": "Ninja",
+        "binaryDir": "${sourceDir}/build/",
+        "installDir": "${sourceDir}/out/install/${presetName}",
+        "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" },
+        "toolchainFile": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "condition": {
+            "type": "equals",
+            "lhs": "${hostSystemName}",
+            "rhs": "Linux"
+        },
+        "vendor": { "microsoft.com/VisualStudioRemoteSettings/CMake/1.0": { "sourceDir": "$env{HOME}/.vs/$ms{projectDirName}" } }
     },
     {
       "name": "macos-debug",
