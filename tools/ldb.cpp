@@ -113,6 +113,7 @@ namespace
 			std::cerr << R"(Available commands:
 continue	- Resume the process
 register	- Commands for operating on registers
+breakpoint	- Commands for operating on breakpoints
 )";
 		}
 		else if (IsPrefix(args[1], "registers"))
@@ -122,6 +123,16 @@ read
 read <register>
 read all
 write <register> <value>
+)";
+		}
+		else if (IsPrefix(args[1], "breakpoint"))
+		{
+			std::cerr << R"(Available commands:
+list
+delete <id>
+disable <id>
+enable <id>
+set <address>
 )";
 		}
 		else
@@ -321,7 +332,9 @@ write <register> <value>
 		else
 		{
 			const char* programPath = argv[1];
-			return ldb::Process::Launch(programPath);
+			auto proc = ldb::Process::Launch(programPath);
+			fmt::print("Launched process with PID {}\n", proc->Pid());
+			return proc;
 		}
 	}
 }

@@ -143,8 +143,46 @@ break set 0xcafecafe
 continue
 ```
 
-###
+### PIE
 
+#### objdump
+
+0x115b doesn’t mean “virtual address 0x115b,” it means “0x115b bytes away from where the
+binary was loaded.” We’ll refer to these addresses as file addresses. We’ll also
+sometimes need to refer to offsets from the start of the object file on disk,
+which we’ll call file offsets.
+
+```asm
+.text:
+...
+0000000000001149 <main>:
+#include <cstdio>
+
+    1149:       f3 0f 1e fa             endbr64
+    114d:       55                      push   %rbp
+    114e:       48 89 e5                mov    %rsp,%rbp
+    1151:       48 8d 05 ac 0e 00 00    lea    0xeac(%rip),%rax        # 2004 <_IO_stdin_used+0x4>
+    1158:       48 89 c7                mov    %rax,%rdi
+    115b:       e8 f0 fe ff ff          call   1050 <puts@plt>
+    1160:       b8 00 00 00 00          mov    $0x0,%eax
+    1165:       5d                      pop    %rbp
+    1166:       c3  
+```
+
+
+
+#### /proc/<pid>/maps
+The first part is the address range, followed
+by the read/write/execute permissions of the region. Next comes the file
+offset of the segment.
+
+```sh
+556e2e531000-556e2e532000 r--p 00000000 08:10 129448  /path/to/run_endlessly
+556e2e532000-556e2e533000 r-xp 00001000 08:10 129448  /path/to/run_endlessly
+556e2e533000-556e2e534000 r--p 00002000 08:10 129448  /path/to/run_endlessly
+556e2e534000-556e2e535000 r--p 00002000 08:10 129448  /path/to/run_endlessly
+556e2e535000-556e2e536000 rw-p 00003000 08:10 129448  /path/to/run_endlessly
+```
 
 
 

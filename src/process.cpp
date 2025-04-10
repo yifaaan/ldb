@@ -1,6 +1,7 @@
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/personality.h>
 #include <unistd.h>
 
 #include <libldb/process.hpp>
@@ -37,6 +38,7 @@ namespace ldb
 
 		if (pid == 0)
 		{
+			personality(ADDR_NO_RANDOMIZE);
 			channel.CloseRead();
 			if (stdoutReplacement)
 			{
