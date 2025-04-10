@@ -219,6 +219,32 @@ write <register> <value>
 		}
 	}
 
+	void HandleBreakpointCommand(ldb::Process& process, std::span<std::string_view> args)
+	{
+		if (args.size() < 2)
+		{
+			PrintHelp({ "help", "breakpoint" });
+			return;
+		}
+		auto command = args[1];
+		if (IsPrefix(command, "list"))
+		{
+			if (process.BreakpointSites().Empty())
+			{
+				fmt::print("No breakpoints set\n");
+			}
+			else
+			{
+				fmt::print("Current breakpoints:\n");
+				process.BreakpointSites().ForEach([](const auto& site)
+				{
+					fmt::print("{}: address = {:#x}, {}\n", site.Id(), site.Address().Addr(), site.IsEnabled() ? "enabled" : "disabled");
+				});
+			}
+			return;
+		}
+	}
+
 	void HandleCommand(std::unique_ptr<ldb::Process>& process, std::string_view line)
 	{
 		auto args = Split(line, ' ');
@@ -237,6 +263,10 @@ write <register> <value>
 		else if (IsPrefix(command, "register"))
 		{
 			HandleRegisterCommand(*process, args);
+		}
+		else if (IsPrefix(command, "breakpoint"))
+		{
+			HandleBreakpointCommand(*process, args);
 		}
 		else
 		{
