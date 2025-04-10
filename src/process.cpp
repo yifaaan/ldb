@@ -3,6 +3,7 @@
 #include <sys/wait.h>
 #include <sys/personality.h>
 #include <unistd.h>
+#include <iostream>
 
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
@@ -119,13 +120,54 @@ namespace ldb
 		}
 	}
 
+
 	void Process::Resume()
 	{
+		// for continue command
+		auto pc = GetPc();
+		if (breakpointSites.EnabledStoppointAtAddress(pc))
+		{
+			auto& bp = breakpointSites.GetByAddress(pc);
+			bp.Disable();
+			if (ptrace(PTRACE_SINGLESTEP, pid, nullptr, nullptr) < 0)
+			{
+				Error::SendErrno("Failed to single step");
+			}
+			int waitStatus;
+			if (waitpid(pid, &waitStatus, 0) < 0)
+			{
+				Error::SendErrno("waitpid failed");
+			}
+			bp.Enable();
+		}
+
 		if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) < 0)
 		{
 			Error::SendErrno("Could not resume");
 		}
 		state = ProcessState::running;
+	}
+
+	StopReason Process::StepInstruction()
+	{
+		std::optional<BreakpointSite*> toReenable;
+		auto pc = GetPc();
+		if (breakpointSites.EnabledStoppointAtAddress(pc))
+		{
+			auto& bp = breakpointSites.GetByAddress(pc);
+			bp.Disable();
+			toReenable = &bp;
+		}
+		if (ptrace(PTRACE_SINGLESTEP, pid, nullptr, nullptr) < 0)
+		{
+			Error::SendErrno("Could not single step");
+		}
+		auto reason = WaitOnSignal();
+		if (toReenable)
+		{
+			toReenable.value()->Enable();
+		}
+		return reason;
 	}
 
 	StopReason Process::WaitOnSignal()
@@ -141,6 +183,13 @@ namespace ldb
 		if (isAttached && state == ProcessState::stopped)
 		{
 			ReadAllRegisters();
+
+			// for continue command
+			auto instrBegin = GetPc() - 1;
+			if (reason.info == SIGTRAP && breakpointSites.EnabledStoppointAtAddress(instrBegin))
+			{
+				SetPc(instrBegin);
+			}
 		}
 		return reason;
 	}

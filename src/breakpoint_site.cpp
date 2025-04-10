@@ -52,7 +52,7 @@ namespace ldb
 			Error::SendErrno("Disabling breakpoint site failed");
 		}
 		auto restoredData = (data & ~0xff) | static_cast<std::uint8_t>(savedData);
-		if (ptrace(PTRACE_POKEDATA, process->Pid(), address, nullptr) < 0)
+		if (ptrace(PTRACE_POKEDATA, process->Pid(), address, restoredData) < 0)
 		{
 			Error::SendErrno("Disabling breakpoint site failed");
 		}

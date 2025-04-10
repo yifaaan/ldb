@@ -112,6 +112,7 @@ namespace
 		{
 			std::cerr << R"(Available commands:
 continue	- Resume the process
+step		- Step over a single instruction
 register	- Commands for operating on registers
 breakpoint	- Commands for operating on breakpoints
 )";
@@ -315,6 +316,11 @@ set <address>
 		else if (IsPrefix(command, "breakpoint"))
 		{
 			HandleBreakpointCommand(*process, args);
+		}
+		else if (IsPrefix(command, "step"))
+		{
+			auto reason = process->StepInstruction();
+			PrintStopReason(*process, reason);
 		}
 		else
 		{

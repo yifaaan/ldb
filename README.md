@@ -138,6 +138,7 @@ When the processor executes the `int3` instruction, it passes control to the bre
 
 ### Logical Breakpoint `ldb::Breakpoint` and Physical Breakpoint `ldb::BreakpointSite`
 It may be associated with several locations. For example, set a breakpoint in the function `ToString()`. There are many overloads of `ToString()` with differenct types, so we need to create multiple physical breakpoints for each overload.
+
 ```bash
 break set 0xcafecafe
 continue
@@ -145,12 +146,17 @@ continue
 
 ### PIE
 
+These executables don’t expect to be loaded at a specific memory
+address; they can be loaded anywhere and still work. As such, memory ad-
+dresses within PIEs aren’t absolute virtual addresses, they’re offsets from the
+start of the final load address of the binary.
+
 #### objdump
 
-0x115b doesn’t mean “virtual address 0x115b,” it means “0x115b bytes away from where the
-binary was loaded.” We’ll refer to these addresses as file addresses. We’ll also
+In other words, 0x115b doesn’t mean “virtual address 0x115b,” it means “0x115b bytes away from where the
+binary was loaded.” We’ll refer to these addresses as **file addresses**. We’ll also
 sometimes need to refer to offsets from the start of the object file on disk,
-which we’ll call file offsets.
+which we’ll call **file offsets**.
 
 ```asm
 .text:
@@ -184,8 +190,36 @@ offset of the segment.
 556e2e535000-556e2e536000 rw-p 00003000 08:10 129448  /path/to/run_endlessly
 ```
 
+#### readelf
+
+```sh
+readelf -S test/targets/hello_ldb
+
+Section Headers:
+ [Nr] Name              Type             Address           Offset
+      Size              EntSize          Flags  Link  Info  Align
+[16] .text             PROGBITS         0000000000001060  00001060
+       0000000000000107  0000000000000000  AX       0     0     16
+```
+
+If the file offset and file ad-
+dresses of the .text are different for your executable, you’ll need to subtract the file offset from the file address to calculate the section load bias for that section, then subtract this load bias from the file address of the call
+instruction to calculate where that instruction lives inside the ELF file.
 
 
+
+```
+section_load_bias = fileaddr - offset
+offset_call = fileaddr_call - section_load_bias
+                   mem                      ELF
+                |       |               |       |
+    load bias   |       |         offset|  .text|
+                |       |               |       |
+      fileaddr  |       |               |       |
+                |       |               |       |
+                |       |               |       |
+                |       |               |       |
+```
 
 
    555555555000-555555556000 r-xp 00001000 08:20 203814    # .text section

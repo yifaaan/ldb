@@ -61,6 +61,8 @@ namespace ldb
 
 		void Resume();
 
+		StopReason StepInstruction();
+
 		/// <summary>
 		/// wait the process to stop
 		/// </summary>
@@ -75,6 +77,11 @@ namespace ldb
 		{
 			auto pc = GetRegisters().ReadByIdAs<std::uint64_t>(RegisterId::rip);
 			return VirtAddr{ pc };
+		}
+
+		void SetPc(VirtAddr address)
+		{
+			GetRegisters().WriteById(RegisterId::rip, address.Addr());
 		}
 
 
