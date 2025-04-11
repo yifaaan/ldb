@@ -9,6 +9,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <fmt/format.h>
+#include <fmt/ranges.h>
+
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
@@ -393,4 +396,28 @@ TEST_CASE("Can remove breakpoint sites", "[breakpoint]")
 	proc->BreakpointSites().RemoveById(site.Id());
 	proc->BreakpointSites().RemoveByAddress(VirtAddr{ 43 });
 	REQUIRE(proc->BreakpointSites().Empty());
+}
+
+TEST_CASE("Reading and writing memory works", "[memory]")
+{
+	bool closeOnExec = false;
+	Pipe channel{ closeOnExec };
+	auto proc = Process::Launch("targets/memory", true, channel.GetWrite());
+	channel.CloseWrite();
+	proc->Resume();
+	proc->WaitOnSignal();
+	auto aPointer = FromBytes<std::uint64_t>(channel.Read().data());
+	auto dataVec = proc->ReadMemory(VirtAddr{ aPointer }, 8);
+	//fmt::print("dataVec: {:02x}\n", fmt::join(dataVec, " "));
+	auto data = FromBytes<std::uint64_t>(dataVec.data());
+	REQUIRE(data == 0xcafecafe);
+
+	proc->Resume();
+	proc->WaitOnSignal();
+	auto bPointer = FromBytes<std::uint64_t>(channel.Read().data());
+	proc->WriteMemory(VirtAddr{ bPointer }, { AsBytes("hello, ldb!"), 12 });
+	proc->Resume();
+	proc->WaitOnSignal();
+	auto read = channel.Read();
+	REQUIRE(ToStringView(read) == "hello, ldb!");
 }
