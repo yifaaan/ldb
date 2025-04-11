@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <vector>
 #include <cstdint>
 
 namespace ldb
@@ -40,5 +41,25 @@ namespace ldb
 
     private:
         std::uint64_t addr = 0;
+    };
+
+    template <typename T>
+    class Span
+    {
+    public:
+        Span() = default;
+        Span(T* _data, std::size_t _size) : data(_data), size(_size) { }
+        Span(T* _data, T* _end) : data(_data), size(_end - _data) { }
+        template <typename U>
+        Span(const std::vector<U>& vec) : data(vec.data()), size(vec.size()) { }
+
+        T* Begin() const { return data; }
+        T* End() const { return data + size; }
+        std::size_t Size() const { return size; }
+        T& operator[](std::size_t n) { return *(data + n); }
+
+    private:
+        T* data = nullptr;
+        std::size_t size = 0;
     };
 }
