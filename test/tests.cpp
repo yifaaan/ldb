@@ -1,8 +1,11 @@
 #include <sys/types.h>
+#include <elf.h>
 #include <signal.h>
 
 #include <fstream>
 #include <format>
+#include <regex>
+#include <iostream>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -39,6 +42,75 @@ namespace
 		auto indexOfLastParenthesis = data.rfind(')');
 		auto indexOfStatusIndicator = indexOfLastParenthesis + 2;
 		return data[indexOfStatusIndicator];
+	}
+
+	std::uint64_t GetSectionLoadBias(std::filesystem::path path, Elf64_Addr fileAddress)
+	{
+		auto command = std::string{ "readelf -WS " } + path.string();
+		auto pipe = popen(command.c_str(), "r");
+		// [16] .text             PROGBITS        0000000000001060 001060 000107 00  AX  0   0 16
+		std::regex textReg{ R"(PROGBITS\s+(\w+)\s+(\w+)\s+(\w+))" };
+		char* line = nullptr;
+		std::size_t len = 0;
+		while (getline(&line, &len, pipe) != -1)
+		{
+			std::cmatch groups;
+			if (std::regex_search(line, groups, textReg))
+			{
+				// file address
+				auto address = std::stol(groups[1], nullptr, 16);
+				// file offset
+				auto offset = std::stol(groups[2], nullptr, 16);
+				// section size
+				auto size = std::stol(groups[3], nullptr, 16);
+				if (address <= fileAddress && fileAddress < (address + size))
+				{
+					auto sectionLoadBias = address - offset;
+					free(line);
+					pclose(pipe);
+					return sectionLoadBias;
+				}
+			}
+			free(line);
+			line = nullptr;
+		}
+		pclose(pipe);
+		Error::Send("Could not find section load bias");
+	}
+
+	std::int64_t GetEntryPointOffset(std::filesystem::path path)
+	{
+		std::ifstream elf{ path };
+		Elf64_Ehdr header;
+		elf.read(reinterpret_cast<char*>(&header), sizeof(header));
+		auto entryPointFileAddress = header.e_entry;
+		return entryPointFileAddress - GetSectionLoadBias(path, entryPointFileAddress);
+	}
+
+	/// <summary>
+	/// get the entry point load address
+	/// </summary>
+	/// <param name="pid"></param>
+	/// <param name="offset">the file offset of entry point</param>
+	/// <returns></returns>
+	VirtAddr GetLoadAddress(pid_t pid, std::int64_t offset)
+	{
+		std::ifstream maps{ std::format("/proc/{}/maps", pid) };
+		std::regex mapReg{ R"((\w+)-\w+ ..(.). (\w+))" };
+		std::string data;
+		while (std::getline(maps, data))
+		{
+			std::smatch groups;
+			std::regex_search(data, groups, mapReg);
+			// .text
+			if (groups[2] == 'x')
+			{
+				auto low = std::stol(groups[1], nullptr, 16);
+				auto fileOffset = std::stol(groups[3], nullptr, 16);
+				return VirtAddr{ static_cast<std::uint64_t>(offset - fileOffset + low)};
+			}
+		}
+		Error::Send("Could not find load address");
 	}
 }
 
@@ -286,4 +358,39 @@ TEST_CASE("Can iterate breakpoint sites", "[breakpoint]")
 	{
 		REQUIRE(site.Address().Addr() == addr++);
 	});
+}
+
+TEST_CASE("Breakpoint on address works", "[breakpoint]")
+{
+	bool closeOnExec = false;
+	Pipe channel{ closeOnExec };
+	auto proc = Process::Launch("targets/hello_ldb", true, channel.GetWrite());
+	channel.CloseWrite();
+	auto offset = GetEntryPointOffset("targets/hello_ldb");
+	auto loadAddress = GetLoadAddress(proc->Pid(), offset);
+	proc->CreateBreakpointSite(loadAddress).Enable();
+	proc->Resume();
+	auto reason = proc->WaitOnSignal();
+	
+	REQUIRE(reason.reason == ProcessState::stopped);
+	REQUIRE(reason.info == SIGTRAP);
+	REQUIRE(proc->GetPc() == loadAddress);
+	
+	proc->Resume();
+	reason = proc->WaitOnSignal();
+	REQUIRE(reason.reason == ProcessState::exited);
+	REQUIRE(reason.info == 0);
+	auto data = channel.Read();
+	REQUIRE(ToStringView(data) == "Hello, ldb!\n");
+}
+
+TEST_CASE("Can remove breakpoint sites", "[breakpoint]")
+{
+	auto proc = Process::Launch("targets/run_endlessly");
+	auto& site = proc->CreateBreakpointSite(VirtAddr{ 42 });
+	proc->CreateBreakpointSite(VirtAddr{ 43 });
+	REQUIRE(proc->BreakpointSites().Size() == 2);
+	proc->BreakpointSites().RemoveById(site.Id());
+	proc->BreakpointSites().RemoveByAddress(VirtAddr{ 43 });
+	REQUIRE(proc->BreakpointSites().Empty());
 }
