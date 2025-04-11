@@ -29,6 +29,8 @@ namespace ldb
 		auto& GetByAddress(VirtAddr address);
 		const auto& GetByAddress(VirtAddr address) const;
 
+		std::vector<Stoppoint*> GetInRegion(VirtAddr low, VirtAddr high) const;
+
 		void RemoveById(Stoppoint::IdType id);
 		void RemoveByAddress(VirtAddr address);
 
@@ -155,6 +157,21 @@ namespace ldb
 		(**it).Disable();
 		stoppoints.erase(it);
 	}
+
+	template <typename Stoppoint>
+	std::vector<Stoppoint*> StoppointCollection<Stoppoint>::GetInRegion(VirtAddr low, VirtAddr high) const
+	{
+		std::vector<Stoppoint*> ret;
+		for (auto& site : stoppoints)
+		{
+			if (site->InRange(low, high))
+			{
+				ret.push_back(&*site);
+			}
+		}
+		return ret;
+	}
+
 
 	template <typename Stoppoint>
 	void StoppointCollection<Stoppoint>::ForEach(auto f)

@@ -19,6 +19,7 @@
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
 #include <libldb/parse.hpp>
+#include <libldb/disassembler.hpp>
 
 
 namespace
@@ -118,6 +119,7 @@ step		- Step over a single instruction
 register	- Commands for operating on registers
 breakpoint	- Commands for operating on breakpoints
 memory		- Commands for operating on memory
+disassemble	- Disassemble machine code to assembly
 )";
 		}
 		else if (IsPrefix(args[1], "registers"))
@@ -147,9 +149,35 @@ read <address> <number of bytes>
 write <address> <bytes>
 )";
 		}
+		else if (IsPrefix(args[1], "disassemble"))
+		{
+			std::cerr << R"(Available options:
+-c <number of instructions>
+-a <start address>
+)";
+		}
 		else
 		{
 			std::cerr << "No help available on that\n";
+		}
+	}
+
+	void PrintDisassembly(ldb::Process& process, ldb::VirtAddr address, std::size_t nInstructions)
+	{
+		ldb::Disassembler dis{ process };
+		auto instructions = dis.Disassemble(nInstructions, address);
+		for (auto& instr : instructions)
+		{
+			fmt::print("{:#018x}: {}\n", instr.address.Addr(), instr.text);
+		}
+	}
+
+	void HandleStop(ldb::Process& process, ldb::StopReason reason)
+	{
+		PrintStopReason(process, reason);
+		if (reason.reason == ldb::ProcessState::stopped)
+		{
+			PrintDisassembly(process, process.GetPc(), 5);
 		}
 	}
 
@@ -373,6 +401,43 @@ write <address> <bytes>
 		}
 	}
 
+	// disassemble -c <n_instructions> -a <address>
+	void HandleDisassembleCommand(ldb::Process& process, std::span<std::string_view> args)
+	{
+		auto address = process.GetPc();
+		std::size_t nInstructions = 5;
+		auto it = args.begin() + 1;
+		while (it != args.end())
+		{
+			if (*it == "-a" && it + 1 != args.end())
+			{
+				++it;
+				auto optAddr = ldb::ToIntegral<std::uint64_t>(*it++, 16);
+				if (!optAddr)
+				{
+					ldb::Error::Send("Invalid address format");
+				}
+				address = ldb::VirtAddr{ *optAddr };
+			}
+			else if (*it == "-c" && it + 1 != args.end())
+			{
+				++it;
+				auto optN = ldb::ToIntegral<std::size_t>(*it++);
+				if (!optN)
+				{
+					ldb::Error::Send("Invalid instruction count");
+				}
+				nInstructions = *optN;
+			}
+			else
+			{
+				PrintHelp({ "help", "disassemble" });
+				return;
+			}
+		}
+		PrintDisassembly(process, address, nInstructions);
+	}
+
 	void HandleCommand(std::unique_ptr<ldb::Process>& process, std::string_view line)
 	{
 		auto args = Split(line, ' ');
@@ -382,7 +447,7 @@ write <address> <bytes>
 		{
 			process->Resume();
 			auto reason = process->WaitOnSignal();
-			PrintStopReason(*process, reason);
+			HandleStop(*process, reason);
 		}
 		else if (IsPrefix(command, "help"))
 		{
@@ -399,11 +464,15 @@ write <address> <bytes>
 		else if (IsPrefix(command, "step"))
 		{
 			auto reason = process->StepInstruction();
-			PrintStopReason(*process, reason);
+			HandleStop(*process, reason);
 		}
 		else if (IsPrefix(command, "memory"))
 		{
 			HandleMemoryCommand(*process, args);
+		}
+		else if (IsPrefix(command, "disassemble"))
+		{
+			HandleDisassembleCommand(*process, args);
 		}
 		else
 		{

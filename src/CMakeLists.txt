@@ -5,9 +5,10 @@ add_library(libldb
     registers.cpp
     breakpoint_site.cpp
     disassembler.cpp)
+target_link_libraries(libldb PRIVATE Zydis::Zydis)
 add_library(ldb::libldb ALIAS libldb)
 
-target_link_libraries(libldb PRIVATE Zydis::Zydis)
+
 
 set_target_properties(libldb PROPERTIES OUTPUT_NAME ldb)
 

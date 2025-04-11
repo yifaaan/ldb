@@ -259,6 +259,19 @@ namespace ldb
 		return ret;
 	}
 
+	std::vector<std::byte> Process::ReadMemoryWithoutTraps(VirtAddr address, std::size_t amount) const
+	{
+		auto memory = ReadMemory(address, amount);
+		auto sites = breakpointSites.GetInRegion(address, address + amount);
+		for (auto site : sites)
+		{
+			if (!site->IsEnabled()) continue;
+			auto offset = site->Address() - address.Addr();
+			memory[offset.Addr()] = site->savedData;
+		}
+		return memory;
+	}
+
 	void Process::WriteMemory(VirtAddr address, Span<const std::byte> data)
 	{
 		std::size_t written = 0;
