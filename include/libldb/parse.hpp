@@ -65,4 +65,26 @@ namespace ldb
 		if (c != text.end()) invalid();
 		return bytes;
 	}
+	
+	// [0xff,0xff]
+	inline auto ParseVector(std::string_view text)
+	{
+		auto invalid = []
+		{
+			ldb::Error::Send("Invalid format");
+		};
+		std::vector<std::byte> bytes;
+		auto c = text.data();
+		if (*c++ != '[') invalid();
+		while (*c != ']')
+		{
+			auto byte = ldb::ToIntegral<std::byte>({ c, 4 }, 16);
+			bytes.push_back(byte.value());
+			c += 4;
+			if (*c == ',') c++;
+			else if (*c != ']') invalid();
+		}
+		if (++c != text.end()) invalid();
+		return bytes;
+	}
 }
