@@ -25,6 +25,13 @@
 
 namespace
 {
+	ldb::Process* LdbProcess = nullptr;
+
+	void HandleSigint(int)
+	{
+		kill(LdbProcess->Pid(), SIGSTOP);
+	}
+
 	std::vector<std::string_view> Split(std::string_view sv, char delim)
 	{
 		std::vector<std::string_view> splits;
@@ -674,6 +681,8 @@ int main(int argc, const char** argv)
 	try
 	{
 		auto process = Attach(argc, argv);
+		LdbProcess = process.get();
+		signal(SIGINT, HandleSigint);
 		MainLoop(process);
 	}
 	catch (const ldb::Error& err)

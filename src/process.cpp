@@ -75,6 +75,10 @@ namespace ldb
 
 		if (pid == 0)
 		{
+			if (setpgid(0, 0) < 0)
+			{
+				ExitWithPerror(channel, "Could not set pgid");
+			}
 			personality(ADDR_NO_RANDOMIZE);
 			channel.CloseRead();
 			if (stdoutReplacement)
