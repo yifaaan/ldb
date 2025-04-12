@@ -366,6 +366,7 @@ namespace ldb
 
 	int Process::SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address)
 	{
+		// execute mode must 1 byte
 		return SetHardwareStoppoint(address, StoppointMode::execute, 1);
 	}
 
@@ -377,6 +378,20 @@ namespace ldb
 		auto clearMask = (0b11 << (index * 2)) | (0b1111 << (index * 4 + 16));
 		auto masked = control & ~clearMask;
 		GetRegisters().WriteById(RegisterId::dr7, masked);
+	}
+
+	int Process::SetWatchpoint(Watchpoint::IdType id, VirtAddr address, StoppointMode mode, std::size_t size)
+	{
+		return SetHardwareStoppoint(address, mode, size);
+	}
+
+	Watchpoint& Process::CreateWatchpoint(VirtAddr address, StoppointMode mode, std::size_t size)
+	{
+		if (watchpoints.ContainsAddress(address))
+		{
+			Error::Send("Watchpoint already created at address " + std::to_string(address.Addr()));
+		}
+		return watchpoints.Push(std::unique_ptr<Watchpoint>{ new Watchpoint(*this, address, mode, size) });
 	}
 
 	int Process::SetHardwareStoppoint(VirtAddr address, StoppointMode mode, std::size_t size)
