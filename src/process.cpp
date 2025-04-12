@@ -369,6 +369,16 @@ namespace ldb
 		return SetHardwareStoppoint(address, StoppointMode::execute, 1);
 	}
 
+	void Process::ClearHardwareStoppoint(int index)
+	{
+		auto id = static_cast<int>(RegisterId::dr0) + index;
+		GetRegisters().WriteById(static_cast<RegisterId>(id), 0);
+		auto control = GetRegisters().ReadByIdAs<std::uint64_t>(RegisterId::dr7);
+		auto clearMask = (0b11 << (index * 2)) | (0b1111 << (index * 4 + 16));
+		auto masked = control & ~clearMask;
+		GetRegisters().WriteById(RegisterId::dr7, masked);
+	}
+
 	int Process::SetHardwareStoppoint(VirtAddr address, StoppointMode mode, std::size_t size)
 	{
 		auto& regs = GetRegisters();

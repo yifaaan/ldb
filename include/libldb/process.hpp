@@ -107,6 +107,7 @@ namespace ldb
 		BreakpointSite& CreateBreakpointSite(VirtAddr address, bool hardware = false, bool internal = false);
 
 		int SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address);
+		void ClearHardwareStoppoint(int index);
 
 		StoppointCollection<BreakpointSite>& BreakpointSites() { return breakpointSites; }
 		const StoppointCollection<BreakpointSite>& BreakpointSites() const { return breakpointSites; }
