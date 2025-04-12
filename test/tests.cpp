@@ -421,3 +421,31 @@ TEST_CASE("Reading and writing memory works", "[memory]")
 	auto read = channel.Read();
 	REQUIRE(ToStringView(read) == "hello, ldb!");
 }
+
+TEST_CASE("Hardware breakpoint evades memory checksums", "[breakpoint]")
+{
+	bool closeOnExec = false;
+	Pipe channel{ closeOnExec };
+	auto proc = Process::Launch("targets/anti_debugger", true, channel.GetWrite());
+	channel.CloseWrite();
+	proc->Resume();
+	proc->WaitOnSignal();
+
+	auto func = VirtAddr{ FromBytes<std::uint64_t>(channel.Read().data()) };
+	auto& soft = proc->CreateBreakpointSite(func, false);
+	soft.Enable();
+	proc->Resume();
+	proc->WaitOnSignal();
+	REQUIRE(ToStringView(channel.Read()) == "Putting pepperoni on pizza...\n");
+
+	proc->BreakpointSites().RemoveById(soft.Id());
+	auto& hard = proc->CreateBreakpointSite(func, true);
+	hard.Enable();
+	proc->Resume();
+	proc->WaitOnSignal();
+	REQUIRE(proc->GetPc() == func);
+
+	proc->Resume();
+	proc->WaitOnSignal();
+	REQUIRE(ToStringView(channel.Read()) == "Putting pineapple on pizza...\n");
+}
