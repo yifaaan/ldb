@@ -301,11 +301,12 @@ objdump显示某函数起始地址为0x401240
 - 共享库(.so)：类似PIE，使用相对地址，在运行时动态重定位
 
 
-### Hardware breakpoint
+## Hardware breakpoint
 
 x86架构提供4个调试寄存器（DR0到DR3）用于设置硬件断点
 这意味着同一时间最多只能设置4个硬件断点
 
+### Debug Registers
 DR6的低4位（0-3位）分别对应DR0-DR3：
 
 位  3   2   1   0

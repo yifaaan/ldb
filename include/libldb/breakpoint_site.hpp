@@ -29,8 +29,11 @@ namespace ldb
 		bool InRange(VirtAddr low, VirtAddr high) const { return low <= address && address < high; }
 
 
+		bool IsHardware() const { return isHardware; }
+		bool IsInternal() const { return isInternal; }
+
 	private:
-		BreakpointSite(Process& proc, VirtAddr addr);
+		BreakpointSite(Process& proc, VirtAddr addr, bool _isHardware = false, bool _isInternal = false);
 		friend Process;
 
 		IdType id;
@@ -38,5 +41,10 @@ namespace ldb
 		VirtAddr address;
 		bool isEnabled;
 		std::byte savedData{};
+		bool isHardware;
+		// debugger use it to implement functionality like source-level stepping and shared library tracing
+		bool isInternal;
+		// index of the debug register a hardware breakpoint is using
+		int hardwareRegisterIndex = -1;
 	};
 }

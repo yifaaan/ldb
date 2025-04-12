@@ -104,10 +104,12 @@ namespace ldb
 		void WriteFprs(const user_fpregs_struct& fprs);
 		void WriteGprs(const user_regs_struct& gprs);
 
-		auto CreateBreakpointSite(VirtAddr address) -> BreakpointSite&;
+		BreakpointSite& CreateBreakpointSite(VirtAddr address, bool hardware = false, bool internal = false);
 
-		auto& BreakpointSites() { return breakpointSites; }
-		const auto& BreakpointSites() const { return breakpointSites; }
+		int SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address);
+
+		StoppointCollection<BreakpointSite>& BreakpointSites() { return breakpointSites; }
+		const StoppointCollection<BreakpointSite>& BreakpointSites() const { return breakpointSites; }
 
 	private:
 		Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
@@ -117,6 +119,8 @@ namespace ldb
 			, registers(new Registers(*this))
 		{
 		}
+
+		int SetHardwareStoppoint(VirtAddr address, StoppointMode mode, std::size_t size);
 
 		void ReadAllRegisters();
 

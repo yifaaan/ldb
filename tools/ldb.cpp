@@ -139,6 +139,7 @@ delete <id>
 disable <id>
 enable <id>
 set <address>
+set <address> -h
 )";
 		}
 		else if (IsPrefix(args[1], "memory"))
@@ -289,6 +290,7 @@ write <address> <bytes>
 				fmt::print("Current breakpoints:\n");
 				process.BreakpointSites().ForEach([](const auto& site)
 				{
+					if (site.IsInternal()) return;
 					fmt::print("{}: address = {:#x}, {}\n", site.Id(), site.Address().Addr(), site.IsEnabled() ? "enabled" : "disabled");
 				});
 			}
@@ -309,7 +311,14 @@ write <address> <bytes>
 				fmt::print(stderr, "Breakpoint command expectes address in hexadecimal, prefixed with '0x'\n");
 				return;
 			}
-			process.CreateBreakpointSite(ldb::VirtAddr{ *address }).Enable();
+			bool hardware = false;
+			// -h
+			if (args.size() == 4)
+			{
+				if (args[3] == "-h") hardware = true;
+				else ldb::Error::Send("Invalid breakpoint command argument");
+			}
+			process.CreateBreakpointSite(ldb::VirtAddr{ *address }, hardware).Enable();
 			return;
 		}
 

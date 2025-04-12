@@ -62,4 +62,11 @@ namespace ldb
         T* data = nullptr;
         std::size_t size = 0;
     };
+
+    enum class StoppointMode
+    {
+        write,
+        readWrite,
+        execute,
+    };
 }
