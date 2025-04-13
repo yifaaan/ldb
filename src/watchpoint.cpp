@@ -1,3 +1,5 @@
+#include <utility>
+
 #include <libldb/watchpoint.hpp>
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
@@ -25,6 +27,7 @@ namespace ldb
 			Error::Send("Watchpoint must be align to sizes");
 		}
 		id = GetNextId();
+		UpdateData();
 	}
 
 	void Watchpoint::Enable()
@@ -39,5 +42,13 @@ namespace ldb
 		if (!isEnabled) return;
 		process->ClearHardwareStoppoint(hardwareRegisterIndex);
 		isEnabled = false;
+	}
+
+	void Watchpoint::UpdateData()
+	{
+		std::uint64_t newData = 0;
+		auto read = process->ReadMemory(address, size);
+		std::memcpy(&newData, read.data(), size);
+		previousData = std::exchange(data, newData);
 	}
 }

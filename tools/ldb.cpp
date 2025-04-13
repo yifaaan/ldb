@@ -99,6 +99,42 @@ namespace
 		ldb::Error::Send("Invalid format");
 	}
 
+	std::string GetSigtrapInfo(const ldb::Process& process, ldb::StopReason reason)
+	{
+		if (reason.trapReason == ldb::TrapType::softwareBreak)
+		{
+			auto& site = process.BreakpointSites().GetByAddress(process.GetPc());
+			return fmt::format(" (breakpoint {})", site.Id());
+		}
+		if (reason.trapReason == ldb::TrapType::hardwareBreak)
+		{
+			auto id = process.GetCurrentHardwareStoppoint();
+			// hardware
+			if (id.index() == 0)
+			{
+				return fmt::format(" (breakpoint {})", std::get<0>(id));
+			}
+			// watchpoint
+			std::string msg;
+			auto& point = process.Watchpoints().GetById(std::get<1>(id));
+			msg += fmt::format(" (watchpoint {})", point.Id());
+			if (point.Data() == point.PreviousData())
+			{
+				msg += fmt::format("\nValue: {:#x}", point.Data());
+			}
+			else
+			{
+				msg += fmt::format("\nOld value: {:#x}\nNew value: {:#x}", point.PreviousData(), point.Data());
+			}
+			return msg;
+		}
+		if (reason.trapReason == ldb::TrapType::singleStep)
+		{
+			return " (single step)";
+		}
+		return {};
+	}
+
 	void PrintStopReason(const ldb::Process& process, ldb::StopReason reason)
 	{
 		std::string message;
@@ -112,6 +148,10 @@ namespace
 			break;
 		case ldb::ProcessState::stopped:
 			message = fmt::format("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), process.GetPc().Addr());
+			if (reason.info == SIGTRAP)
+			{
+				message += GetSigtrapInfo(process, reason);
+			}
 			break;
 		}
 		fmt::print("Process {} {}\n", process.Pid(), message);
@@ -344,7 +384,7 @@ set <address> <write|rw|execute> <size>
 		auto id = ldb::ToIntegral<ldb::BreakpointSite::IdType>(args[2]);
 		if (!id)
 		{
-			std::cerr << "Command expects breakpoint id";
+			std::cerr << "Command expects breakpoint id\n";
 			return;
 		}
 		if (IsPrefix(command, "enable"))
@@ -507,14 +547,14 @@ set <address> <write|rw|execute> <size>
 		auto address = ldb::ToIntegral<std::uint64_t>(args[2], 16);
 		auto modeTxt = args[3];
 		auto size = ldb::ToIntegral<std::size_t>(args[4]);
-		if (!address || !size || (modeTxt != "write" || modeTxt != "read/write" || modeTxt != "execute"))
+		if (!address || !size || (modeTxt != "write" && modeTxt != "rw" && modeTxt != "execute"))
 		{
 			PrintHelp({ "help", "watchpoint" });
 			return;
 		}
 		ldb::StoppointMode mode;
 		if (modeTxt == "write") mode = ldb::StoppointMode::write;
-		else if (modeTxt == "read/write") mode = ldb::StoppointMode::readWrite;
+		else if (modeTxt == "rw") mode = ldb::StoppointMode::readWrite;
 		else if (modeTxt == "execute") mode = ldb::StoppointMode::execute;
 		
 		process.CreateWatchpoint(ldb::VirtAddr{ *address }, mode, *size).Enable();
@@ -541,6 +581,7 @@ set <address> <write|rw|execute> <size>
 		else if (IsPrefix(command, "set"))
 		{
 			HandleWatchpointSet(process, args);
+			return;
 		}
 
 		if (args.size() < 3)
@@ -551,7 +592,7 @@ set <address> <write|rw|execute> <size>
 		auto id = ldb::ToIntegral<ldb::Watchpoint::IdType>(args[2]);
 		if (!id)
 		{
-			std::cerr << "Command expects watchpoint id";
+			std::cerr << "Command expects watchpoint id\n";
 			return;
 		}
 

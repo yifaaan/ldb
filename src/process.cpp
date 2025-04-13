@@ -223,15 +223,48 @@ namespace ldb
 		if (isAttached && state == ProcessState::stopped)
 		{
 			ReadAllRegisters();
-
+			AugmentStopReason(reason);
 			// for continue command
 			auto instrBegin = GetPc() - 1;
 			if (reason.info == SIGTRAP && breakpointSites.EnabledStoppointAtAddress(instrBegin))
 			{
 				SetPc(instrBegin);
 			}
+			else if (reason.trapReason == TrapType::hardwareBreak)
+			{
+				auto id = GetCurrentHardwareStoppoint();
+				if (id.index() == 1)
+				{
+					watchpoints.GetById(std::get<1>(id)).UpdateData();
+				}
+			}
 		}
 		return reason;
+	}
+
+	void Process::AugmentStopReason(StopReason& reason)
+	{
+		siginfo_t info;
+		if (ptrace(PTRACE_GETSIGINFO, pid, nullptr, &info) < 0)
+		{
+			Error::SendErrno("Failed to get signal info");
+		}
+		reason.trapReason = TrapType::unknown;
+		if (reason.info == SIGTRAP)
+		{
+			switch (info.si_code)
+			{
+			case TRAP_TRACE:
+				reason.trapReason = TrapType::singleStep;
+				break;
+			case SI_KERNEL:
+				reason.trapReason = TrapType::softwareBreak;
+				break;
+			case TRAP_HWBKPT:
+				reason.trapReason = TrapType::hardwareBreak;
+				break;
+			}
+		}
 	}
 
 	StopReason::StopReason(int waitStatus)
@@ -396,6 +429,26 @@ namespace ldb
 			Error::Send("Watchpoint already created at address " + std::to_string(address.Addr()));
 		}
 		return watchpoints.Push(std::unique_ptr<Watchpoint>{ new Watchpoint(*this, address, mode, size) });
+	}
+
+	std::variant<BreakpointSite::IdType, Watchpoint::IdType> Process::GetCurrentHardwareStoppoint() const
+	{
+		auto& regs = GetRegisters();
+		auto status = regs.ReadByIdAs<std::uint64_t>(RegisterId::dr6);
+		auto index = __builtin_ctzll(status);
+		auto id = static_cast<int>(RegisterId::dr0) + index;
+		auto addr = VirtAddr{ regs.ReadByIdAs<std::uint64_t>(static_cast<RegisterId>(id)) };
+		using Ret = std::variant<BreakpointSite::IdType, Watchpoint::IdType>;
+		if (breakpointSites.ContainsAddress(addr))
+		{
+			auto id = breakpointSites.GetByAddress(addr).Id();
+			return Ret{ std::in_place_index<0>, id };
+		}
+		else
+		{
+			auto id = watchpoints.GetByAddress(addr).Id();
+			return Ret{ std::in_place_index<1>, id };
+		}
 	}
 
 	int Process::SetHardwareStoppoint(VirtAddr address, StoppointMode mode, std::size_t size)

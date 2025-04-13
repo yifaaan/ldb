@@ -21,6 +21,17 @@ namespace ldb
 	};
 
 	/// <summary>
+	/// whether a SIGTRAP occurred due to these reasons
+	/// </summary>
+	enum class TrapType
+	{
+		singleStep,
+		softwareBreak,
+		hardwareBreak,
+		unknown,
+	};
+
+	/// <summary>
 	/// the reason why the process stopped(exited, terminated, or just stopped) using in WaitOnSignal()
 	/// </summary>
 	struct StopReason
@@ -32,6 +43,11 @@ namespace ldb
 		/// information about the stop(return value of the exit or signal that caused a stop or termination)
 		/// </summary>
 		std::uint8_t info;
+
+		/// <summary>
+		/// stop occurred due to SIGTRAP
+		/// </summary>
+		std::optional<TrapType> trapReason;
 	};
 
 	class Process
@@ -69,6 +85,8 @@ namespace ldb
 		/// </summary>
 		/// <returns>signal that occurred</returns>
 		StopReason WaitOnSignal();
+
+		void AugmentStopReason(StopReason& reason);
 
 		pid_t Pid() const { return pid; }
 
@@ -117,6 +135,8 @@ namespace ldb
 		Watchpoint& CreateWatchpoint(VirtAddr address, StoppointMode mode, std::size_t size);
 		StoppointCollection<Watchpoint>& Watchpoints() { return watchpoints; }
 		const StoppointCollection<Watchpoint>& Watchpoints() const { return watchpoints; }
+
+		std::variant<BreakpointSite::IdType, Watchpoint::IdType> GetCurrentHardwareStoppoint() const;
 
 	private:
 		Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
