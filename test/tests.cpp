@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include <elf.h>
 #include <signal.h>
+#include <fcntl.h>
 
 #include <fstream>
 #include <format>
@@ -494,4 +495,33 @@ TEST_CASE("Syscall mapping works", "[syscall]")
 	REQUIRE(SyscallNameToId("open") == 2);
 	REQUIRE(SyscallIdToName(3) == "close");
 	REQUIRE(SyscallNameToId("close") == 3);
+}
+
+TEST_CASE("Syscall catchpoints work", "[catchpoint]")
+{
+	auto devNull = open("/dev/null", O_WRONLY);
+	auto proc = Process::Launch("targets/anti_debugger", true, devNull);
+
+	auto writeSys = ldb::SyscallNameToId("write");
+	auto policy = ldb::SyscallCatchPolicy::CatchSome({ writeSys });
+	proc->SetSyscallCatchPolicy(std::move(policy));
+
+	proc->Resume();
+	auto reason = proc->WaitOnSignal();
+
+	REQUIRE(reason.reason == ldb::ProcessState::stopped);
+	REQUIRE(reason.info == SIGTRAP);
+	REQUIRE(reason.trapReason == ldb::TrapType::syscall);
+	REQUIRE(reason.syscallInfo->id == writeSys);
+	REQUIRE(reason.syscallInfo->entry == true);
+
+	proc->Resume();
+	reason = proc->WaitOnSignal();
+
+	REQUIRE(reason.reason == ldb::ProcessState::stopped);
+	REQUIRE(reason.info == SIGTRAP);
+	REQUIRE(reason.trapReason == ldb::TrapType::syscall);
+	REQUIRE(reason.syscallInfo->id == writeSys);
+	REQUIRE(reason.syscallInfo->entry == false);
+	close(devNull);
 }

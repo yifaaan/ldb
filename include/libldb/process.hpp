@@ -188,6 +188,11 @@ namespace ldb
 
 		std::variant<BreakpointSite::IdType, Watchpoint::IdType> GetCurrentHardwareStoppoint() const;
 
+		void SetSyscallCatchPolicy(SyscallCatchPolicy policy)
+		{
+			syscallCatchPolicy = std::move(policy);
+		}
+
 	private:
 		Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
 			: pid(_pid)
@@ -201,10 +206,7 @@ namespace ldb
 
 		void ReadAllRegisters();
 
-		void SetSyscallCatchPolicy(SyscallCatchPolicy policy)
-		{
-			syscallCatchPolicy = std::move(policy);
-		}
+
 
 	private:
 		StopReason MaybeResumeFromSyscall(const StopReason& reason);

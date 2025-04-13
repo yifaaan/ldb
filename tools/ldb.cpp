@@ -140,13 +140,13 @@ namespace
 			std::string message = " ";
 			if (info.entry)
 			{
-				message += "(syscall entry\n";
+				message += "(syscall entry)\n";
 				message += fmt::format("syscall: {}({:#x})",
 					ldb::SyscallIdToName(info.id), fmt::join(info.args, ","));
 			}
 			else
 			{
-				message += "(syscall exit\n";
+				message += "(syscall exit)\n";
 				message += fmt::format("syscall returned: {:#x}", info.ret);
 			}
 			return message;
@@ -658,6 +658,7 @@ syscall <list of syscall IDs or names
 			});
 			policy = ldb::SyscallCatchPolicy::CatchSome(std::vector<int>(toCatch.begin(), toCatch.end()));
 		}
+		process.SetSyscallCatchPolicy(std::move(policy));
 	}
 
 	// catchpoint syscall
