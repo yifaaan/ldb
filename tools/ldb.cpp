@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <format>
+#include <algorithm>
 #include <ranges>
 
 #include <readline/readline.h>
@@ -21,6 +22,7 @@
 #include <libldb/parse.hpp>
 #include <libldb/disassembler.hpp>
 #include <libldb/watchpoint.hpp>
+#include <libldb/syscall.hpp>
 
 
 namespace
@@ -132,6 +134,23 @@ namespace
 		{
 			return " (single step)";
 		}
+		if (reason.trapReason == ldb::TrapType::syscall)
+		{
+			const auto& info = *reason.syscallInfo;
+			std::string message = " ";
+			if (info.entry)
+			{
+				message += "(syscall entry\n";
+				message += fmt::format("syscall: {}({:#x})",
+					ldb::SyscallIdToName(info.id), fmt::join(info.args, ","));
+			}
+			else
+			{
+				message += "(syscall exit\n";
+				message += fmt::format("syscall returned: {:#x}", info.ret);
+			}
+			return message;
+		}
 		return {};
 	}
 
@@ -169,6 +188,7 @@ breakpoint	- Commands for operating on breakpoints
 memory		- Commands for operating on memory
 disassemble	- Disassemble machine code to assembly
 watchpoint	- Commands for operating on watchpoints
+catchpoint	- Commands for operating on catchpoints
 )";
 		}
 		else if (IsPrefix(args[1], "registers"))
@@ -214,6 +234,14 @@ delete <id>
 disable <id>
 enable <id>
 set <address> <write|rw|execute> <size>
+)";
+		}
+		else if (IsPrefix(args[1], "catchpoint"))
+		{
+			std::cerr << R"(Available options:
+syscall
+syscall none
+syscall <list of syscall IDs or names
 )";
 		}
 		else
@@ -611,6 +639,43 @@ set <address> <write|rw|execute> <size>
 
 	}
 
+	void HandleSyscallCatchpointCommand(ldb::Process& process, std::span<std::string_view> args)
+	{
+		auto policy = ldb::SyscallCatchPolicy::CatchAll();
+		if (args.size() == 3 && args[2] == "none")
+		{
+			policy = ldb::SyscallCatchPolicy::CatchNone();
+		}
+		else if (args.size() >= 3)
+		{
+			auto syscalls = Split(args[2], ',');
+			
+			auto toCatch = syscalls | std::views::transform([](auto syscall)
+			{
+				return isdigit(syscall[0])
+					? ldb::ToIntegral<int>(syscall).value()
+					: ldb::SyscallNameToId(syscall);
+			});
+			policy = ldb::SyscallCatchPolicy::CatchSome(std::vector<int>(toCatch.begin(), toCatch.end()));
+		}
+	}
+
+	// catchpoint syscall
+	// catchpoint syscall none
+	// catchpoint syscall <list>
+	void HandleCatchpointCommand(ldb::Process& process, std::span<std::string_view> args)
+	{
+		if (args.size() < 2)
+		{
+			PrintHelp({ "help", "catchpoint" });
+			return;
+		}
+		if (IsPrefix(args[1], "syscall"))
+		{
+			HandleSyscallCatchpointCommand(process, args);
+		}
+	}
+
 	void HandleCommand(std::unique_ptr<ldb::Process>& process, std::string_view line)
 	{
 		auto args = Split(line, ' ');
@@ -650,6 +715,10 @@ set <address> <write|rw|execute> <size>
 		else if (IsPrefix(command, "watchpoint"))
 		{
 			HandleWatchpointCommand(*process, args);
+		}
+		else if (IsPrefix(command, "catchpoint"))
+		{
+			HandleCatchpointCommand(*process, args);
 		}
 		else
 		{

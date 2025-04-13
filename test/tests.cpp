@@ -16,6 +16,7 @@
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/bit.hpp>
+#include <libldb/syscall.hpp>
 
 using namespace ldb;
 
@@ -483,4 +484,14 @@ TEST_CASE("Watchpoint detects read", "[watchpoint]")
 	REQUIRE(ToStringView(channel.Read()) == "Putting pineapple on pizza...\n");
 }
 
-
+TEST_CASE("Syscall mapping works", "[syscall]")
+{
+	REQUIRE(SyscallIdToName(0) == "read");
+	REQUIRE(SyscallNameToId("read") == 0);
+	REQUIRE(SyscallIdToName(1) == "write");
+	REQUIRE(SyscallNameToId("write") == 1);
+	REQUIRE(SyscallIdToName(2) == "open");
+	REQUIRE(SyscallNameToId("open") == 2);
+	REQUIRE(SyscallIdToName(3) == "close");
+	REQUIRE(SyscallNameToId("close") == 3);
+}

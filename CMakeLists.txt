@@ -3,7 +3,7 @@ set(CMAKE_CXX_STANDARD 23)
 
 project(ldb LANGUAGES CXX ASM)
 #set(CMAKE_ASM_COMPILER /usr/bin/as)
-#set(CMAKE_CXX_COMPILER /user/bin/g++-14)
+set(CMAKE_CXX_COMPILER /usr/bin/g++-14)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(readline REQUIRED IMPORTED_TARGET readline)
