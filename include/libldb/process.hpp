@@ -20,6 +20,17 @@ namespace ldb
 		terminated,
 	};
 
+	struct SyscallInformation
+	{
+		std::uint16_t id;
+		bool entry;
+		union
+		{
+			std::array<std::uint64_t, 6> args;
+			std::uint64_t ret;
+		};
+	};
+
 	/// <summary>
 	/// whether a SIGTRAP occurred due to these reasons
 	/// </summary>
@@ -28,6 +39,7 @@ namespace ldb
 		singleStep,
 		softwareBreak,
 		hardwareBreak,
+		syscall,
 		unknown,
 	};
 
@@ -48,7 +60,45 @@ namespace ldb
 		/// stop occurred due to SIGTRAP
 		/// </summary>
 		std::optional<TrapType> trapReason;
+
+		std::optional<SyscallInformation> syscallInfo;
 	};
+
+	class SyscallCatchPolicy
+	{
+	public:
+		enum Mode
+		{
+			none, some, all,
+		};
+
+		static SyscallCatchPolicy CatchAll()
+		{
+			return { Mode::all, {} };
+		}
+		static SyscallCatchPolicy CatchNone()
+		{
+			return { Mode::none, {} };
+		}
+		static SyscallCatchPolicy CatchSome(std::vector<int> toCatch)
+		{
+			return { Mode::some, std::move(toCatch) };
+		}
+
+		Mode GetMode() const { return mode; }
+		const std::vector<int>& GetToCatch() const { return toCatch; }
+
+	private:
+		SyscallCatchPolicy(Mode _mode, std::vector<int> _toCatch)
+			: mode(_mode)
+			, toCatch(_toCatch)
+		{ }
+
+		Mode mode = Mode::none;
+		std::vector<int> toCatch;
+	};
+
+	
 
 	class Process
 	{
@@ -151,7 +201,14 @@ namespace ldb
 
 		void ReadAllRegisters();
 
+		void SetSyscallCatchPolicy(SyscallCatchPolicy policy)
+		{
+			syscallCatchPolicy = std::move(policy);
+		}
+
 	private:
+		StopReason MaybeResumeFromSyscall(const StopReason& reason);
+
 		pid_t pid = 0;
 
 		/// <summary>
@@ -174,5 +231,9 @@ namespace ldb
 		StoppointCollection<BreakpointSite> breakpointSites;
 
 		StoppointCollection<Watchpoint> watchpoints;
+
+		SyscallCatchPolicy syscallCatchPolicy = SyscallCatchPolicy::CatchNone();
+
+		bool expectingSyscallExit = false;	
 	};
 }

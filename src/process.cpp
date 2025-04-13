@@ -59,6 +59,14 @@ namespace
 		}
 		ldb::Error::Send("No remaining hardware debug registers");
 	}
+
+	void SetPtraceOptions(pid_t pid)
+	{
+		if (ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACESYSGOOD) < 0)
+		{
+			ldb::Error::SendErrno("Failed to set TRACESYSGOOD option");
+		}
+	}
 }
 
 namespace ldb
@@ -116,6 +124,7 @@ namespace ldb
 		if (debug)
 		{
 			process->WaitOnSignal();
+			SetPtraceOptions(pid);
 		}
 		return process;
 	}
@@ -133,6 +142,7 @@ namespace ldb
 
 		std::unique_ptr<Process> process{ new Process{pid, /*terminateOnEnd*/false, /*isAttached*/true} };
 		process->WaitOnSignal();
+		SetPtraceOptions(pid);
 		return process;
 	}
 
@@ -180,8 +190,8 @@ namespace ldb
 			}
 			bp.Enable();
 		}
-
-		if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) < 0)
+		auto request = syscallCatchPolicy.GetMode() == SyscallCatchPolicy::Mode::none ? PTRACE_CONT : PTRACE_SYSCALL;
+		if (ptrace(request, pid, nullptr, nullptr) < 0)
 		{
 			Error::SendErrno("Could not resume");
 		}
@@ -238,6 +248,10 @@ namespace ldb
 					watchpoints.GetById(std::get<1>(id)).UpdateData();
 				}
 			}
+			else if (reason.trapReason == TrapType::syscall)
+			{
+				reason = MaybeResumeFromSyscall(reason);
+			}
 		}
 		return reason;
 	}
@@ -249,6 +263,40 @@ namespace ldb
 		{
 			Error::SendErrno("Failed to get signal info");
 		}
+		if (reason.info == (SIGTRAP | 0x80))
+		{
+			auto& sysinfo = reason.syscallInfo.emplace();
+			auto& regs = GetRegisters();
+			if (expectingSyscallExit)
+			{
+				sysinfo.entry = false;
+				// syscall id
+				sysinfo.id = regs.ReadByIdAs<std::uint64_t>(RegisterId::orig_rax);
+				// syscall return value
+				sysinfo.ret = regs.ReadByIdAs<std::uint64_t>(RegisterId::rax);
+				expectingSyscallExit = false;
+			}
+			else
+			{
+				sysinfo.entry = true;
+				// syscall id
+				sysinfo.id = regs.ReadByIdAs<std::uint64_t>(RegisterId::orig_rax);
+				std::array<RegisterId, 6> argRegs =
+				{
+					RegisterId::rdi, RegisterId::rsi, RegisterId::rdx,
+					RegisterId::r10, RegisterId::r8, RegisterId::r9
+				};
+				for (int i = 0; i < 6; i++)
+				{
+					sysinfo.args[i] = regs.ReadByIdAs<std::uint64_t>(argRegs[i]);
+				}
+				expectingSyscallExit = true;
+			}
+			reason.info = SIGTRAP;
+			reason.trapReason = TrapType::syscall;
+			return;
+		}
+		expectingSyscallExit = false;
 		reason.trapReason = TrapType::unknown;
 		if (reason.info == SIGTRAP)
 		{
@@ -468,5 +516,20 @@ namespace ldb
 		masked |= enableBit | modeBits | sizeBits;
 		regs.WriteById(RegisterId::dr7, masked);
 		return freeSpace;
+	}
+
+	StopReason Process::MaybeResumeFromSyscall(const StopReason& reason)
+	{
+		if (syscallCatchPolicy.GetMode() == SyscallCatchPolicy::Mode::some)
+		{
+			auto& toCatch = syscallCatchPolicy.GetToCatch();
+			auto found = std::ranges::find(toCatch, reason.syscallInfo->id);
+			if (found == toCatch.end())
+			{
+				Resume();
+				return WaitOnSignal();
+			}
+		}
+		return reason;
 	}
 }
