@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <vector>
+#include <string_view>
 
 namespace ldb
 {
@@ -21,6 +22,8 @@ namespace ldb
 		std::filesystem::path Path() const { return path; }
 
 		const Elf64_Ehdr& GetHeader() const { return header; }
+
+		std::string_view GetSectionName(std::size_t index) const;
 	private:
 		void ParseSectionHeaders();
 

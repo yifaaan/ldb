@@ -55,4 +55,11 @@ namespace ldb
 			reinterpret_cast<std::byte*>(sectionHeaders.data())
 		);
 	}
+
+	std::string_view Elf::GetSectionName(std::size_t index) const
+	{
+		// the section that stores the string table for section names(usually .shstrtab)
+		auto& section = sectionHeaders[header.e_shstrndx];
+		return { reinterpret_cast<char*>(data)  + section.sh_offset + index };
+	}
 }
