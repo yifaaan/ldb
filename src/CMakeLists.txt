@@ -6,7 +6,8 @@ add_library(libldb
     breakpoint_site.cpp
     disassembler.cpp
     watchpoint.cpp
-    syscall.cpp)
+    syscall.cpp
+    elf.cpp)
 target_link_libraries(libldb PRIVATE Zydis::Zydis)
 add_library(ldb::libldb ALIAS libldb)
 
