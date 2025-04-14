@@ -208,6 +208,10 @@ instruction to calculate where that instruction lives inside the ELF file.
 
 
 
+#### Address
+
+symbol table gives us a function’s address information in the form of file addresses.
+
 ```
 section_load_bias = fileaddr - offset
 offset_call = fileaddr_call - section_load_bias

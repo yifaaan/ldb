@@ -7,7 +7,8 @@ add_library(libldb
     disassembler.cpp
     watchpoint.cpp
     syscall.cpp
-    elf.cpp)
+    elf.cpp
+    types.cpp)
 target_link_libraries(libldb PRIVATE Zydis::Zydis)
 add_library(ldb::libldb ALIAS libldb)
 
