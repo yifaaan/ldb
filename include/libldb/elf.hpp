@@ -3,6 +3,7 @@
 #include <elf.h>
 
 #include <filesystem>
+#include <vector>
 
 namespace ldb
 {
@@ -21,10 +22,14 @@ namespace ldb
 
 		const Elf64_Ehdr& GetHeader() const { return header; }
 	private:
+		void ParseSectionHeaders();
+
 		int fd;
 		std::filesystem::path path;
 		std::size_t fileSize;
 		std::byte* data;
 		Elf64_Ehdr header;
+
+		std::vector<Elf64_Shdr> sectionHeaders;
 	};
 }

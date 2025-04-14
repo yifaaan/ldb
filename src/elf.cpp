@@ -32,11 +32,27 @@ namespace ldb
 		}
 		data = reinterpret_cast<std::byte*>(ret);
 		std::copy(data, data + sizeof(header), AsBytes(header));
+
+		ParseSectionHeaders();
 	}
 
 	Elf::~Elf()
 	{
 		munmap(data, fileSize);
 		close(fd);
+	}
+
+	void Elf::ParseSectionHeaders()
+	{
+		auto nHeaders = header.e_shnum;
+		if (nHeaders == 0 && header.e_shentsize != 0)
+		{
+			nHeaders = FromBytes<Elf64_Shdr>(data + header.e_shoff).sh_size;
+		}
+		sectionHeaders.resize(nHeaders);
+		std::copy(data + header.e_shoff,
+			data + header.e_shoff + sizeof(Elf64_Shdr) * nHeaders,
+			reinterpret_cast<std::byte*>(sectionHeaders.data())
+		);
 	}
 }
