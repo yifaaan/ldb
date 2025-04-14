@@ -35,6 +35,7 @@ namespace ldb
 
 		ParseSectionHeaders();
 		BuildSectionMap();
+		ParseSymbolTable();
 	}
 
 	Elf::~Elf()
@@ -136,4 +137,10 @@ namespace ldb
 			sectionMap[GetSectionName(section.sh_name)] = &section;
 		}
 	}
+
+	void Elf::ParseSymbolTable()
+	{
+
+	}
+
 }

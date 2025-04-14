@@ -46,6 +46,8 @@ namespace ldb
 
 		void BuildSectionMap();
 
+		void ParseSymbolTable();
+
 		int fd;
 		std::filesystem::path path;
 		std::size_t fileSize;
@@ -56,5 +58,7 @@ namespace ldb
 		std::vector<Elf64_Shdr> sectionHeaders;
 
 		std::unordered_map<std::string_view, Elf64_Shdr*> sectionMap;
+
+		std::vector<Elf64_Sym> symbolTable;
 	};
 }
