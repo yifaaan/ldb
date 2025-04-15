@@ -1,6 +1,5 @@
 #pragma once
 
-#include "libldb/types.hpp"
 #include <elf.h>
 
 #include <filesystem>
@@ -8,6 +7,10 @@
 #include <string_view>
 #include <optional>
 #include <unordered_map>
+#include <map>
+
+#include <libldb/types.hpp>
+
 namespace ldb
 {
 	class Elf
@@ -41,12 +44,26 @@ namespace ldb
 
 		std::optional<FileAddr> GetSectonStartAddress(std::string_view name) const;
 
+		std::vector<const Elf64_Sym*> GetSymbolByName(std::string_view name) const;
+
+		std::optional<const Elf64_Sym*> GetSymbolAtAddress(FileAddr addr) const;
+		std::optional<const Elf64_Sym*> GetSymbolAtAddress(VirtAddr addr) const;
+
+		std::optional<const Elf64_Sym*> GetSymbolContainingAddress(FileAddr addr) const;
+		std::optional<const Elf64_Sym*> GetSymbolContainingAddress(VirtAddr addr) const;
 	private:
 		void ParseSectionHeaders();
 
 		void BuildSectionMap();
 
 		void ParseSymbolTable();
+
+		void BuildSymbolMaps();
+
+		static constexpr auto RangeComparator = [](std::pair<FileAddr, FileAddr> a, std::pair<FileAddr, FileAddr> b)
+		{
+			return a.first < b.first;
+		};
 
 		int fd;
 		std::filesystem::path path;
@@ -60,5 +77,8 @@ namespace ldb
 		std::unordered_map<std::string_view, Elf64_Shdr*> sectionMap;
 
 		std::vector<Elf64_Sym> symbolTable;
+
+		std::unordered_multimap<std::string_view, Elf64_Sym*> symbolNameMap;
+		std::map<std::pair<FileAddr, FileAddr>, Elf64_Sym*> symbolAddrMap;	
 	};
 }
