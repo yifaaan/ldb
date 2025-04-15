@@ -1,3 +1,4 @@
+#include "libldb/types.hpp"
 #include <sys/types.h>
 #include <elf.h>
 #include <signal.h>
@@ -18,6 +19,7 @@
 #include <libldb/pipe.hpp>
 #include <libldb/bit.hpp>
 #include <libldb/syscall.hpp>
+#include <libldb/target.hpp>
 
 using namespace ldb;
 
@@ -524,4 +526,23 @@ TEST_CASE("Syscall catchpoints work", "[catchpoint]")
 	REQUIRE(reason.syscallInfo->id == writeSys);
 	REQUIRE(reason.syscallInfo->entry == false);
 	close(devNull);
+}
+
+TEST_CASE("ELF parser works", "[elf]")
+{
+	auto path = "targets/hello_ldb";
+	ldb::Elf elf{path};
+	auto entry = elf.GetHeader().e_entry;
+	auto sym = elf.GetSymbolAtAddress(FileAddr{elf, entry});
+	auto name = elf.GetString(sym.value()->st_name);
+	REQUIRE(name == "_start");
+
+	auto syms = elf.GetSymbolByName("_start");
+	name = elf.GetString(syms.at(0)->st_name);
+	REQUIRE(name == "_start");
+
+	elf.NotifyLoaded(VirtAddr{0xcafecafe});
+	sym = elf.GetSymbolAtAddress(VirtAddr{0xcafecafe + entry});
+	name = elf.GetString(sym.value()->st_name);
+	REQUIRE(name == "_start");
 }

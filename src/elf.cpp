@@ -136,6 +136,7 @@ namespace ldb
 		}
 		return std::nullopt;
 	}
+	
 	std::optional<const Elf64_Sym*> Elf::GetSymbolAtAddress(VirtAddr addr) const
 	{
 		return GetSymbolAtAddress(addr.ToFileAddr(*this));
