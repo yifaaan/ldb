@@ -8,7 +8,8 @@ add_library(libldb
     watchpoint.cpp
     syscall.cpp
     elf.cpp
-    types.cpp)
+    types.cpp
+    target.cpp)
 target_link_libraries(libldb PRIVATE Zydis::Zydis)
 add_library(ldb::libldb ALIAS libldb)
 

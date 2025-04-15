@@ -7,7 +7,6 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <format>
 #include <algorithm>
 #include <ranges>
 
@@ -23,7 +22,7 @@
 #include <libldb/disassembler.hpp>
 #include <libldb/watchpoint.hpp>
 #include <libldb/syscall.hpp>
-
+#include <libldb/target.hpp>
 
 namespace
 {
@@ -154,7 +153,26 @@ namespace
 		return {};
 	}
 
-	void PrintStopReason(const ldb::Process& process, ldb::StopReason reason)
+	std::string GetSignalStopReason(const ldb::Target& target, ldb::StopReason reason)
+	{
+		auto& process = target.GetProcess();
+		auto message = fmt::format("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), process.GetPc().Addr());
+		
+		// look up the symbol corresponding to the current program counter and print out the function name if there is one.
+		auto func = target.GetElf().GetSymbolContainingAddress(process.GetPc());
+		if (func && ELF64_ST_TYPE(func.value()->st_info) == STT_FUNC)
+		{
+			// get the function name in strtab
+			message += fmt::format(" ({})", target.GetElf().GetString(func.value()->st_name));
+		}
+		if (reason.info == SIGTRAP)
+		{
+			message += GetSigtrapInfo(process, reason);
+		}
+		return message;
+	}
+
+	void PrintStopReason(const ldb::Target& target, ldb::StopReason reason)
 	{
 		std::string message;
 		switch (reason.reason)
@@ -166,14 +184,10 @@ namespace
 			message = fmt::format("terminated with signal {}", sigabbrev_np(reason.info));
 			break;
 		case ldb::ProcessState::stopped:
-			message = fmt::format("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), process.GetPc().Addr());
-			if (reason.info == SIGTRAP)
-			{
-				message += GetSigtrapInfo(process, reason);
-			}
+			message = GetSignalStopReason(target, reason);
 			break;
 		}
-		fmt::print("Process {} {}\n", process.Pid(), message);
+		fmt::print("Process {} {}\n", target.GetProcess().Pid(), message);
 	}
 
 	void PrintHelp(const std::vector<std::string_view>& args)
@@ -260,12 +274,12 @@ syscall <list of syscall IDs or names
 		}
 	}
 
-	void HandleStop(ldb::Process& process, ldb::StopReason reason)
+	void HandleStop(ldb::Target& target, ldb::StopReason reason)
 	{
-		PrintStopReason(process, reason);
+		PrintStopReason(target, reason);
 		if (reason.reason == ldb::ProcessState::stopped)
 		{
-			PrintDisassembly(process, process.GetPc(), 5);
+			PrintDisassembly(target.GetProcess(), target.GetProcess().GetPc(), 5);
 		}
 	}
 
@@ -677,16 +691,17 @@ syscall <list of syscall IDs or names
 		}
 	}
 
-	void HandleCommand(std::unique_ptr<ldb::Process>& process, std::string_view line)
+	void HandleCommand(std::unique_ptr<ldb::Target>& target, std::string_view line)
 	{
 		auto args = Split(line, ' ');
 		auto command = args[0];
 
+		auto process = &target->GetProcess();
 		if (IsPrefix(command, "continue"))
 		{
 			process->Resume();
 			auto reason = process->WaitOnSignal();
-			HandleStop(*process, reason);
+			HandleStop(*target, reason);
 		}
 		else if (IsPrefix(command, "help"))
 		{
@@ -703,7 +718,7 @@ syscall <list of syscall IDs or names
 		else if (IsPrefix(command, "step"))
 		{
 			auto reason = process->StepInstruction();
-			HandleStop(*process, reason);
+			HandleStop(*target, reason);
 		}
 		else if (IsPrefix(command, "memory"))
 		{
@@ -727,24 +742,24 @@ syscall <list of syscall IDs or names
 		}
 	}
 
-	std::unique_ptr<ldb::Process> Attach(int argc, const char** argv)
+	std::unique_ptr<ldb::Target> Attach(int argc, const char** argv)
 	{
 		if (argc == 3 && argv[1] == std::string_view{ "-p" })
 		{
 			pid_t pid = std::atoi(argv[2]);
-			return ldb::Process::Attach(pid);
+			return ldb::Target::Attach(pid);
 		}
 		else
 		{
 			const char* programPath = argv[1];
-			auto proc = ldb::Process::Launch(programPath);
-			fmt::print("Launched process with PID {}\n", proc->Pid());
-			return proc;
+			auto target = ldb::Target::Launch(programPath);
+			fmt::print("Launched process with PID {}\n", target->GetProcess().Pid());
+			return target;
 		}
 	}
 }
 
-void MainLoop(std::unique_ptr<ldb::Process>& process)
+void MainLoop(std::unique_ptr<ldb::Target>& target)
 {
 	// handle user input command
 	char* line = nullptr;
@@ -771,7 +786,7 @@ void MainLoop(std::unique_ptr<ldb::Process>& process)
 			// string converts to string_view because of the conversion function [std::string::operator std::string_view()]
 			try
 			{
-				HandleCommand(process, lineString);
+				HandleCommand(target, lineString);
 			}
 			catch (const ldb::Error& err)
 			{
@@ -791,10 +806,10 @@ int main(int argc, const char** argv)
 	
 	try
 	{
-		auto process = Attach(argc, argv);
-		LdbProcess = process.get();
+		auto target = Attach(argc, argv);
+		LdbProcess = &target->GetProcess();
 		signal(SIGINT, HandleSigint);
-		MainLoop(process);
+		MainLoop(target);
 	}
 	catch (const ldb::Error& err)
 	{

@@ -9,6 +9,7 @@
 #include <libldb/breakpoint_site.hpp>
 #include <libldb/stoppoint_collection.hpp>
 #include <libldb/watchpoint.hpp>
+#include <unordered_map>
 
 namespace ldb
 {
@@ -192,6 +193,8 @@ namespace ldb
 		{
 			syscallCatchPolicy = std::move(policy);
 		}
+
+		std::unordered_map<int, std::uint64_t> GetAuxv() const;
 
 	private:
 		Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)

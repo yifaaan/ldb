@@ -4,8 +4,10 @@
 #include <sys/personality.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include <elf.h>
 
-#include <iostream>
+#include <format>
+#include <fstream>
 
 #include <libldb/process.hpp>
 #include <libldb/error.hpp>
@@ -497,6 +499,24 @@ namespace ldb
 			auto id = watchpoints.GetByAddress(addr).Id();
 			return Ret{ std::in_place_index<1>, id };
 		}
+	}
+
+	std::unordered_map<int, std::uint64_t> Process::GetAuxv() const
+	{
+		auto path = std::format("/proc/{}/auxv", pid);
+		std::ifstream auxv{path};
+		std::unordered_map<int, std::uint64_t> ret;
+		std::uint64_t id, value;
+		auto read = [&](auto& into)
+		{
+			auxv.read(reinterpret_cast<char*>(&into), sizeof(into));
+		};
+		for (read(id); id != AT_NULL; read(id))
+		{
+			read(value);
+			ret.emplace(id, value);
+		}
+		return ret;
 	}
 
 	int Process::SetHardwareStoppoint(VirtAddr address, StoppointMode mode, std::size_t size)
