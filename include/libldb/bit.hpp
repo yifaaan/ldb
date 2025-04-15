@@ -2,7 +2,7 @@
 
 #include <cstring>
 #include <vector>
-
+#include <string_view>
 #include <libldb/types.hpp>
 
 namespace ldb

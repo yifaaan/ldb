@@ -65,7 +65,7 @@ namespace ldb
         T* Begin() const { return data; }
         T* End() const { return data + size; }
         std::size_t Size() const { return size; }
-        T& operator[](std::size_t n) { return *(data + n); }
+        T& operator[](std::size_t n) const { return *(data + n); }
 
     private:
         T* data = nullptr;
