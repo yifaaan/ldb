@@ -79,6 +79,6 @@ namespace ldb
 		std::vector<Elf64_Sym> symbolTable;
 
 		std::unordered_multimap<std::string_view, Elf64_Sym*> symbolNameMap;
-		std::map<std::pair<FileAddr, FileAddr>, Elf64_Sym*> symbolAddrMap;	
+		std::map<std::pair<FileAddr, FileAddr>, Elf64_Sym*, decltype(RangeComparator)> symbolAddrMap;	
 	};
 }
