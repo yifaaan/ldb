@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <iostream>
 
 #include <libldb/dwarf.hpp>
 #include <libldb/types.hpp>
@@ -240,10 +241,11 @@ namespace
         {
             code = cursor.Uleb128();
             auto tag = cursor.Uleb128();
-            auto hasChildren = static_cast<bool>(cursor.U8());
+            auto hasChildren = cursor.U8() == 1 ? true : false;
             std::vector<ldb::AttrSpec> attrSpecs;
             std::uint64_t attr = 0;
             std::uint64_t form = 0;
+            do 
             {
                 attr = cursor.Uleb128();
                 form = cursor.Uleb128();
@@ -321,6 +323,7 @@ namespace
             cursor.SkipForm(attr.form);
         }
         auto next = cursor.Position();
+        std::cerr << "FdSFDSFSDF\n";
         return ldb::Die{pos, &compileUnit, &abbrevEntry,std::move(attrLocs), next};
     }
 }
@@ -353,6 +356,87 @@ namespace ldb
             abbrevTables.emplace(offset, ParseAbbrevTable(*elf, offset));
         }
         return abbrevTables.at(offset);
+    }
+
+    const CompileUnit* Dwarf::CompileUnitContainingAddress(FileAddr address) const
+    {
+        if (auto it = std::ranges::find_if(compileUnits, [address](const auto& cu){ return cu->Root().ContainsAddress(address);}); it != std::end(compileUnits))
+        {
+            return it->get();
+        }
+        return nullptr;
+    }
+
+    std::optional<Die> Dwarf::FunctionContainingAddress(FileAddr address) const
+    {
+        Index();
+        for (const auto& [name, entry] : functionIndex)
+        {
+            Cursor cursor{{entry.pos, entry.compileUnit->Data().End()}};
+            auto die = ParseDie(*entry.compileUnit, cursor);
+            if (die.ContainsAddress(address) && die.AbbrevEntry()->tag == DW_TAG_subprogram) return die;
+        }
+        return std::nullopt;
+    }
+
+    std::vector<Die> Dwarf::FindFunctions(std::string name) const
+    {
+        Index();
+        std::vector<Die> ret;
+        auto [begin, end] = functionIndex.equal_range(name);
+        std::transform(begin, end, std::back_inserter(ret), [](const auto& p)
+        {
+            auto [name, entry] = p;
+            Cursor cursor{{entry.pos, entry.compileUnit->Data().End()}};
+            return ParseDie(*entry.compileUnit, cursor);
+        });
+        return ret;
+    }
+
+    void Dwarf::Index() const
+    {
+        if (!functionIndex.empty()) return;
+        std::ranges::for_each(compileUnits, [this](auto& cu)
+        {
+            IndexDie(cu->Root());
+        });
+    }
+
+    void Dwarf::IndexDie(const Die& current) const
+    {
+        bool hasRange = current.Contains(DW_AT_ranges) || current.Contains(DW_AT_low_pc);
+        bool isFunc = current.AbbrevEntry()->tag == DW_TAG_subprogram || current.AbbrevEntry()->tag == DW_TAG_inlined_subroutine;
+        if (hasRange && isFunc)
+        {
+            if (auto name = current.Name(); name)
+            {
+                IndexEntry entry{current.Cu(), current.Position()};
+                functionIndex.emplace(*name, entry);
+            }
+        }
+        for (auto child : current.Children())
+        {
+            IndexDie(child);
+        }
+    }
+
+    std::optional<std::string_view> Die::Name() const
+    {
+        if (Contains(DW_AT_name))
+        {
+            return (*this)[DW_AT_name].AsString();
+        }
+        if (Contains(DW_AT_specification))
+        {
+            // func define
+            return (*this)[DW_AT_specification].AsReference().Name();
+        }
+        if (Contains(DW_AT_abstract_origin))
+        {
+            // inline func
+            return (*this)[DW_AT_abstract_origin].AsReference().Name();
+        }
+        return std::nullopt;
     }
 
     bool Die::Contains(std::uint64_t attribute) const

@@ -1,4 +1,3 @@
-#include "libldb/types.hpp"
 #include <sys/types.h>
 #include <elf.h>
 #include <signal.h>
@@ -20,6 +19,7 @@
 #include <libldb/bit.hpp>
 #include <libldb/syscall.hpp>
 #include <libldb/target.hpp>
+#include <libldb/dwarf.hpp>
 
 using namespace ldb;
 
@@ -545,4 +545,16 @@ TEST_CASE("ELF parser works", "[elf]")
 	sym = elf.GetSymbolAtAddress(VirtAddr{0xcafecafe + entry});
 	name = elf.GetString(sym.value()->st_name);
 	REQUIRE(name == "_start");
+}
+
+TEST_CASE("Correct DWARF language", "[dwarf]")
+{
+	auto path = "targets/hello_ldb";
+	ldb::Elf elf{path};
+	auto& compileUnits = elf.GetDwarf().CompileUnits();
+	REQUIRE(compileUnits.size() == 1);
+
+	auto& cu = compileUnits[0];
+	auto lang = cu->Root()[DW_AT_language].AsInt();
+	REQUIRE(lang == DW_LANG_C_plus_plus);
 }

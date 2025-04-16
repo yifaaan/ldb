@@ -10,6 +10,7 @@
 #include <map>
 
 #include <libldb/types.hpp>
+#include <libldb/dwarf.hpp>
 
 namespace ldb
 {
@@ -51,6 +52,9 @@ namespace ldb
 
 		std::optional<const Elf64_Sym*> GetSymbolContainingAddress(FileAddr addr) const;
 		std::optional<const Elf64_Sym*> GetSymbolContainingAddress(VirtAddr addr) const;
+
+		Dwarf& GetDwarf() { return *dwarf; }
+		const Dwarf& GetDwarf() const { return *dwarf; } 
 	private:
 		void ParseSectionHeaders();
 
@@ -80,5 +84,7 @@ namespace ldb
 
 		std::unordered_multimap<std::string_view, Elf64_Sym*> symbolNameMap;
 		std::map<std::pair<FileAddr, FileAddr>, Elf64_Sym*, decltype(RangeComparator)> symbolAddrMap;	
+
+		std::unique_ptr<Dwarf> dwarf;
 	};
 }

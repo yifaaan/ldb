@@ -1,6 +1,6 @@
 function(add_test_cpp_target name)
 	add_executable(${name} "${name}.cpp")
-	target_compile_options(${name} PRIVATE -g -O0 -pie)
+	target_compile_options(${name} PRIVATE -g -O0 -pie -gdwarf-4)
 	add_dependencies(tests ${name})
 endfunction()
 

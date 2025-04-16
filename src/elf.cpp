@@ -39,6 +39,7 @@ namespace ldb
 		BuildSectionMap();
 		ParseSymbolTable();
 		BuildSymbolMaps();
+		dwarf = std::make_unique<Dwarf>(*this);
 	}
 
 	Elf::~Elf()

@@ -175,12 +175,29 @@ namespace ldb
             return compileUnits;
         }
 
+        const CompileUnit* CompileUnitContainingAddress(FileAddr address) const;
+
+        std::optional<Die> FunctionContainingAddress(FileAddr address) const;
+
+        std::vector<Die> FindFunctions(std::string name) const;
+
     private:
+        void Index() const;
+        void IndexDie(const Die& current) const;
+
+        struct IndexEntry
+        {
+            const CompileUnit* compileUnit;
+            const std::byte* pos;
+        };
+
         const Elf* elf;
 
         std::unordered_map<std::size_t, std::unordered_map<std::uint64_t, Abbrev>> abbrevTables;
     
         std::vector<std::unique_ptr<CompileUnit>> compileUnits;
+
+        mutable std::unordered_multimap<std::string, IndexEntry> functionIndex;
     };
 
     class Die
@@ -209,6 +226,8 @@ namespace ldb
         const std::byte* Position() const { return position; }
 
         const std::byte* Next() const { return next; }
+
+        std::optional<std::string_view> Name() const;
 
         // the attribute must different in a same DIE
         bool Contains(std::uint64_t attribute) const;
