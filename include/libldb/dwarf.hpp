@@ -29,6 +29,74 @@ namespace ldb
         std::vector<AttrSpec> attrSpecs;
     };
 
+    class Die;
+    class CompileUnit;
+    class RangeList
+    {
+    public:
+        RangeList(const CompileUnit* _compileUnit, Span<const std::byte> _data, FileAddr _baseAddr)
+            : compileUnit(_compileUnit)
+            , data(_data)
+            , baseAddr(_baseAddr)
+        {}
+
+        struct Entry
+        {
+            FileAddr low, high;
+
+            bool Contains(FileAddr addr) const
+            {
+                return low <= addr && addr < high;
+            }
+        };
+
+        class iterator;
+        iterator begin() const;
+        iterator end() const;
+
+        bool Contains(FileAddr addr) const;
+    
+    private:
+        const CompileUnit* compileUnit;
+        Span<const std::byte> data;
+        FileAddr baseAddr;
+    };
+
+    class RangeList::iterator
+    {
+    public:
+        using value_type = Entry;
+        using reference = const Entry&;
+        using pointer = const Entry*;
+        using difference_type = std::ptrdiff_t;
+        using iterator_category = std::forward_iterator_tag;
+
+        iterator(const CompileUnit* _compileUnit, Span<const std::byte> _data, FileAddr _baseAddress);
+
+
+        iterator() = default;
+        iterator(const iterator&) = default;
+        iterator& operator=(const iterator&) = default;
+
+        explicit iterator(const Die& _die);
+
+        const Entry& operator*() const { return current; }
+        const Entry* operator->() const { return &current; }
+
+        bool operator==(iterator rhs) const { return pos == rhs.pos; }
+        bool operator!=(iterator rhs) const { return pos != rhs.pos; }
+
+        iterator& operator++();
+        iterator operator++(int);
+    
+    private:
+        const CompileUnit* compileUnit;
+        Span<const std::byte> data{};
+        FileAddr baseAddress;
+        const std::byte* pos{};
+        Entry current;
+    };
+
     class CompileUnit;
     class Die;
     class Attr
@@ -56,12 +124,16 @@ namespace ldb
 
         Die AsReference() const;
 
+        RangeList AsRangeList() const;
+
     private:
         const CompileUnit* compileUnit;
         std::uint64_t type;
         std::uint64_t form;
         const std::byte* location;
     };
+
+    
 
     class Die;
     class Dwarf;
@@ -146,6 +218,8 @@ namespace ldb
 
         FileAddr LowPc() const;
         FileAddr HighPc() const;
+
+        bool ContainsAddress(FileAddr address) const;
 
 
         class ChildrenRange;

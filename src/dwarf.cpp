@@ -378,22 +378,55 @@ namespace ldb
 
     FileAddr Die::LowPc() const
     {
-        return (*this)[DW_AT_low_pc].AsAddress();
+        if (Contains(DW_AT_ranges))
+        {
+            auto firstEntry = (*this)[DW_AT_ranges].AsRangeList().begin();
+            return firstEntry->low;
+        }
+        else if (Contains(DW_AT_low_pc))
+        {
+            return (*this)[DW_AT_low_pc].AsAddress();
+        }
+        Error::Send("DIE does not have low PC");
     }
 
     FileAddr Die::HighPc() const
     {
-        auto attr = (*this)[DW_AT_high_pc];
-        FileAddr addr;
-        if (attr.Form() == DW_FORM_addr)
+        if (Contains(DW_AT_ranges))
         {
-            addr = attr.AsAddress();
+            auto ranges = (*this)[DW_AT_ranges].AsRangeList();
+            auto it = ranges.begin();
+            while (std::next(it) != ranges.end()) ++it;
+            return it->high;
         }
-        else
+        else if (Contains(DW_AT_high_pc))
         {
-            addr = LowPc() + attr.AsInt();
+            auto attr = (*this)[DW_AT_high_pc];
+            if (attr.Form() == DW_FORM_addr)
+            {
+                return attr.AsAddress();
+            }
+            else
+            {
+                return LowPc() + attr.AsInt();
+            }
         }
-        return addr;
+        Error::Send("DIE does not have high PC");
+    }
+
+    bool Die::ContainsAddress(FileAddr address) const
+    {
+        if (address.ElfFile() != compileUnit->DwarfInfo()->ElfFile()) return false;
+
+        if (Contains(DW_AT_ranges))
+        {
+            return (*this)[DW_AT_ranges].AsRangeList().Contains(address);
+        }
+        else if (Contains(DW_AT_low_pc))
+        {
+            return LowPc() <= address && address < HighPc();
+        }
+        return false;
     }
 
     Die::ChildrenRange Die::Children() const
@@ -566,5 +599,79 @@ namespace ldb
         }
         Cursor refCursor{{compileUnit->Data().Begin()+ offset, compileUnit->Data().End()}};
         return ParseDie(*compileUnit, refCursor);
+    }
+
+    RangeList Attr::AsRangeList() const
+    {
+        auto section = compileUnit->DwarfInfo()->ElfFile()->GetSectionContents(".debug_ranges");
+        auto offset = AsSectionOffset();
+        Span<const std::byte> data{section.Begin() + offset, section.End()};
+        auto root = compileUnit->Root();
+        FileAddr baseAddress = root.Contains(DW_AT_low_pc) ? root[DW_AT_low_pc].AsAddress() : FileAddr{};
+        return {compileUnit, data, baseAddress};
+    }
+
+
+    RangeList::iterator::iterator(const CompileUnit* _compileUnit, Span<const std::byte> _data, FileAddr _baseAddress)
+        : compileUnit(_compileUnit)
+        , data(_data)
+        , baseAddress(_baseAddress)
+    {
+        ++(*this);
+    }
+
+    RangeList::iterator& RangeList::iterator::operator++()
+    {
+        auto elf = compileUnit->DwarfInfo()->ElfFile();
+        constexpr auto baseAddressFlag = ~static_cast<std::uint64_t>(0);
+        Cursor cursor{{pos, data.End()}};
+        while (true)
+        {
+            current.low = FileAddr{*elf, cursor.U64()};
+            current.high = FileAddr{*elf, cursor.U64()};
+            if (current.low.Addr() == baseAddressFlag)
+            {
+                baseAddress = current.high;
+            }
+            else if (current.low.Addr() == 0 && current.high.Addr() == 0)
+            {
+                pos = nullptr;
+                break;
+            }
+            else
+            {
+                pos = cursor.Position();
+                current.low += baseAddress.Addr();
+                current.high += baseAddress.Addr();
+                break;
+            }
+        }
+        return *this;
+    }
+
+    RangeList::iterator RangeList::iterator::operator++(int)
+    {
+        auto t = *this;
+        ++(*this);
+        return t;
+    }
+
+    RangeList::iterator RangeList::begin() const
+    {
+        return {compileUnit, data, baseAddr};
+    }
+
+
+    RangeList::iterator RangeList::end() const
+    {
+        return {};
+    }
+
+    bool RangeList::Contains(FileAddr addr) const
+    {
+        return std::ranges::any_of(*this, [addr](const auto& e)
+        {
+            return e.Contains(addr);
+        });
     }
 }
