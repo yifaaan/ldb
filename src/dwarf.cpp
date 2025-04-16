@@ -1,9 +1,11 @@
+#include "libldb/detail/dwarf.h"
 #include <algorithm>
 
 #include <libldb/dwarf.hpp>
 #include <libldb/types.hpp>
 #include <libldb/bit.hpp>
 #include <libldb/elf.hpp>
+#include <libldb/error.hpp>
 
 namespace
 {
@@ -25,6 +27,11 @@ namespace
         {
             pos += n;
             return *this;
+        }
+
+        const std::byte* Position()
+        {
+            return pos;
         }
 
         bool Finished() const
@@ -153,6 +160,70 @@ namespace
             return static_cast<std::int64_t>(ret);
         }
 
+        void SkipForm(std::uint64_t form)
+        {
+            switch (form)
+            {
+            case DW_FORM_flag_present:
+                break;
+            
+            case DW_FORM_data1:
+            case DW_FORM_ref1:
+            case DW_FORM_flag:
+                pos += 1;
+                break;
+            
+            case DW_FORM_data2:
+            case DW_FORM_ref2:
+                pos += 2;
+                break;
+            
+            case DW_FORM_data4:
+            case DW_FORM_ref4:
+            case DW_FORM_ref_addr:
+            case DW_FORM_sec_offset:
+            case DW_FORM_strp:
+                pos += 4;
+                break;
+            
+            case DW_FORM_data8:
+            case DW_FORM_addr:
+                pos += 8;
+                break;
+
+            case DW_FORM_sdata:
+                Sleb128();
+            
+            case DW_FORM_udata:
+            case DW_FORM_ref_udata:
+                Uleb128();
+                break;
+            
+            case DW_FORM_block1:
+                pos += U8();
+                break;
+            case DW_FORM_block2:
+                pos += U16();
+                break;
+            case DW_FORM_block4:
+                pos += U32();
+                break;
+            case DW_FORM_block:
+            case DW_FORM_exprloc:
+                pos += Uleb128();
+                break;
+            case DW_FORM_string:
+                while (!Finished() && *pos != std::byte{0}) ++pos;
+                ++pos;
+                break;
+            case DW_FORM_indirect:
+                SkipForm(Uleb128());
+                break;
+
+            default: ldb::Error::Send("Unrecognized DWARF form");
+            }
+        }
+
 
     private:
         ldb::Span<const std::byte> data;
@@ -190,10 +261,92 @@ namespace
         } while (code != 0);
         return table;
     }
+
+    std::unique_ptr<ldb::CompileUnit> ParseCompileUnit(ldb::Dwarf& dwarf, const ldb::Elf& obj, Cursor cursor)
+    {
+        auto start = cursor.Position();
+        auto size = cursor.U32();
+        auto version = cursor.U16();
+        auto abbrevOffset = cursor.U32();
+        auto addrSize = cursor.U8();
+        if (size == 0xffffffff)
+        {
+            ldb::Error::Send("Only DWARF32 is supported");
+        }
+        if (version != 4)
+        {
+            ldb::Error::Send("Only DWARF version 4 is supported");
+        }
+        if (addrSize != 8)
+        {
+            ldb::Error::Send("Invalid address size of DWARF");
+        }
+
+        size += sizeof(std::uint32_t);
+        ldb::Span<const std::byte> data = {start, size};
+        return std::make_unique<ldb::CompileUnit>(dwarf, data, abbrevOffset);
+    }
+
+    std::vector<std::unique_ptr<ldb::CompileUnit>> ParseCompileUnits(ldb::Dwarf& dwarf, const ldb::Elf& obj)
+    {
+        auto debugInfo = obj.GetSectionContents(".debug_info");
+        Cursor cursor{debugInfo};
+
+        std::vector<std::unique_ptr<ldb::CompileUnit>> units;
+        while (!cursor.Finished())
+        {
+            auto unit = ParseCompileUnit(dwarf, obj, cursor);
+            cursor += unit->Data().Size();
+            units.push_back(std::move(unit));
+        }
+        return units;
+    }
+
+    ldb::Die ParseDie(const ldb::CompileUnit& compileUnit, Cursor cursor)
+    {
+        auto pos = cursor.Position();
+        auto abbrevCode = cursor.Uleb128();
+        if (abbrevCode == 0)
+        {
+            auto next = cursor.Position();
+            return ldb::Die{next};
+        }
+        auto& abbrevTable = compileUnit.AbbrevTable();
+        auto& abbrevEntry = abbrevTable.at(abbrevCode);
+
+        std::vector<const std::byte*> attrLocs;
+        attrLocs.reserve(abbrevEntry.attrSpecs.size());
+        for (const auto& attr : abbrevEntry.attrSpecs)
+        {
+            attrLocs.push_back(cursor.Position());
+            cursor.SkipForm(attr.form);
+        }
+        auto next = cursor.Position();
+        return ldb::Die{pos, &compileUnit, &abbrevEntry,std::move(attrLocs), next};
+    }
 }
 
 namespace ldb
 {
+
+    const std::unordered_map<std::uint64_t, Abbrev>& CompileUnit::AbbrevTable() const
+    {
+        return parent->GetAbbrevTable(abbrevOffset);
+    }
+
+    Die CompileUnit::Root() const
+    {
+        std::size_t headerSize = 11;
+        Cursor cursor{{data.Begin() + headerSize, data.End()}};
+        return ParseDie(*this, cursor);
+    }
+
+    Dwarf::Dwarf(const Elf& parent)
+        : elf(&parent)
+    {
+        compileUnits = ParseCompileUnits(*this, parent);
+    }
+
     const std::unordered_map<std::uint64_t, Abbrev>& Dwarf::GetAbbrevTable(std::size_t offset)
     {
         if (!abbrevTables.contains(offset))
