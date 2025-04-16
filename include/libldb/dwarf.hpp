@@ -1,10 +1,13 @@
 #pragma once
 
 
+#include <cstddef>
+#include <iterator>
 #include <unordered_map>
 #include <vector>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include <libldb/detail/dwarf.h>
 #include <libldb/types.hpp>
@@ -101,11 +104,67 @@ namespace ldb
 
         const std::byte* Next() const { return next; }
 
+
+        class ChildrenRange;
+        ChildrenRange Children() const;
+
     private:
         const std::byte* position = nullptr;
         const CompileUnit* compileUnit = nullptr;
         const Abbrev* abbrev = nullptr;
         const std::byte* next = nullptr;
         std::vector<const std::byte*> attrLocations;
-    }
+    };
+
+    class Die::ChildrenRange
+    {
+    public:
+        ChildrenRange(Die _die)
+            : die(std::move(_die))
+        {}
+
+        class iterator
+        {
+        public:
+            using value_type = Die;
+            using reference = const Die&;
+            using pointer = const Die*;
+            using difference_type = std::ptrdiff_t;
+            using iterator_category = std::forward_iterator_tag;
+
+            iterator() = default;
+            iterator(const iterator&) = default;
+            iterator& operator=(const iterator&) = default;
+
+            explicit iterator(const Die& _die);
+
+            const Die& operator*() const { return *die; }
+            const Die* operator->() const { return &die.value(); }
+
+            iterator& operator++();
+            iterator operator++(int);
+
+            bool operator==(const iterator& rhs) const;
+            bool operator!=(const iterator& rhs) const
+            {
+                return !(*this == rhs);
+            }
+        private:
+            std::optional<Die> die;
+        };
+
+        iterator begin() const
+        {
+            if (die.abbrev->hasChildren)
+            {
+                return iterator{die};
+            }
+            return end();
+        }
+
+        iterator end() const { return {}; }
+
+    private:
+        Die die;
+    };
 }

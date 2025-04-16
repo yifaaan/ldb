@@ -354,7 +354,51 @@ namespace ldb
             abbrevTables.emplace(offset, ParseAbbrevTable(*elf, offset));
         }
         return abbrevTables.at(offset);
-    }    
+    }
 
+    Die::ChildrenRange Die::Children() const
+    {
+        return ChildrenRange{*this};
+    }
 
+    Die::ChildrenRange::iterator::iterator(const Die& _die)
+    {
+        Cursor nextCur{{_die.Next(), _die.compileUnit->Data().End()}};
+        die = ParseDie(*_die.compileUnit, nextCur);
+    }
+
+    bool Die::ChildrenRange::iterator::operator==(const iterator& rhs) const
+    {
+        auto lhsNull = !die.has_value() || !die->AbbrevEntry();
+        auto rhsNull = !rhs.die.has_value() || !rhs.die->AbbrevEntry();
+        if (lhsNull && rhsNull) return true;
+        if (lhsNull || rhsNull) return false;
+
+        return die->abbrev == rhs->abbrev && die->Next() == rhs->Next();
+    }
+
+    Die::ChildrenRange::iterator& Die::ChildrenRange::iterator::operator++()
+    {
+        if (!die.has_value() || !die->abbrev) return *this;
+        if (!die->abbrev->hasChildren)
+        {
+            Cursor nextCur{{die->next, die->compileUnit->Data().End()}};
+            die = ParseDie(*die->compileUnit, nextCur);
+        }
+        else
+        {
+            iterator subChild{*die};
+            while (subChild->abbrev) ++subChild;
+            Cursor nextCur{{subChild->next, die->compileUnit->Data().End()}};
+            die = ParseDie(*die->compileUnit, nextCur);
+        }
+        return *this;
+    }
+
+    Die::ChildrenRange::iterator Die::ChildrenRange::iterator::operator++(int)
+    {
+        auto t = *this;
+        ++(*this);
+        return t;
+    }
 }
