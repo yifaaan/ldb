@@ -1,4 +1,3 @@
-#include "libldb/detail/dwarf.h"
 #include <algorithm>
 
 #include <libldb/dwarf.hpp>
@@ -356,6 +355,47 @@ namespace ldb
         return abbrevTables.at(offset);
     }
 
+    bool Die::Contains(std::uint64_t attribute) const
+    {
+        return std::ranges::find_if(abbrev->attrSpecs, [=](const auto spec)
+        {
+            return spec.attr == attribute;
+        }) != std::end(abbrev->attrSpecs);
+    }
+
+    Attr Die::operator[](std::uint64_t attribute) const
+    {
+        auto& specs = abbrev->attrSpecs;
+        for (int i = 0; i < specs.size(); i++)
+        {
+            if (specs[i].attr == attribute)
+            {
+                return {compileUnit, specs[i].attr, specs[i].form, attrLocations[i]};
+            }
+        }
+        Error::Send("Attribute not found");
+    }
+
+    FileAddr Die::LowPc() const
+    {
+        return (*this)[DW_AT_low_pc].AsAddress();
+    }
+
+    FileAddr Die::HighPc() const
+    {
+        auto attr = (*this)[DW_AT_high_pc];
+        FileAddr addr;
+        if (attr.Form() == DW_FORM_addr)
+        {
+            addr = attr.AsAddress();
+        }
+        else
+        {
+            addr = LowPc() + attr.AsInt();
+        }
+        return addr;
+    }
+
     Die::ChildrenRange Die::Children() const
     {
         return ChildrenRange{*this};
@@ -385,6 +425,10 @@ namespace ldb
             Cursor nextCur{{die->next, die->compileUnit->Data().End()}};
             die = ParseDie(*die->compileUnit, nextCur);
         }
+        else if (die->Contains(DW_AT_sibling))
+        {
+            die = die.value()[DW_AT_sibling].AsReference();
+        }
         else
         {
             iterator subChild{*die};
@@ -400,5 +444,127 @@ namespace ldb
         auto t = *this;
         ++(*this);
         return t;
+    }
+
+    FileAddr Attr::AsAddress() const
+    {
+        Cursor cursor{{location, compileUnit->Data().End()}};
+        if (form != DW_FORM_addr) Error::Send("Invalid address type");
+        auto elf = compileUnit->DwarfInfo()->ElfFile();
+        return {*elf, cursor.U64()};
+    }
+
+    std::uint32_t Attr::AsSectionOffset() const
+    {
+        Cursor cursor{{location, compileUnit->Data().End()}};
+        if (form != DW_FORM_sec_offset) Error::Send("Invalid offset type");
+        // only support 32bit
+        return cursor.U32();
+    }
+
+    Span<const std::byte> Attr::AsBlock() const
+    {
+        Cursor cursor{{location, compileUnit->Data().End()}};
+        std::size_t size;
+        switch (form)
+        {
+            case DW_FORM_block1:
+                size = cursor.U8();
+                break;
+            case DW_FORM_block2:
+                size = cursor.U16();
+                break;
+            case DW_FORM_block4:
+                size = cursor.U32();
+                break;
+            case DW_FORM_block:
+                size = cursor.Uleb128();
+                break;
+            default:
+                Error::Send("Invalid block type");
+        }
+        return {cursor.Position(), size};
+    }
+
+    std::uint64_t Attr::AsInt() const
+    {
+        Cursor cursor{{location, compileUnit->Data().End()}};
+        switch (form)
+        {
+            case DW_FORM_data1:
+                return cursor.U8();
+            case DW_FORM_data2:
+                return cursor.U16();
+            case DW_FORM_data4:
+                return cursor.U32();
+            case DW_FORM_data8:
+                return cursor.U64();
+            case DW_FORM_udata:
+                return cursor.Uleb128();
+            default:
+                Error::Send("Invalid integer type");
+        }
+    }
+
+    std::string_view Attr::AsString() const
+    {
+        Cursor cursor{{location, compileUnit->Data().End()}};
+        switch (form)
+        {
+            case DW_FORM_string:
+                return cursor.String();
+            case DW_FORM_strp:
+            {
+                auto offset = cursor.U32();
+                auto section = compileUnit->DwarfInfo()->ElfFile()->GetSectionContents(".debug_str");
+                Cursor cursor{{section.Begin() + offset, section.End()}};
+                return cursor.String();
+            }
+            default:
+                Error::Send("Invalid string type");
+        }
+    }
+
+    Die Attr::AsReference() const
+    {
+        Cursor cursor{{location, compileUnit->Data().End()}};
+        std::size_t offset;
+        switch (form)
+        {
+            case DW_FORM_ref1:
+                offset = cursor.U8();
+                break;
+            case DW_FORM_ref2:
+                offset = cursor.U16();
+                break;
+            case DW_FORM_ref4:
+                offset = cursor.U32();
+                break;
+            case DW_FORM_ref8:
+                offset = cursor.U64();
+                break;
+            case DW_FORM_ref_udata:
+                offset = cursor.Uleb128();
+                break;
+            case DW_FORM_ref_addr:
+                // can reference data in other compile units
+                // so its offset is relative to the start of `.debug_info` section
+                {
+                    offset = cursor.U32();
+                    auto section = compileUnit->DwarfInfo()->ElfFile()->GetSectionContents(".debug_info");
+                    auto diePos = section.Begin() + offset;
+                    auto& compileUnits = compileUnit->DwarfInfo()->CompileUnits();
+                    auto belongs = std::ranges::find_if(compileUnits, [diePos](const auto& cu)
+                    {
+                        return cu->Data().Begin() <= diePos && diePos < cu->Data().End();
+                    });
+                    Cursor refCursor{{diePos, belongs->get()->Data().End()}};
+                    return ParseDie(*belongs->get(), refCursor);
+                }
+            default:
+                Error::Send("Invalid reference type");
+        }
+        Cursor refCursor{{compileUnit->Data().Begin()+ offset, compileUnit->Data().End()}};
+        return ParseDie(*compileUnit, refCursor);
     }
 }

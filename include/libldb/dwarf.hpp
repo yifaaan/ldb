@@ -29,6 +29,40 @@ namespace ldb
         std::vector<AttrSpec> attrSpecs;
     };
 
+    class CompileUnit;
+    class Die;
+    class Attr
+    {
+    public:
+        Attr(const CompileUnit* _compileUnit, std::uint64_t _type, std::uint64_t _form, const std::byte* _location)
+            : compileUnit(_compileUnit)
+            , type(_type)
+            , form(_form)
+            , location(_location)
+        {}
+
+        std::uint64_t Name() const { return type; }
+        std::uint64_t Form() const { return form; }
+
+        FileAddr AsAddress() const;
+
+        std::uint32_t AsSectionOffset() const;
+
+        Span<const std::byte> AsBlock() const;
+
+        std::uint64_t AsInt() const;
+
+        std::string_view AsString() const;
+
+        Die AsReference() const;
+
+    private:
+        const CompileUnit* compileUnit;
+        std::uint64_t type;
+        std::uint64_t form;
+        const std::byte* location;
+    };
+
     class Die;
     class Dwarf;
     class CompileUnit
@@ -103,6 +137,15 @@ namespace ldb
         const std::byte* Position() const { return position; }
 
         const std::byte* Next() const { return next; }
+
+        // the attribute must different in a same DIE
+        bool Contains(std::uint64_t attribute) const;
+
+        // get the value of the attribute
+        Attr operator[](std::uint64_t attribute) const;
+
+        FileAddr LowPc() const;
+        FileAddr HighPc() const;
 
 
         class ChildrenRange;
