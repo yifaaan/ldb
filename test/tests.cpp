@@ -625,9 +625,20 @@ TEST_CASE("Range List", "[dwarf]")
 	REQUIRE(e1.Contains({elf, 0x12341235}));
 	REQUIRE(!e1.Contains({elf, 0x12341236}));
 	++it;
-	// TODO: FIX
-	REQUIRE(it == list.end());
-	REQUIRE(list.Contains({elf, 0x12341234}));
-	REQUIRE(list.Contains({elf, 0x12341235}));
-	REQUIRE(!list.Contains({elf, 0x12341236}));
+    auto e2 = *it;
+    REQUIRE(e2.low.Addr() == 0x12341266);
+    REQUIRE(e2.high.Addr() == 0x12341268);
+    REQUIRE(e2.Contains({ elf, 0x12341266 }));
+    REQUIRE(e2.Contains({ elf, 0x12341267 }));
+    REQUIRE(!e2.Contains({ elf, 0x12341268 }));
+
+	++it;
+    REQUIRE(it == list.end());
+
+    REQUIRE(list.Contains({ elf, 0x12341234 }));
+    REQUIRE(list.Contains({ elf, 0x12341235 }));
+    REQUIRE(!list.Contains({ elf, 0x12341236 }));
+    REQUIRE(list.Contains({ elf, 0x12341266 }));
+    REQUIRE(list.Contains({ elf, 0x12341267 }));
+    REQUIRE(!list.Contains({ elf, 0x12341268 }));
 }
