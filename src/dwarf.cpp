@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <iostream>
+#include <span>
 
 #include <libldb/dwarf.hpp>
 #include <libldb/types.hpp>
@@ -325,11 +325,103 @@ namespace
         auto next = cursor.Position();
         return ldb::Die{pos, &compileUnit, &abbrevEntry,std::move(attrLocs), next};
     }
+
+    ldb::LineTable::File ParseLineTableFile(Cursor& cursor, std::filesystem::path compilationDir, std::span<std::filesystem::path> includeDirectories)
+    {
+        auto file = cursor.String();
+        auto dirIndex = cursor.Uleb128();
+        auto modificationTime = cursor.Uleb128();
+        auto fileLength = cursor.Uleb128();
+
+        std::filesystem::path path = file;
+        if (!file.starts_with('/'))
+        {
+            if (dirIndex == 0)
+            {
+                path = compilationDir / file;
+            }
+            else
+            {
+                path = includeDirectories[dirIndex - 1] / file;
+            }
+        }
+        return {path.string(), modificationTime, fileLength};
+    }
+
+    std::unique_ptr<ldb::LineTable> ParseLineTable(const ldb::CompileUnit& cu)
+    {
+        auto section = cu.DwarfInfo()->ElfFile()->GetSectionContents(".debug_line");
+        if (!cu.Root().Contains(DW_AT_stmt_list)) return nullptr;
+        auto offset = cu.Root()[DW_AT_stmt_list].AsSectionOffset();
+        Cursor cursor{{section.Begin() + offset, section.End()}};
+
+        // parse header
+        auto size = cursor.U32();
+        auto end = cursor.Position() + size;
+        auto version = cursor.U16();
+        if (version != 4) ldb::Error::Send("Only DWARF 4 is supported");
+        cursor.U32();
+        auto minimumInstructionLength = cursor.U8();
+        if (minimumInstructionLength != 1)
+        {
+            ldb::Error::Send("Invalid minimum instruction length");
+        }
+        auto maximumOperationsPerInstruction = cursor.U8();
+        if (maximumOperationsPerInstruction != 1)
+        {
+            ldb::Error::Send("invalid maximum operations per instruction");
+        }
+        auto defaultIsStmt = cursor.U8();
+        auto lineBase = cursor.S8();
+        auto lineRange = cursor.U8();
+        auto opcodeBase = cursor.U8();
+        std::array<std::uint8_t, 12> expectedOpcodeLengths
+        {
+            0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1
+        };
+        for (int i = 0; i < opcodeBase - 1; i++)
+        {
+            if (cursor.U8() != expectedOpcodeLengths[i])
+            {
+                ldb::Error::Send("Unexpected opcode length");
+            }
+        }
+
+        std::vector<std::filesystem::path> includeDirectories;
+        std::filesystem::path compilationDir{cu.Root()[DW_AT_comp_dir].AsString()};
+        for (auto dir = cursor.String(); !dir.empty(); dir = cursor.String())
+        {
+            if (dir.starts_with('/'))
+            {
+                includeDirectories.push_back(dir);
+            }
+            else
+            {
+                includeDirectories.push_back(compilationDir / dir);
+            }
+        }
+        std::vector<ldb::LineTable::File> fileNames;
+        while (*cursor.Position() != std::byte{0})
+        {
+            fileNames.push_back(ParseLineTableFile(cursor, compilationDir, includeDirectories));
+        }
+        cursor += 1;
+        ldb::Span<const std::byte> data{cursor.Position(), end};
+        return std::make_unique<ldb::LineTable>(data, &cu, defaultIsStmt, lineBase, lineRange, opcodeBase, std::move(includeDirectories), std::move(fileNames));
+    }
 }
 
 namespace ldb
 {
 
+    CompileUnit::CompileUnit(Dwarf& _parent, Span<const std::byte> _data, std::size_t _abbrevOffset)
+        : parent(&_parent)
+        , data(_data)
+        , abbrevOffset(_abbrevOffset)
+    {
+        lineTable = ParseLineTable(*this);
+    }
+    
     const std::unordered_map<std::uint64_t, Abbrev>& CompileUnit::AbbrevTable() const
     {
         return parent->GetAbbrevTable(abbrevOffset);
@@ -757,5 +849,23 @@ namespace ldb
         {
             return e.Contains(addr);
         });
+    }
+
+    LineTable::iterator LineTable::begin() const
+    {
+        return iterator(this);
+    }
+
+    LineTable::iterator LineTable::end() const
+    {
+        return {};
+    }
+
+    LineTable::iterator::iterator(const LineTable* _table)
+        : table(_table)
+        , pos(table->data.Begin())
+    {
+        registers.isStmt = table->defaultIsStmt;
+        ++(*this);
     }
 }

@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <filesystem>
 
 #include <libldb/detail/dwarf.h>
 #include <libldb/types.hpp>
@@ -133,18 +134,127 @@ namespace ldb
         const std::byte* location;
     };
 
-    
+    class CompileUnit;
+    class LineTable
+    {
+    public:
+        struct Entry;
+
+        struct File
+        {
+            std::filesystem::path path;
+            std::uint64_t modificationTime;
+            std::uint64_t fileLength;
+        };
+
+        LineTable(Span<const std::byte> _data,
+            const CompileUnit* _compileUnit,
+            bool _defaultIsStmt,
+            std::int8_t _lineBase,
+            std::uint8_t _lineRange,
+            std::uint8_t _opcodeBase,
+            std::vector<std::filesystem::path> _includeDirectories,
+            std::vector<File> _fileNames)
+            : data(_data)
+            , compileUnit(_compileUnit)
+            , defaultIsStmt(_defaultIsStmt)
+            , lineBase(_lineBase)
+            , lineRange(_lineRange)
+            , opcodeBase(_opcodeBase)
+            , includeDirectories(std::move(_includeDirectories))
+            , fileNames(std::move(_fileNames))
+        {}
+        LineTable(const LineTable&) = delete;
+        LineTable& operator=(const LineTable&) = delete;
+        LineTable(LineTable&&) = delete;
+        LineTable& operator=(LineTable&&) = delete;
+        ~LineTable() = default;
+
+        const CompileUnit& Cu() const { return *compileUnit; }
+
+        const std::vector<File>& FileNames() const { return fileNames; }
+
+        class iterator;
+
+        iterator begin() const;
+        iterator end() const;
+
+    private:
+        Span<const std::byte> data;
+        const CompileUnit* compileUnit;
+        bool defaultIsStmt;
+        std::int8_t lineBase;
+        std::uint8_t lineRange;
+        std::uint8_t opcodeBase;
+        std::vector<std::filesystem::path> includeDirectories;
+        mutable std::vector<File> fileNames;
+    };
+
+    struct LineTable::Entry
+    {
+        FileAddr address;
+        std::uint64_t fileIndex = 1;
+        std::uint64_t line = 1;
+        std::uint64_t column = 0;
+        bool isStmt;
+        bool basicBlockStart = false;
+        bool endSequence = false;
+        bool prologueEnd = false;
+        bool epilogueBegin = false;
+        std::uint64_t discriminator = 0;
+        File* fileEntry = nullptr;
+
+        bool operator==(const Entry& rhs) const
+        {
+            return address == rhs.address && fileIndex == rhs.fileIndex
+                && line == rhs.line && column == rhs.column && discriminator == rhs.discriminator;
+        }
+    };
+
+
+    class LineTable::iterator
+    {
+    public:
+        using value_type = Entry;
+        using reference = const Entry&;
+        using pointer = const Entry*;
+        using difference_type = std::ptrdiff_t;
+        using iterator_category = std::forward_iterator_tag;
+
+        iterator() = default;
+        iterator(const iterator&) = default;
+        iterator& operator=(const iterator&) = default;
+
+        explicit iterator(const LineTable* table);
+
+        const LineTable::Entry& operator*() const { return current; }
+        const LineTable::Entry* operator->() const { return &current; }
+
+        iterator& operator++();
+        iterator operator++(int);
+
+        bool operator==(const iterator& rhs) const
+        {
+            return pos == rhs.pos;
+        }
+        bool operator!=(const iterator& rhs) const
+        {
+            return !(*this == rhs);
+        }
+
+    private:
+        const LineTable* table;
+        LineTable::Entry current;
+        LineTable::Entry registers;
+        const std::byte* pos;
+    };
 
     class Die;
     class Dwarf;
     class CompileUnit
     {
     public:
-        CompileUnit(Dwarf& _parent, Span<const std::byte> _data, std::size_t _abbrevOffset)
-            : parent(&_parent)
-            , data(_data)
-            , abbrevOffset(_abbrevOffset)
-        {}
+        CompileUnit(Dwarf& _parent, Span<const std::byte> _data, std::size_t _abbrevOffset);
 
         const Dwarf* DwarfInfo() const { return parent; }
 
@@ -153,11 +263,14 @@ namespace ldb
         const std::unordered_map<std::uint64_t, Abbrev>& AbbrevTable() const;
 
         Die Root() const;
+
+        const LineTable& Lines() const { return *lineTable; }
     
     private:
         Dwarf* parent;
         Span<const std::byte> data;
         std::size_t abbrevOffset;
+        std::unique_ptr<LineTable> lineTable;
     };
 
     class Elf;
