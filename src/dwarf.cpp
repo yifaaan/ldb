@@ -323,7 +323,6 @@ namespace
             cursor.SkipForm(attr.form);
         }
         auto next = cursor.Position();
-        std::cerr << "FdSFDSFSDF\n";
         return ldb::Die{pos, &compileUnit, &abbrevEntry,std::move(attrLocs), next};
     }
 }

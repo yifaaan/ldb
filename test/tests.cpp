@@ -556,5 +556,6 @@ TEST_CASE("Correct DWARF language", "[dwarf]")
 
 	auto& cu = compileUnits[0];
 	auto lang = cu->Root()[DW_AT_language].AsInt();
-	REQUIRE(lang == DW_LANG_C_plus_plus);
+	// DW_LANG_C_plus_plus_14
+	REQUIRE(lang == 0x0021);
 }
