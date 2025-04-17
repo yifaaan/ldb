@@ -625,6 +625,7 @@ TEST_CASE("Range List", "[dwarf]")
 	REQUIRE(e1.Contains({elf, 0x12341235}));
 	REQUIRE(!e1.Contains({elf, 0x12341236}));
 	++it;
+	// TODO: FIX
 	REQUIRE(it == list.end());
 	REQUIRE(list.Contains({elf, 0x12341234}));
 	REQUIRE(list.Contains({elf, 0x12341235}));
