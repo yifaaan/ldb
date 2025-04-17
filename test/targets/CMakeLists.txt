@@ -16,5 +16,9 @@ add_test_cpp_target(hello_ldb)
 add_test_cpp_target(memory)
 add_test_cpp_target(anti_debugger)
 
+add_executable(multi_cu_main multi_cu_main.cpp multi_cu_other.cpp)
+target_compile_options(multi_cu_main PRIVATE -g -O0 -pie -gdwarf-4)
+add_dependencies(tests multi_cu_main)
+
 add_test_asm_target(reg_write)
 add_test_asm_target(reg_read)

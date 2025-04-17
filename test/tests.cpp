@@ -559,3 +559,74 @@ TEST_CASE("Correct DWARF language", "[dwarf]")
 	// DW_LANG_C_plus_plus_14
 	REQUIRE(lang == 0x0021);
 }
+
+TEST_CASE("Iterate DWARF", "[dwarf]")
+{
+	auto path = "targets/hello_ldb";
+	ldb::Elf elf{path};
+	auto& compileUnits = elf.GetDwarf().CompileUnits();
+	REQUIRE(compileUnits.size() == 1);
+
+	auto& cu = compileUnits[0];
+	std::size_t count = 0;
+	for (auto& d : cu->Root().Children())
+	{
+		auto a = d.AbbrevEntry();
+		REQUIRE(a->code != 0);
+		++count;
+	}
+	REQUIRE(count > 0);
+}
+
+TEST_CASE("Find main", "[dwarf]")
+{
+	auto path = "targets/multi_cu_main";
+	ldb::Elf elf{path};
+	ldb::Dwarf dwarf{elf};
+
+	bool found = false;
+	for (auto& cu : dwarf.CompileUnits())
+	{
+		for (auto& die : cu->Root().Children())
+		{
+			if (die.AbbrevEntry()->tag == DW_TAG_subprogram && die.Contains(DW_AT_name))
+			{
+				auto name = die[DW_AT_name].AsString();
+				if (name == "main") found = true;
+			}
+		}
+	}
+	REQUIRE(found);
+}
+
+TEST_CASE("Range List", "[dwarf]")
+{
+	auto path = "targets/hello_ldb";
+	ldb::Elf elf{path};
+	auto& compileUnits = elf.GetDwarf().CompileUnits();
+	REQUIRE(compileUnits.size() == 1);
+
+	auto& cu = compileUnits[0];
+	std::vector<std::uint64_t> rangeData
+	{
+		0x12341234, 0x12341236,
+		// base address
+		~0ULL, 0x32,
+		0x12341234, 0x12341236,
+		0x0, 0x0
+	};
+	auto bytes = reinterpret_cast<std::byte*>(rangeData.data());
+	ldb::RangeList list{cu.get(), {bytes, bytes + rangeData.size()}, {}};
+	auto it = list.begin();
+	auto e1 = *it;
+	REQUIRE(e1.low.Addr() == 0x12341234);
+	REQUIRE(e1.high.Addr() == 0x12341236);
+	REQUIRE(e1.Contains({elf, 0x12341234}));
+	REQUIRE(e1.Contains({elf, 0x12341235}));
+	REQUIRE(!e1.Contains({elf, 0x12341236}));
+	++it;
+	REQUIRE(it == list.end());
+	REQUIRE(list.Contains({elf, 0x12341234}));
+	REQUIRE(list.Contains({elf, 0x12341235}));
+	REQUIRE(!list.Contains({elf, 0x12341236}));
+}

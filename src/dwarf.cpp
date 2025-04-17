@@ -699,6 +699,7 @@ namespace ldb
         : compileUnit(_compileUnit)
         , data(_data)
         , baseAddress(_baseAddress)
+        , pos(_data.Begin())
     {
         ++(*this);
     }
