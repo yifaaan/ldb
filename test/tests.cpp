@@ -642,3 +642,25 @@ TEST_CASE("Range List", "[dwarf]")
     REQUIRE(list.Contains({ elf, 0x12341267 }));
     REQUIRE(!list.Contains({ elf, 0x12341268 }));
 }
+
+TEST_CASE("Line table", "[dwarf]")
+{
+	auto path = "targets/hello_ldb";
+	ldb::Elf elf{path};
+	ldb::Dwarf dwarf{elf};
+
+	REQUIRE(dwarf.CompileUnits().size() == 1);
+	auto& cu = dwarf.CompileUnits()[0];
+	auto it = cu->Lines().begin();
+	REQUIRE(it->line == 4);
+	REQUIRE(it->fileEntry->path.filename() == "hello_ldb.cpp");
+	++it;
+	REQUIRE(it->line == 5);
+	++it;
+	REQUIRE(it->line == 6);
+	++it;
+	++it;
+	REQUIRE(it->endSequence);
+	++it;
+	REQUIRE(it == cu->Lines().end());
+}

@@ -299,6 +299,13 @@ namespace ldb
 
         std::vector<Die> FindFunctions(std::string name) const;
 
+        LineTable::iterator LineEntryAtAddress(FileAddr address)
+        {
+            auto compileUnit = CompileUnitContainingAddress(address);
+            if (!compileUnit) return {};
+            return compileUnit->Lines().GetEntryByAddress(address);
+        }
+
     private:
         void Index() const;
         void IndexDie(const Die& current) const;
@@ -316,6 +323,13 @@ namespace ldb
         std::vector<std::unique_ptr<CompileUnit>> compileUnits;
 
         mutable std::unordered_multimap<std::string, IndexEntry> functionIndex;
+    };
+
+    // for inline func
+    struct SourceLoaction
+    {
+        const LineTable::File* file;
+        std::uint64_t line;
     };
 
     class Die
@@ -357,6 +371,12 @@ namespace ldb
         FileAddr HighPc() const;
 
         bool ContainsAddress(FileAddr address) const;
+
+        SourceLoaction Location() const;
+
+        const LineTable::File& File() const;
+
+        std::uint64_t Line() const;
 
 
         class ChildrenRange;

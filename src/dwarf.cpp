@@ -613,6 +613,34 @@ namespace ldb
         return false;
     }
 
+    SourceLoaction Die::Location() const
+    {
+        return {&File(), Line()};
+    }
+
+    const LineTable::File& Die::File() const
+    {
+        std::uint64_t fileIndex;
+        if (abbrev->tag == DW_TAG_inlined_subroutine)
+        {
+            fileIndex = (*this)[DW_AT_call_file].AsInt();
+        }
+        else
+        {
+            fileIndex = (*this)[DW_AT_decl_file].AsInt();
+        }
+        return this->compileUnit->Lines().FileNames()[fileIndex - 1];
+    }
+
+    std::uint64_t Die::Line() const
+    {
+        if (abbrev->tag == DW_TAG_inlined_subroutine)
+        {
+            return (*this)[DW_AT_call_line].AsInt();
+        }
+        return (*this)[DW_AT_decl_line].AsInt();
+    }
+
     Die::ChildrenRange Die::Children() const
     {
         return ChildrenRange{*this};
