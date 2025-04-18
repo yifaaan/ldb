@@ -179,6 +179,9 @@ namespace ldb
         iterator begin() const;
         iterator end() const;
 
+        iterator GetEntryByAddress(FileAddr address) const;
+        std::vector<iterator> GetEntriesByLine(std::filesystem::path path, std::size_t line) const;
+
     private:
         Span<const std::byte> data;
         const CompileUnit* compileUnit;
@@ -244,7 +247,7 @@ namespace ldb
 
     private:
         bool ExecuteInstruction();
-        
+
         const LineTable* table;
         LineTable::Entry current;
         LineTable::Entry registers;

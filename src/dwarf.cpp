@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <span>
+#include <ranges>
 
 #include <libldb/dwarf.hpp>
 #include <libldb/types.hpp>
@@ -9,6 +10,14 @@
 
 namespace
 {
+    bool PathEndsIn(const std::filesystem::path& lhs, const std::filesystem::path& rhs)
+    {
+        auto lhsSize = std::ranges::distance(lhs);
+        auto rhsSize = std::ranges::distance(rhs);
+        if (rhsSize > lhsSize) return false;
+        auto start = std::ranges::next(lhs.begin(), lhsSize - rhsSize);
+        return std::equal(start, lhs.end(), rhs.begin());
+    }
     class Cursor
     {
     public:
@@ -994,5 +1003,35 @@ namespace ldb
         }
         pos = cursor.Position();
         return emitted;
+    }
+
+    LineTable::iterator LineTable::GetEntryByAddress(FileAddr address) const
+    {
+        auto prev = begin();
+        if (prev == end()) return prev;
+        auto it = prev;
+        for (++it; it != end(); prev = it++)
+        {
+            if (prev->address <= address && address < it->address && !prev->endSequence) 
+                return prev;
+        }
+        return end();
+    }
+
+    std::vector<LineTable::iterator> LineTable::GetEntriesByLine(std::filesystem::path path, std::size_t line) const
+    {
+        std::vector<iterator> entries;
+        for (auto it = begin(); it != end(); ++it)
+        {
+            auto entryPath = it->fileEntry->path;
+            if (it->line == line)
+            {
+                if ((path.is_absolute() && entryPath == path) || (path.is_relative() && PathEndsIn(entryPath, path)))
+                {
+                    entries.push_back(it);
+                }
+            }
+        }
+        return entries;
     }
 }
