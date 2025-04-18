@@ -243,6 +243,8 @@ namespace ldb
         }
 
     private:
+        bool ExecuteInstruction();
+        
         const LineTable* table;
         LineTable::Entry current;
         LineTable::Entry registers;

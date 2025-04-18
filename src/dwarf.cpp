@@ -326,7 +326,7 @@ namespace
         return ldb::Die{pos, &compileUnit, &abbrevEntry,std::move(attrLocs), next};
     }
 
-    ldb::LineTable::File ParseLineTableFile(Cursor& cursor, std::filesystem::path compilationDir, std::span<std::filesystem::path> includeDirectories)
+    ldb::LineTable::File ParseLineTableFile(Cursor& cursor, std::filesystem::path compilationDir, std::span<const std::filesystem::path> includeDirectories)
     {
         auto file = cursor.String();
         auto dirIndex = cursor.Uleb128();
@@ -867,5 +867,132 @@ namespace ldb
     {
         registers.isStmt = table->defaultIsStmt;
         ++(*this);
+    }
+
+    LineTable::iterator& LineTable::iterator::operator++()
+    {
+        if (pos == table->data.End())
+        {
+            pos = nullptr;
+            return *this;
+        }
+        bool emitted = false;
+        do
+        {
+            emitted = ExecuteInstruction();
+        } while (!emitted);
+
+        current.fileEntry = &table->fileNames[current.fileIndex - 1];
+        return *this;
+    }
+
+    LineTable::iterator LineTable::iterator::operator++(int)
+    {
+        auto t = *this;
+        ++(*this);
+        return t;
+    }
+
+    bool LineTable::iterator::ExecuteInstruction()
+    {
+        auto elf = table->Cu().DwarfInfo()->ElfFile();
+        Cursor cursor{{pos, table->data.End()}};
+        auto opcode = cursor.U8();
+        bool emitted = false;
+        // standard op
+        if (opcode > 0 && opcode < table->opcodeBase)
+        {
+            switch (opcode)
+            {
+            case DW_LNS_copy:
+                current = registers;
+                registers.basicBlockStart = false;
+                registers.prologueEnd = false;
+                registers.epilogueBegin = false;
+                registers.discriminator = 0;
+                emitted = true;
+                break;
+            case DW_LNS_advance_pc:
+                registers.address += cursor.Uleb128();
+                break;
+            case DW_LNS_advance_line:
+                registers.line += cursor.Sleb128();
+                break;
+            case DW_LNS_set_file:
+                registers.fileIndex = cursor.Uleb128();
+                break;
+            case DW_LNS_set_column:
+                registers.column = cursor.Uleb128();
+                break;
+            case DW_LNS_negate_stmt:
+                registers.isStmt = !registers.isStmt;
+                break;
+            case DW_LNS_set_basic_block:
+                registers.basicBlockStart = true;
+                break;
+            case DW_LNS_const_add_pc:
+                registers.address += (255 - table->opcodeBase) / table->lineRange;
+                break;
+            case DW_LNS_fixed_advance_pc:
+                registers.address += cursor.U16();
+                break;
+            case DW_LNS_set_prologue_end:
+                registers.prologueEnd = true;
+                break;
+            case DW_LNS_set_epilogue_begin:
+                registers.epilogueBegin = true;
+                break;
+            case DW_LNS_set_isa:
+                break;
+            default:
+                Error::Send("Unexpected standard opcode");
+            }
+        }
+        else if (opcode == 0)
+        {
+            // extended opcodes
+            auto length = cursor.Uleb128();
+            auto extendedOpcode = cursor.U8();
+            switch (extendedOpcode)
+            {
+            case DW_LNE_end_sequence:
+                registers.endSequence = true;
+                current = registers;
+                registers = {};
+                registers.isStmt = table->defaultIsStmt;
+                emitted = true;
+                break;
+            case DW_LNE_set_address:
+                registers.address = {*elf, cursor.U64()};
+                break;
+            case DW_LNE_define_file:
+            {
+                auto compilationDir = table->Cu().Root()[DW_AT_comp_dir].AsString();
+                auto file = ParseLineTableFile(cursor, compilationDir, table->includeDirectories);
+                table->fileNames.push_back(file);
+                break;
+            }
+            case DW_LNE_set_discriminator:
+                registers.discriminator = cursor.Uleb128();
+                break;
+            default:
+                Error::Send("Unexpected extended opcode");
+            }
+        }
+        else
+        {
+            // special opcode
+            auto adjustedOpcode = opcode - table->opcodeBase;
+            registers.address += adjustedOpcode / table->lineRange;
+            registers.line += table->lineBase + (adjustedOpcode % table->lineRange);
+            current = registers;
+            registers.basicBlockStart = false;
+            registers.prologueEnd = false;
+            registers.epilogueBegin = false;
+            registers.discriminator = 0;
+            emitted = true;
+        }
+        pos = cursor.Position();
+        return emitted;
     }
 }
