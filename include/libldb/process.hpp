@@ -1,15 +1,17 @@
 #pragma once
 
+#include <csignal>
+
 #include <filesystem>
 #include <cstdint>
-
+#include <unordered_map>
 
 #include <libldb/registers.hpp>
 #include <libldb/types.hpp>
 #include <libldb/breakpoint_site.hpp>
 #include <libldb/stoppoint_collection.hpp>
 #include <libldb/watchpoint.hpp>
-#include <unordered_map>
+
 
 namespace ldb
 {
@@ -49,7 +51,30 @@ namespace ldb
 	/// </summary>
 	struct StopReason
 	{
+		StopReason() = default;
 		explicit StopReason(int waitStatus);
+
+		StopReason(ProcessState _reason,
+			std::uint8_t _info,
+			std::optional<TrapType> _trapReason = std::nullopt,
+			std::optional<SyscallInformation> _syscallInfo = std::nullopt)
+			: reason(_reason)
+			, info(_info)
+			, trapReason(_trapReason)
+			, syscallInfo(_syscallInfo)
+		{}
+
+		bool IsStep() const
+		{
+			return reason == ProcessState::stopped && info == SIGTRAP && trapReason == TrapType::singleStep;
+		}
+
+		bool IsBreakpoint() const
+		{
+			return reason == ProcessState::stopped && info == SIGTRAP && (trapReason == TrapType::softwareBreak || trapReason == TrapType::hardwareBreak);
+		}
+
+
 
 		ProcessState reason;
 		/// <summary>
@@ -100,7 +125,7 @@ namespace ldb
 	};
 
 	
-
+	class Target;
 	class Process
 	{
 	public:
@@ -196,6 +221,11 @@ namespace ldb
 
 		std::unordered_map<int, std::uint64_t> GetAuxv() const;
 
+		void SetTarget(Target* _target)
+		{
+			target = _target;
+		}
+
 	private:
 		Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
 			: pid(_pid)
@@ -239,6 +269,8 @@ namespace ldb
 
 		SyscallCatchPolicy syscallCatchPolicy = SyscallCatchPolicy::CatchNone();
 
-		bool expectingSyscallExit = false;	
+		bool expectingSyscallExit = false;
+
+		Target* target = nullptr;
 	};
 }

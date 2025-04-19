@@ -306,6 +306,8 @@ namespace ldb
             return compileUnit->Lines().GetEntryByAddress(address);
         }
 
+        std::vector<Die> InlineStackAtAddress(FileAddr address) const;
+
     private:
         void Index() const;
         void IndexDie(const Die& current) const;

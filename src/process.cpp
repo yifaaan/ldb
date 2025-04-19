@@ -14,7 +14,7 @@
 #include <libldb/pipe.hpp>
 #include <libldb/registers.hpp>
 #include <libldb/bit.hpp>
-
+#include <libldb/target.hpp>
 
 namespace
 {
@@ -254,6 +254,8 @@ namespace ldb
 			{
 				reason = MaybeResumeFromSyscall(reason);
 			}
+
+			if (target) target->NotifyStop(reason);
 		}
 		return reason;
 	}

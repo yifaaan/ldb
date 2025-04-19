@@ -10,7 +10,8 @@ add_library(libldb
     elf.cpp
     types.cpp
     target.cpp
-    dwarf.cpp)
+    dwarf.cpp
+    stack.cpp)
 target_link_libraries(libldb PRIVATE Zydis::Zydis)
 add_library(ldb::libldb ALIAS libldb)
 

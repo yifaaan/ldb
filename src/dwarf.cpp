@@ -493,6 +493,27 @@ namespace ldb
         return ret;
     }
 
+    std::vector<Die> Dwarf::InlineStackAtAddress(FileAddr address) const
+    {
+        auto func = FunctionContainingAddress(address);
+        std::vector<Die> stack;
+        if (func)
+        {
+            stack.push_back(*func);
+            while (true)
+            {
+                const auto& child = stack.back().Children();
+                auto found = std::ranges::find_if(child, [=](auto& child)
+                {
+                    return child.AbbrevEntry()->tag == DW_TAG_inlined_subroutine && child.ContainsAddress(address);
+                });
+                if (found == child.end()) break;
+                else stack.push_back(*found);
+            }
+        }
+        return stack;
+    }
+
     void Dwarf::Index() const
     {
         if (!functionIndex.empty()) return;
