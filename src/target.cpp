@@ -2,6 +2,7 @@
 #include <format>
 
 #include <libldb/target.hpp>
+#include <libldb/disassembler.hpp>
 
 namespace
 {
@@ -113,11 +114,56 @@ namespace ldb
 
     StopReason Target::StepOut()
     {
+        auto& stack = GetStack();
+        auto inlineStack = stack.InlineStackAtPc();
+        auto hasInlineFrames = inlineStack.size() > 1;
+        auto atInlineFrame = stack.InlineHeight() < inlineStack.size() - 1;
 
+        if (hasInlineFrames && atInlineFrame)
+        {
+            auto currentFrame = inlineStack[inlineStack.size() - stack.InlineHeight()];
+            auto returnAddress = currentFrame.HighPc().ToVirtAddr();
+            return RunUntilAddress(returnAddress);
+        }
+        auto framePointer = process->GetRegisters().ReadByIdAs<std::uint64_t>(RegisterId::rbp);
+        auto returnAddress = process->ReadMemoryAs<std::uint64_t>(VirtAddr{framePointer + 8});
+        return RunUntilAddress(VirtAddr{returnAddress});
     }
     
     StopReason Target::StepOver()
     {
-
+        auto origLine = LineEntryAtPc();
+        Disassembler disas{*process};
+        StopReason reason;
+        auto& stack = GetStack();
+        do
+        {
+            auto inlineStack = stack.InlineStackAtPc();
+            auto atStartOfInlineFrame = stack.InlineHeight() > 0;
+            if (atStartOfInlineFrame)
+            {
+                auto framToSkip = inlineStack[inlineStack.size() - stack.InlineHeight()];
+                auto returnAddress = framToSkip.HighPc().ToVirtAddr();
+                reason = RunUntilAddress(returnAddress);
+                if (!reason.IsStep() || process->GetPc() != returnAddress)
+                {
+                    return reason;
+                }
+            }
+            else if (auto instructions = disas.Disassemble(2, process->GetPc()); instructions[0].text.rfind("call") == 0)
+            {
+                reason = RunUntilAddress(instructions[1].address);
+                if (!reason.IsStep() || process->GetPc() != instructions[1].address)
+                {
+                    return reason;
+                }
+            }
+            else
+            {
+                reason = process->StepInstruction();
+                if (!reason.IsStep()) return reason;
+            }
+        } while (LineEntryAtPc() == origLine || LineEntryAtPc()->endSequence);
+        return reason;
     }
 }

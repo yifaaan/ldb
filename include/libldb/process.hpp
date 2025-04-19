@@ -11,6 +11,7 @@
 #include <libldb/breakpoint_site.hpp>
 #include <libldb/stoppoint_collection.hpp>
 #include <libldb/watchpoint.hpp>
+#include <libldb/bit.hpp>
 
 
 namespace ldb
