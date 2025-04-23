@@ -11,7 +11,8 @@ add_library(libldb
     types.cpp
     target.cpp
     dwarf.cpp
-    stack.cpp)
+    stack.cpp
+    breakpoint.cpp)
 target_link_libraries(libldb PRIVATE Zydis::Zydis)
 add_library(ldb::libldb ALIAS libldb)
 

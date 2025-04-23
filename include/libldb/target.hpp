@@ -6,6 +6,7 @@
 #include <libldb/elf.hpp>
 #include <libldb/process.hpp>
 #include <libldb/stack.hpp>
+#include <libldb/breakpoint.hpp>
 
 namespace ldb
 {
@@ -42,7 +43,23 @@ namespace ldb
         StopReason StepIn();
         StopReason StepOut();
         StopReason StepOver();
+
+        struct FindFunctionResult
+        {
+            std::vector<Die> dwarfFunctions;
+            std::vector<std::pair<const Elf*, const Elf64_Sym*>> elfFunctions;
+        };
+
+        FindFunctionResult FindFunctions(std::string_view name) const;
         
+
+        Breakpoint& CreateAdressBreakpoint(VirtAddr address, bool hardware = false, bool internal = false);
+        Breakpoint& CreateFunctionBreakpoint(std::string functionName, bool hardware = false, bool internal = false);
+        Breakpoint& CreateLineBreakpoint(std::filesystem::path file, std::size_t line, bool hardware = false, bool internal = false);
+
+        StoppointCollection<Breakpoint>& Breakpoints() { return breakpoints;}
+        const StoppointCollection<Breakpoint>& Breakpoints() const { return breakpoints;}
+
     private:
         Target(std::unique_ptr<Process> _process, std::unique_ptr<Elf> _elf)
             : process(std::move(_process))
@@ -54,5 +71,7 @@ namespace ldb
         std::unique_ptr<Elf> elf;
         
         Stack stack;
+
+        StoppointCollection<Breakpoint> breakpoints;
     };
 }

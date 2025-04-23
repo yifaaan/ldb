@@ -444,13 +444,13 @@ namespace ldb
 		}
 	}
 
-	BreakpointSite& Process::CreateBreakpointSite(VirtAddr address, bool hardware, bool internal)
+	BreakpointSite& Process::CreateBreakpointSite(Breakpoint* parent, BreakpointSite::IdType id, VirtAddr address, bool hardware, bool internal)
 	{
 		if (breakpointSites.ContainsAddress(address))
 		{
 			Error::Send("Breakpoint site already created at address " + std::to_string(address.Addr()));
 		}
-		return breakpointSites.Push(std::unique_ptr<BreakpointSite>{ new BreakpointSite(*this, address, hardware, internal) });
+		return breakpointSites.Push(std::unique_ptr<BreakpointSite>{ new BreakpointSite(parent, id, *this, address, hardware, internal) });
 	}
 
 	int Process::SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address)

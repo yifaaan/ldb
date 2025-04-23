@@ -166,4 +166,38 @@ namespace ldb
         } while (LineEntryAtPc() == origLine || LineEntryAtPc()->endSequence);
         return reason;
     }
+
+    Target::FindFunctionResult Target::FindFunctions(std::string_view name) const
+    {
+        FindFunctionResult ret;
+        auto dwarfFound = elf->GetDwarf().FindFunctions(std::string{name});
+        if (dwarfFound.empty())
+        {
+            auto elfFound = elf->GetSymbolByName(name);
+            for (auto sym : elfFound)
+            {
+                ret.elfFunctions.emplace_back(elf.get(), sym);
+            }
+        }
+        else
+        {
+            ret.dwarfFunctions.insert(ret.dwarfFunctions.end(), dwarfFound.begin(), dwarfFound.end());
+        }
+        return ret;
+    }
+
+    Breakpoint& Target::CreateAdressBreakpoint(VirtAddr address, bool hardware, bool internal)
+    {
+        return breakpoints.Push(std::unique_ptr<AddressBreakpoint>(new AddressBreakpoint(*this, address, hardware, internal)));
+    }
+
+    Breakpoint& Target::CreateFunctionBreakpoint(std::string functionName, bool hardware, bool internal)
+    {
+        return breakpoints.Push(std::unique_ptr<FunctionBreakpoint>(new FunctionBreakpoint(*this, functionName, hardware, internal)));
+    }
+
+    Breakpoint& Target::CreateLineBreakpoint(std::filesystem::path file, std::size_t line, bool hardware, bool internal)
+    {
+        return breakpoints.Push(std::unique_ptr<LineBreakpoint>(new LineBreakpoint(*this, file, line, hardware, internal)))
+    }
 }

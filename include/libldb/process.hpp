@@ -200,7 +200,7 @@ namespace ldb
 		void WriteFprs(const user_fpregs_struct& fprs);
 		void WriteGprs(const user_regs_struct& gprs);
 
-		BreakpointSite& CreateBreakpointSite(VirtAddr address, bool hardware = false, bool internal = false);
+		BreakpointSite& CreateBreakpointSite(Breakpoint* parent, BreakpointSite::IdType id, VirtAddr address, bool hardware = false, bool internal = false);
 
 		int SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address);
 		void ClearHardwareStoppoint(int index);

@@ -15,14 +15,15 @@ namespace
 
 namespace ldb
 {
-	BreakpointSite::BreakpointSite(Process& proc, VirtAddr addr, bool _isHardware, bool _isInternal)
-		: process(&proc)
+	BreakpointSite::BreakpointSite(Breakpoint* _parent, IdType _id,Process& proc, VirtAddr addr, bool _isHardware, bool _isInternal)
+		: id(_id)
+		, process(&proc)
 		, address(addr)
 		, isEnabled(false)
 		, isHardware(_isHardware)
 		, isInternal(_isInternal)
+		, parent(_parent)
 	{
-		id = isInternal ? -1 : GetNextId();
 	}
 
 	void BreakpointSite::Enable()

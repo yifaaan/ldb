@@ -4,6 +4,7 @@
 
 namespace ldb
 {
+	class Breakpoint;
 	class Process;
 	class BreakpointSite
 	{
@@ -33,7 +34,7 @@ namespace ldb
 		bool IsInternal() const { return isInternal; }
 
 	private:
-		BreakpointSite(Process& proc, VirtAddr addr, bool _isHardware = false, bool _isInternal = false);
+		BreakpointSite(Breakpoint* _parent, IdType _id,Process& proc, VirtAddr addr, bool _isHardware = false, bool _isInternal = false);
 		friend Process;
 
 		IdType id;
@@ -46,5 +47,6 @@ namespace ldb
 		bool isInternal;
 		// index of the debug register a hardware breakpoint is using
 		int hardwareRegisterIndex = -1;
+		Breakpoint* parent = nullptr;
 	};
 }

@@ -203,6 +203,10 @@ memory		- Commands for operating on memory
 disassemble	- Disassemble machine code to assembly
 watchpoint	- Commands for operating on watchpoints
 catchpoint	- Commands for operating on catchpoints
+next		- Step over a single instruction
+finish		- Step out of the current function
+step		- Step into the next function
+stepi		- Step into the next instruction
 )";
 		}
 		else if (IsPrefix(args[1], "registers"))
@@ -735,6 +739,26 @@ syscall <list of syscall IDs or names
 		else if (IsPrefix(command, "catchpoint"))
 		{
 			HandleCatchpointCommand(*process, args);
+		}
+		else if (IsPrefix(command, "next"))
+		{
+			auto reason = target->StepOver();
+			HandleStop(*target, reason);
+		}
+		else if (IsPrefix(command, "finish"))
+		{
+			auto reason = target->StepOut();
+			HandleStop(*target, reason);
+		}
+		else if (IsPrefix(command, "step"))
+		{
+			auto reason = target->StepIn();
+			HandleStop(*target, reason);
+		}
+		else if (IsPrefix(command, "stepi"))
+		{
+			auto reason = process->StepInstruction();
+			HandleStop(*target, reason);
 		}
 		else
 		{
