@@ -1,77 +1,77 @@
 #pragma once
 
-
-#include <memory>
-
+#include <libldb/breakpoint.hpp>
 #include <libldb/elf.hpp>
 #include <libldb/process.hpp>
 #include <libldb/stack.hpp>
-#include <libldb/breakpoint.hpp>
+#include <memory>
 
-namespace ldb
-{
-    class Target
-    {
-    public:
-        Target() = delete;
-        Target(const Target&) = delete;
-        Target& operator=(const Target&) = delete;
-        Target(Target&&) = delete;
-        Target& operator=(Target&&) = delete;
+namespace ldb {
+class Target {
+ public:
+  Target() = delete;
+  Target(const Target&) = delete;
+  Target& operator=(const Target&) = delete;
+  Target(Target&&) = delete;
+  Target& operator=(Target&&) = delete;
 
-        static std::unique_ptr<Target> Launch(std::filesystem::path path, std::optional<int> stdoutReplacement = std::nullopt);
+  static std::unique_ptr<Target> Launch(
+      std::filesystem::path path,
+      std::optional<int> stdoutReplacement = std::nullopt);
 
-        static std::unique_ptr<Target> Attach(pid_t pid);
+  static std::unique_ptr<Target> Attach(pid_t pid);
 
-        Process& GetProcess() { return *process; }
-        const Process& GetProcess() const { return *process; }
-        
-        Elf& GetElf() { return *elf; }
-        const Elf& GetElf() const { return *elf; }
+  Process& GetProcess() { return *process; }
+  const Process& GetProcess() const { return *process; }
 
-        void NotifyStop(const ldb::StopReason& reason);
+  Elf& GetElf() { return *elf; }
+  const Elf& GetElf() const { return *elf; }
 
-        FileAddr GetPcFileAddress() const;
+  void NotifyStop(const ldb::StopReason& reason);
 
-        Stack& GetStack() { return stack; }
-        const Stack& GetStack() const { return stack; }
+  FileAddr GetPcFileAddress() const;
 
-        LineTable::iterator LineEntryAtPc() const;
+  Stack& GetStack() { return stack; }
+  const Stack& GetStack() const { return stack; }
 
-        StopReason RunUntilAddress(VirtAddr address);
+  LineTable::iterator LineEntryAtPc() const;
 
-        StopReason StepIn();
-        StopReason StepOut();
-        StopReason StepOver();
+  StopReason RunUntilAddress(VirtAddr address);
 
-        struct FindFunctionResult
-        {
-            std::vector<Die> dwarfFunctions;
-            std::vector<std::pair<const Elf*, const Elf64_Sym*>> elfFunctions;
-        };
+  StopReason StepIn();
+  StopReason StepOut();
+  StopReason StepOver();
 
-        FindFunctionResult FindFunctions(std::string_view name) const;
-        
+  struct FindFunctionResult {
+    std::vector<Die> dwarfFunctions;
+    std::vector<std::pair<const Elf*, const Elf64_Sym*>> elfFunctions;
+  };
 
-        Breakpoint& CreateAdressBreakpoint(VirtAddr address, bool hardware = false, bool internal = false);
-        Breakpoint& CreateFunctionBreakpoint(std::string functionName, bool hardware = false, bool internal = false);
-        Breakpoint& CreateLineBreakpoint(std::filesystem::path file, std::size_t line, bool hardware = false, bool internal = false);
+  FindFunctionResult FindFunctions(std::string_view name) const;
 
-        StoppointCollection<Breakpoint>& Breakpoints() { return breakpoints;}
-        const StoppointCollection<Breakpoint>& Breakpoints() const { return breakpoints;}
+  Breakpoint& CreateAdressBreakpoint(VirtAddr address, bool hardware = false,
+                                     bool internal = false);
+  Breakpoint& CreateFunctionBreakpoint(std::string functionName,
+                                       bool hardware = false,
+                                       bool internal = false);
+  Breakpoint& CreateLineBreakpoint(std::filesystem::path file, std::size_t line,
+                                   bool hardware = false,
+                                   bool internal = false);
 
-    private:
-        Target(std::unique_ptr<Process> _process, std::unique_ptr<Elf> _elf)
-            : process(std::move(_process))
-            , elf(std::move(_elf))
-            , stack(this)
-        { }
+  StoppointCollection<Breakpoint>& Breakpoints() { return breakpoints; }
+  const StoppointCollection<Breakpoint>& Breakpoints() const {
+    return breakpoints;
+  }
 
-        std::unique_ptr<Process> process;
-        std::unique_ptr<Elf> elf;
-        
-        Stack stack;
+ private:
+  Target(std::unique_ptr<Process> _process, std::unique_ptr<Elf> _elf)
+      : process(std::move(_process)), elf(std::move(_elf)), stack(this) {}
 
-        StoppointCollection<Breakpoint> breakpoints;
-    };
-}
+  std::unique_ptr<Process> process;
+  std::unique_ptr<Elf> elf;
+
+  Stack stack;
+
+  StoppointCollection<Breakpoint> breakpoints;
+};
+}  // namespace ldb

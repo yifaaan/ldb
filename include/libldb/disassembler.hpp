@@ -1,26 +1,23 @@
 #pragma once
 
+#include <libldb/process.hpp>
 #include <optional>
 
-#include <libldb/process.hpp>
+namespace ldb {
+class Disassembler {
+ private:
+  struct Instruction {
+    VirtAddr address;
+    std::string text;
+  };
 
-namespace ldb
-{
-	class Disassembler
-	{
-	private:
-		struct Instruction
-		{
-			VirtAddr address;
-			std::string text;
-		};
-	public:
-		explicit Disassembler(Process& proc) : process(&proc) { }
+ public:
+  explicit Disassembler(Process& proc) : process(&proc) {}
 
-		std::vector<Instruction> Disassemble(std::size_t nInstructions, std::optional<VirtAddr> address = {});
+  std::vector<Instruction> Disassemble(std::size_t nInstructions,
+                                       std::optional<VirtAddr> address = {});
 
-	private:
-		
-		Process* process;
-	};
-}
+ private:
+  Process* process;
+};
+}  // namespace ldb

@@ -1,6 +1,3 @@
 void f();
 
-int main()
-{
-    f();
-}
+int main() { f(); }

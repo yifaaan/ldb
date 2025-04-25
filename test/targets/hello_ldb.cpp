@@ -1,6 +1,3 @@
 #include <cstdio>
 
-int main()
-{
-	std::puts("Hello, ldb!");
-}
+int main() { std::puts("Hello, ldb!"); }
