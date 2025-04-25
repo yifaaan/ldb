@@ -3,3 +3,5 @@
 build
 vcpkg_installed
 out
+compile_commands.json
+tmp
