@@ -1,8 +1,12 @@
+#include "libldb/target.hpp"
+
+#include <elf.h>
 #include <signal.h>
 
 #include <format>
-#include <libldb/disassembler.hpp>
-#include <libldb/target.hpp>
+
+#include "libldb/breakpoint.hpp"
+#include "libldb/disassembler.hpp"
 
 namespace {
 std::unique_ptr<ldb::Elf> CreateLoadedElf(const ldb::Process& process,
@@ -158,5 +162,41 @@ Target::FindFunctionResult Target::FindFunctions(std::string_view name) const {
                               dwarfFound.end());
   }
   return ret;
+}
+
+#include <cxxabi.h>
+std::string Target::FunctionNameAtAddress(VirtAddr address) const {
+  auto file_address = address.ToFileAddr(*elf);
+  auto obj = file_address.ElfFile();
+  if (!obj) return {};
+
+  auto func = obj->GetDwarf().FunctionContainingAddress(file_address);
+  if (func && func->Name()) {
+    return std::string{*func->Name()};
+  } else if (auto elf_func = obj->GetSymbolContainingAddress(file_address);
+             elf_func &&
+             ELF64_ST_TYPE(elf_func.value()->st_value) == STT_FUNC) {
+    auto elf_name = std::string{obj->GetString(elf_func.value()->st_name)};
+    return abi::__cxa_demangle(elf_name.c_str(), nullptr, nullptr, nullptr);
+  }
+  return {};
+}
+
+Breakpoint& Target::CreateAdressBreakpoint(VirtAddr address, bool hardware,
+                                           bool internal) {
+  return breakpoints.Push(std::unique_ptr<AddressBreakpoint>(
+      new AddressBreakpoint(*this, address, hardware, internal)));
+}
+
+Breakpoint& Target::CreateFunctionBreakpoint(std::string functionName,
+                                             bool hardware, bool internal) {
+  return breakpoints.Push(std::unique_ptr<FunctionBreakpoint>(
+      new FunctionBreakpoint(*this, functionName, hardware, internal)));
+}
+Breakpoint& Target::CreateLineBreakpoint(std::filesystem::path file,
+                                         std::size_t line, bool hardware,
+                                         bool internal) {
+  return breakpoints.Push(std::unique_ptr<LineBreakpoint>(
+      new LineBreakpoint(*this, file, line, hardware, internal)));
 }
 }  // namespace ldb

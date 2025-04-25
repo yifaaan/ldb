@@ -1,3 +1,4 @@
+#include <fmt/base.h>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 #include <readline/history.h>
@@ -9,6 +10,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <fstream>
 #include <iostream>
 #include <libldb/disassembler.hpp>
 #include <libldb/error.hpp>
@@ -20,6 +22,10 @@
 #include <ranges>
 #include <string>
 #include <vector>
+
+#include "libldb/breakpoint.hpp"
+#include "libldb/breakpoint_site.hpp"
+#include "libldb/dwarf.hpp"
 
 namespace {
 ldb::Process* LdbProcess = nullptr;
@@ -123,16 +129,29 @@ std::string GetSigtrapInfo(const ldb::Process& process,
 std::string GetSignalStopReason(const ldb::Target& target,
                                 ldb::StopReason reason) {
   auto& process = target.GetProcess();
+  auto pc = process.GetPc();
   auto message = fmt::format("stopped with signal {} at {:#x}",
                              sigabbrev_np(reason.info), process.GetPc().Addr());
 
   // look up the symbol corresponding to the current program counter and print
   // out the function name if there is one.
-  auto func = target.GetElf().GetSymbolContainingAddress(process.GetPc());
-  if (func && ELF64_ST_TYPE(func.value()->st_info) == STT_FUNC) {
-    // get the function name in strtab
-    message +=
-        fmt::format(" ({})", target.GetElf().GetString(func.value()->st_name));
+  // auto func = target.GetElf().GetSymbolContainingAddress(process.GetPc());
+  // if (func && ELF64_ST_TYPE(func.value()->st_info) == STT_FUNC) {
+  //   // get the function name in strtab
+  //   message +=
+  //       fmt::format(" ({})",
+  //       target.GetElf().GetString(func.value()->st_name));
+  // }
+
+  auto line = target.LineEntryAtPc();
+  if (line != ldb::LineTable::iterator{}) {
+    auto file = line->fileEntry->path.filename().string();
+    message += fmt::format(", {}:{}", file, line->line);
+  }
+
+  auto func_name = target.FunctionNameAtAddress(pc);
+  if (func_name != "") {
+    message += fmt::format(" ({})", func_name);
   }
   if (reason.info == SIGTRAP) {
     message += GetSigtrapInfo(process, reason);
@@ -229,10 +248,41 @@ void PrintDisassembly(ldb::Process& process, ldb::VirtAddr address,
   }
 }
 
+void PrintSource(const std::filesystem::path& path, std::uint64_t line,
+                 std::uint64_t n_lines_context) {
+  std::ifstream file{path.string()};
+  auto start_line = line <= n_lines_context ? 1 : line - n_lines_context;
+  auto end_line = line + n_lines_context + 1;
+  auto PrintLineStart = [&line, &end_line](auto current_line) {
+    auto fill_width = static_cast<int>(std::floor(std::log10(end_line))) + 1;
+    auto arrow = current_line == line ? ">" : " ";
+    fmt::print("{} {:>{}} ", arrow, current_line, fill_width);
+  };
+  char c{};
+  auto current_line = 1u;
+  while (current_line != start_line && file.get(c)) {
+    fmt::print("{}", c);
+    if (c == '\n') {
+      ++current_line;
+      PrintLineStart(current_line);
+    }
+  }
+  fmt::println("");
+}
+
 void HandleStop(ldb::Target& target, ldb::StopReason reason) {
   PrintStopReason(target, reason);
   if (reason.reason == ldb::ProcessState::stopped) {
-    PrintDisassembly(target.GetProcess(), target.GetProcess().GetPc(), 5);
+    if (target.GetStack().InlineHeight() > 0) {
+      auto stack = target.GetStack().InlineStackAtPc();
+      auto frame = stack[stack.size() - target.GetStack().InlineHeight()];
+      PrintSource(frame.File().path, frame.Line(), 3);
+    } else if (auto entry = target.LineEntryAtPc();
+               entry != ldb::LineTable::iterator{}) {
+      PrintSource(entry->fileEntry->path, entry->line, 3);
+    } else {
+      PrintDisassembly(target.GetProcess(), target.GetProcess().GetPc(), 5);
+    }
   }
 }
 
@@ -302,7 +352,119 @@ void HandleRegisterCommand(ldb::Process& process,
   }
 }
 
-void HandleBreakpointCommand(ldb::Process& process,
+void HandleBreakpointListCommand(ldb::Target& target) {
+  if (target.Breakpoints().Empty()) {
+    fmt::print("No breakpoints set\n");
+    return;
+  }
+  // Current breakpoints:
+  // 1: address = 0x5555555551ac, enabled:
+  //    .1: address = 0x5555555551ac, enabled
+  // 2: function = main, enabled:
+  //    .2: address = 0x5555555551a2, enabled
+  // 3: file = force_inline.cpp, line = 15, enabled:
+  //    .3: address = 0x555555555197, enabled
+  //    .4: address = 0x5555555551b3, enabled
+  fmt::print("Current breakpoints:\n");
+  target.Breakpoints().ForEach([](const auto& bp) {
+    if (bp.IsInternal()) return;
+    fmt::print("{}: ", bp.Id());
+    if (auto func_bp = dynamic_cast<const ldb::FunctionBreakpoint*>(&bp)) {
+      fmt::print("function = {}", func_bp->FunctionName());
+    } else if (auto line_bp = dynamic_cast<const ldb::LineBreakpoint*>(&bp)) {
+      fmt::print("file = {}, line = {}", line_bp->File().string(),
+                 line_bp->Line());
+    } else if (auto addr_bp =
+                   dynamic_cast<const ldb::AddressBreakpoint*>(&bp)) {
+      fmt::print("address = {:#x}", addr_bp->Address().Addr());
+    }
+    fmt::print(", {}:\n", bp.IsEnabled() ? "enabled" : "disabled");
+    bp.BreakpointSites().ForEach([](const auto& site) {
+      fmt::print("    .{}: address = {:#x}, {}\n", site.Id(),
+                 site.Address().Addr(),
+                 site.IsEnabled() ? "enabled" : "disabled");
+    });
+  });
+}
+
+// break set <function name>
+// break set <file>:<line>
+// break set 0x<address>
+void HandleBreakpointSetCommand(ldb::Target& target,
+                                std::span<std::string_view> args) {
+  bool hardware = false;
+  if (args.size() == 4) {
+    if (args[3] == "-h")
+      hardware = true;
+    else
+      ldb::Error::Send("Invalid breakpoint command argument");
+  }
+
+  if (args[2].starts_with("0x")) {
+    auto address = ldb::ToIntegral<std::uint64_t>(args[2]);
+    if (!address) {
+      fmt::print(stderr,
+                 "Breakpoint command expects address in hexadecimal, prefied "
+                 "with '0x'\n");
+      return;
+    }
+    target.CreateAdressBreakpoint(ldb::VirtAddr{*address}, hardware).Enable();
+  } else if (args[2].find(':') != std::string::npos) {
+    auto file_line = Split(args[2], ':');
+    auto file = file_line[0];
+    auto line = ldb::ToIntegral<std::uint64_t>(file_line[1]);
+    if (!line) {
+      fmt::print(stderr, "Line number should be an integer\n");
+      return;
+    }
+    target.CreateLineBreakpoint(file, *line).Enable();
+  } else {
+    target.CreateFunctionBreakpoint(std::string{args[2]}).Enable();
+  }
+}
+
+// E.g.
+// Breakpoint: break enable 1.
+// Breakpoint site: break enable 1.2.
+void HandleBreakpointToggle(ldb::Target& target,
+                            std::span<std::string_view> args) {
+  auto command = args[1];
+  auto dot_pos = args[2].find('.');
+  auto id_str = args[2].substr(0, dot_pos);
+  auto id = ldb::ToIntegral<ldb::Breakpoint::IdType>(id_str);
+  if (!id) {
+    fmt::print(stderr, "Command expects breakpoint id\n");
+    return;
+  }
+  auto& bp = target.Breakpoints().GetById(*id);
+  if (dot_pos != std::string::npos) {
+    // breakpoint site
+    auto site_id_str = args[2].substr(dot_pos + 1);
+    auto site_id = ldb::ToIntegral<ldb::BreakpointSite::IdType>(site_id_str);
+    if (!site_id) {
+      fmt::print(stderr, "Command expects breakpoint site id\n");
+      return;
+    }
+    if (IsPrefix(command, "enable")) {
+      bp.BreakpointSites().GetById(*site_id).Enable();
+    } else if (IsPrefix(command, "disable")) {
+      bp.BreakpointSites().GetById(*site_id).Disable();
+    }
+  } else if (IsPrefix(command, "enable")) {
+    bp.Enable();
+  } else if (IsPrefix(command, "disable")) {
+    bp.Disable();
+  } else if (IsPrefix(command, "delete")) {
+    // all sites
+    bp.BreakpointSites().ForEach([&target](auto& site) {
+      target.GetProcess().BreakpointSites().RemoveByAddress(site.Address());
+    });
+    // breakpoint
+    target.Breakpoints().RemoveById(*id);
+  }
+}
+
+void HandleBreakpointCommand(ldb::Target& target,
                              std::span<std::string_view> args) {
   if (args.size() < 2) {
     PrintHelp({"help", "breakpoint"});
@@ -310,17 +472,7 @@ void HandleBreakpointCommand(ldb::Process& process,
   }
   auto command = args[1];
   if (IsPrefix(command, "list")) {
-    if (process.BreakpointSites().Empty()) {
-      fmt::print("No breakpoints set\n");
-    } else {
-      fmt::print("Current breakpoints:\n");
-      process.BreakpointSites().ForEach([](const auto& site) {
-        if (site.IsInternal()) return;
-        fmt::print("{}: address = {:#x}, {}\n", site.Id(),
-                   site.Address().Addr(),
-                   site.IsEnabled() ? "enabled" : "disabled");
-      });
-    }
+    HandleBreakpointListCommand(target);
     return;
   }
 
@@ -330,37 +482,11 @@ void HandleBreakpointCommand(ldb::Process& process,
   }
 
   if (IsPrefix(command, "set")) {
-    auto address = ldb::ToIntegral<std::uint64_t>(args[2], 16);
-    if (!address) {
-      fmt::print(stderr,
-                 "Breakpoint command expectes address in hexadecimal, prefixed "
-                 "with '0x'\n");
-      return;
-    }
-    bool hardware = false;
-    // -h
-    if (args.size() == 4) {
-      if (args[3] == "-h")
-        hardware = true;
-      else
-        ldb::Error::Send("Invalid breakpoint command argument");
-    }
-    process.CreateBreakpointSite(ldb::VirtAddr{*address}, hardware).Enable();
+    HandleBreakpointSetCommand(target, args);
     return;
   }
 
-  auto id = ldb::ToIntegral<ldb::BreakpointSite::IdType>(args[2]);
-  if (!id) {
-    std::cerr << "Command expects breakpoint id\n";
-    return;
-  }
-  if (IsPrefix(command, "enable")) {
-    process.BreakpointSites().GetById(*id).Enable();
-  } else if (IsPrefix(command, "disable")) {
-    process.BreakpointSites().GetById(*id).Disable();
-  } else if (IsPrefix(command, "delete")) {
-    process.BreakpointSites().RemoveById(*id);
-  }
+  HandleBreakpointToggle(target, args);
 }
 
 // memory read <address>
@@ -588,7 +714,7 @@ void HandleCommand(std::unique_ptr<ldb::Target>& target,
   } else if (IsPrefix(command, "register")) {
     HandleRegisterCommand(*process, args);
   } else if (IsPrefix(command, "breakpoint")) {
-    HandleBreakpointCommand(*process, args);
+    HandleBreakpointCommand(*target, args);
   } else if (IsPrefix(command, "step")) {
     auto reason = process->StepInstruction();
     HandleStop(*target, reason);

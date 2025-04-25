@@ -6,6 +6,8 @@
 #include <libldb/stack.hpp>
 #include <memory>
 
+#include "libldb/types.hpp"
+
 namespace ldb {
 class Target {
  public:
@@ -48,6 +50,8 @@ class Target {
   };
 
   FindFunctionResult FindFunctions(std::string_view name) const;
+
+  std::string FunctionNameAtAddress(VirtAddr address) const;
 
   Breakpoint& CreateAdressBreakpoint(VirtAddr address, bool hardware = false,
                                      bool internal = false);

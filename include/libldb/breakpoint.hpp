@@ -19,8 +19,8 @@ class Breakpoint {
   using IdType = std::int32_t;
   IdType Id() const { return id; }
 
-  virtual void Enable() = 0;
-  virtual void Disable() = 0;
+  void Enable();
+  void Disable();
 
   bool IsEnabled() const { return isEnabled; }
   bool IsHardware() const { return isHardware; }
@@ -45,6 +45,7 @@ class Breakpoint {
 
  protected:
   friend Target;
+
   Breakpoint(Target& _target, bool _isHardware = false,
              bool _isInternal = false);
 
