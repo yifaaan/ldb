@@ -719,10 +719,12 @@ void HandleCommand(std::unique_ptr<ldb::Target>& target,
     HandleRegisterCommand(*process, args);
   } else if (IsPrefix(command, "breakpoint")) {
     HandleBreakpointCommand(*target, args);
-  } else if (IsPrefix(command, "step")) {
-    auto reason = process->StepInstruction();
-    HandleStop(*target, reason);
-  } else if (IsPrefix(command, "memory")) {
+  }
+  // else if (IsPrefix(command, "step")) {
+  //   auto reason = process->StepInstruction();
+  //   HandleStop(*target, reason);
+  // }
+  else if (IsPrefix(command, "memory")) {
     HandleMemoryCommand(*process, args);
   } else if (IsPrefix(command, "disassemble")) {
     HandleDisassembleCommand(*process, args);

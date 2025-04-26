@@ -109,7 +109,8 @@ StopReason Target::StepOut() {
   auto atInlineFrame = stack.InlineHeight() < inlineStack.size() - 1;
 
   if (hasInlineFrames && atInlineFrame) {
-    auto currentFrame = inlineStack[inlineStack.size() - stack.InlineHeight()];
+    auto currentFrame =
+        inlineStack[inlineStack.size() - stack.InlineHeight() - 1];
     auto returnAddress = currentFrame.HighPc().ToVirtAddr();
     return RunUntilAddress(returnAddress);
   }

@@ -1,4 +1,5 @@
-add_executable(ldb ldb.cpp) 
+add_executable(ldb ldb.cpp)
+target_link_options(ldb PRIVATE -fsanitize=address)
 target_link_libraries(ldb PRIVATE ldb::libldb PkgConfig::readline fmt::fmt)
 
 include(GNUInstallDirs)

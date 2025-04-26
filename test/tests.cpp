@@ -662,3 +662,38 @@ TEST_CASE("Source-level breakpoints", "[breakpoint]") {
   REQUIRE(reason.reason == ldb::ProcessState::exited);
   close(dev_null);
 }
+
+TEST_CASE("Source-level stepping", "[target]") {
+  auto dev_null = open("/dev/null", O_WRONLY);
+  auto target = Target::Launch("targets/step", dev_null);
+  auto& proc = target->GetProcess();
+  // stop before execvp
+  target->CreateFunctionBreakpoint("main").Enable();
+  proc.Resume();
+  proc.WaitOnSignal();  // stop at main
+
+  auto pc = proc.GetPc();
+  REQUIRE(target->FunctionNameAtAddress(pc) == "main");
+  target->StepOver();  // stop at second `FindHappiness`, line: 22
+
+  auto new_pc = proc.GetPc();
+  REQUIRE(new_pc != pc);
+  REQUIRE(target->FunctionNameAtAddress(pc) == "main");
+
+  target->StepIn();    // stop at line:15
+  target->StepOver();  // stop at line:16
+  pc = proc.GetPc();
+  REQUIRE(target->FunctionNameAtAddress(pc) == "FindHappiness");
+  REQUIRE(target->GetStack().InlineHeight() == 1);
+
+  target->StepIn();
+  target->StepOver();
+  pc = proc.GetPc();
+  REQUIRE(target->FunctionNameAtAddress(pc) == "FindHappiness");
+
+  target->StepOut();
+  target->StepOut();
+  pc = proc.GetPc();
+  REQUIRE(target->FunctionNameAtAddress(pc) == "main");
+  close(dev_null);
+}
