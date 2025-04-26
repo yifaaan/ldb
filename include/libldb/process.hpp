@@ -9,6 +9,7 @@
 #include <libldb/stoppoint_collection.hpp>
 #include <libldb/types.hpp>
 #include <libldb/watchpoint.hpp>
+#include <optional>
 #include <unordered_map>
 
 namespace ldb {

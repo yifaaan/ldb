@@ -617,3 +617,48 @@ TEST_CASE("Line table", "[dwarf]") {
   ++it;
   REQUIRE(it == cu->Lines().end());
 }
+
+TEST_CASE("Source-level breakpoints", "[breakpoint]") {
+  auto dev_null = open("/dev/null", O_WRONLY);
+  auto target = Target::Launch("targets/overloaded", dev_null);
+  auto& proc = target->GetProcess();
+  // stop before execvp
+  target->CreateLineBreakpoint("overloaded.cpp", 20).Enable();
+  proc.Resume();
+  proc.WaitOnSignal();  // stop at line 20
+
+  auto entry = target->LineEntryAtPc();
+  REQUIRE(entry->fileEntry->path.filename() == "overloaded.cpp");
+  REQUIRE(entry->line == 20);
+
+  auto& bkpt = target->CreateFunctionBreakpoint("PrintType");
+  // Enable at PrintType(int), PrintType(double), PrintType(std::string)
+  bkpt.Enable();
+
+  ldb::BreakpointSite* lowest_bkpt = nullptr;
+
+  bkpt.BreakpointSites().ForEach([&lowest_bkpt](auto& site) {
+    if (lowest_bkpt == nullptr ||
+        site.Address().Addr() < lowest_bkpt->Address().Addr()) {
+      lowest_bkpt = &site;
+    }
+  });
+  // Disable at PrintType(int)
+  lowest_bkpt->Disable();
+
+  proc.Resume();
+  proc.WaitOnSignal();  // stop at line 10
+
+  REQUIRE(target->LineEntryAtPc()->line == 10);
+
+  proc.Resume();
+  proc.WaitOnSignal();  // stop at line 15
+
+  REQUIRE(target->LineEntryAtPc()->line == 15);
+
+  proc.Resume();
+  auto reason = proc.WaitOnSignal();
+
+  REQUIRE(reason.reason == ldb::ProcessState::exited);
+  close(dev_null);
+}

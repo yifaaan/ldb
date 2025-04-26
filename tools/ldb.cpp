@@ -12,7 +12,10 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <libldb/breakpoint.hpp>
+#include <libldb/breakpoint_site.hpp>
 #include <libldb/disassembler.hpp>
+#include <libldb/dwarf.hpp>
 #include <libldb/error.hpp>
 #include <libldb/parse.hpp>
 #include <libldb/process.hpp>
@@ -22,10 +25,6 @@
 #include <ranges>
 #include <string>
 #include <vector>
-
-#include "libldb/breakpoint.hpp"
-#include "libldb/breakpoint_site.hpp"
-#include "libldb/dwarf.hpp"
 
 namespace {
 ldb::Process* LdbProcess = nullptr;
@@ -251,17 +250,22 @@ void PrintDisassembly(ldb::Process& process, ldb::VirtAddr address,
 void PrintSource(const std::filesystem::path& path, std::uint64_t line,
                  std::uint64_t n_lines_context) {
   std::ifstream file{path.string()};
-  auto start_line = line <= n_lines_context ? 1 : line - n_lines_context;
+  // auto start_line = line <= n_lines_context ? 1 : line - n_lines_context;
+  auto start_line = line;
   auto end_line = line + n_lines_context + 1;
-  auto PrintLineStart = [&line, &end_line](auto current_line) {
+
+  auto PrintLineStart = [&](auto current_line) {
     auto fill_width = static_cast<int>(std::floor(std::log10(end_line))) + 1;
     auto arrow = current_line == line ? ">" : " ";
     fmt::print("{} {:>{}} ", arrow, current_line, fill_width);
   };
+
   char c{};
   auto current_line = 1u;
-  while (current_line != start_line && file.get(c)) {
+  PrintLineStart(current_line);
+  while (current_line <= end_line && file.get(c)) {
     fmt::print("{}", c);
+
     if (c == '\n') {
       ++current_line;
       PrintLineStart(current_line);
