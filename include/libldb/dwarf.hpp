@@ -251,6 +251,41 @@ class CompileUnit {
   std::unique_ptr<LineTable> lineTable;
 };
 
+class Dwarf;
+class CallFrameInformation {
+ public:
+  CallFrameInformation() = delete;
+  CallFrameInformation(const CallFrameInformation&) = delete;
+  CallFrameInformation& operator=(const CallFrameInformation&) = delete;
+  CallFrameInformation(CallFrameInformation&&) = delete;
+  CallFrameInformation& operator=(CallFrameInformation&&) = delete;
+
+  struct CommonInformationEntry {
+    std::uint32_t length;
+    std::uint64_t code_alignment_factor;
+    std::int64_t data_alignment_factor;
+    bool fde_has_augmentation;
+    std::uint8_t fde_pointer_encoding;
+    Span<const std::byte> instructions;
+  };
+
+  struct FrameDescriptionEntry {
+    std::uint32_t length;
+    const CommonInformationEntry* cie;
+    FileAddr initial_location;
+    std::uint64_t address_range;
+    Span<const std::byte> instructions;
+  };
+
+  const Dwarf& dwarf() const { return *dwarf_; }
+
+  const CommonInformationEntry& GetCie(FileOffset at) const;
+
+ private:
+  const Dwarf* dwarf_;
+  mutable std::unordered_map<std::uint32_t, CommonInformationEntry> cie_map_;
+};
+
 class Elf;
 class Dwarf {
  public:

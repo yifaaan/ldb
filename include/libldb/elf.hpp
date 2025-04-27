@@ -55,6 +55,14 @@ class Elf {
   Dwarf& GetDwarf() { return *dwarf; }
   const Dwarf& GetDwarf() const { return *dwarf; }
 
+  FileOffset DataPointerAsFileOffset(const std::byte* ptr) const {
+    return {*this, static_cast<std::uint64_t>(ptr - data)};
+  }
+
+  const std::byte* FileOffsetAsDataPointer(FileOffset offset) const {
+    return data + offset.Offset();
+  }
+
  private:
   void ParseSectionHeaders();
 

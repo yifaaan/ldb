@@ -1,4 +1,7 @@
+
+
 #include <algorithm>
+#include <cstddef>
 #include <libldb/bit.hpp>
 #include <libldb/dwarf.hpp>
 #include <libldb/elf.hpp>
@@ -350,6 +353,142 @@ std::unique_ptr<ldb::LineTable> ParseLineTable(const ldb::CompileUnit& cu) {
   return std::make_unique<ldb::LineTable>(
       data, &cu, defaultIsStmt, lineBase, lineRange, opcodeBase,
       std::move(includeDirectories), std::move(fileNames));
+}
+
+std::uint64_t ParseEhFramePointerWithBase(Cursor& cursor, std::uint8_t encoding,
+                                          std::uint64_t base) {
+  switch (encoding & 0x0f) {
+    case DW_EH_PE_absptr:
+      return base + cursor.U64();
+    case DW_EH_PE_uleb128:
+      return base + cursor.Uleb128();
+    case DW_EH_PE_udata2:
+      return base + cursor.U16();
+    case DW_EH_PE_udata4:
+      return base + cursor.U32();
+    case DW_EH_PE_udata8:
+      return base + cursor.U64();
+    case DW_EH_PE_sleb128:
+      return base + cursor.Sleb128();
+    case DW_EH_PE_sdata2:
+      return base + cursor.S16();
+    case DW_EH_PE_sdata4:
+      return base + cursor.S32();
+    case DW_EH_PE_sdata8:
+      return base + cursor.S64();
+    default:
+      ldb::Error::Send("Unknown eh_frame pointer encoding");
+  }
+}
+
+std::uint64_t ParseEhFramePointer(const ldb::Elf& elf, Cursor& cursor,
+                                  std::uint8_t encoding, std::uint64_t pc,
+                                  std::uint64_t text_section_start,
+                                  std::uint64_t data_section_start,
+                                  std::uint64_t func_start) {
+  std::uint64_t base = 0;
+  switch (encoding & 0x70) {
+    case DW_EH_PE_absptr:
+      break;
+    case DW_EH_PE_pcrel:
+      base = pc;
+      break;
+    case DW_EH_PE_textrel:
+      base = text_section_start;
+      break;
+    case DW_EH_PE_datarel:
+      base = data_section_start;
+      break;
+    case DW_EH_PE_funcrel:
+      base = func_start;
+      break;
+    default:
+      ldb::Error::Send("Unknown eh_frame pointer encoding");
+  }
+  return ParseEhFramePointerWithBase(cursor, encoding, base);
+}
+
+ldb::CallFrameInformation::CommonInformationEntry ParseCie(Cursor cursor) {
+  auto start = cursor.Position();
+  auto length = cursor.U32() + 4;
+  auto id = cursor.U32();
+  auto version = cursor.U8();
+  if (!(version == 1 || version == 3 || version == 4)) {
+    ldb::Error::Send("Invalid CIE version");
+  }
+
+  auto augmentation = cursor.String();
+
+  if (!augmentation.empty() && augmentation[0] != 'z') {
+    ldb::Error::Send("Invalid CIE augmentation");
+  }
+  if (version == 4) {
+    auto address_size = cursor.U8();
+    auto segment_size = cursor.U8();
+    if (address_size != 8) ldb::Error::Send("Invalid address size");
+    if (segment_size != 0) ldb::Error::Send("Invalid segment size");
+  }
+  auto code_alignment_factor = cursor.Uleb128();
+  auto data_alignment_factor = cursor.Sleb128();
+  auto return_address_reg = version == 1 ? cursor.U8() : cursor.Uleb128();
+
+  std::uint8_t fde_pointer_encoding = DW_EH_PE_udata8 | DW_EH_PE_absptr;
+  for (auto c : augmentation) {
+    switch (c) {
+      case 'z':
+        cursor.Uleb128();
+        break;
+      case 'R':
+        fde_pointer_encoding = cursor.U8();
+        break;
+      case 'L':
+        cursor.U8();
+        break;
+      case 'P': {
+        auto encoding = cursor.U8();
+        (void)ParseEhFramePointerWithBase(cursor, encoding, 0);
+        break;
+      }
+      default:
+        ldb::Error::Send("Invalid CIE augmentatiion");
+    }
+  }
+  ldb::Span<const std::byte> instructions{cursor.Position(), start + length};
+  bool fde_has_augmentation = !augmentation.empty();
+  return {length,
+          code_alignment_factor,
+          data_alignment_factor,
+          fde_has_augmentation,
+          fde_pointer_encoding,
+          instructions};
+}
+
+ldb::CallFrameInformation::FrameDescriptionEntry ParseFde(
+    const ldb::CallFrameInformation& cfi, Cursor cursor) {
+  auto start = cursor.Position();
+  auto length = cursor.U32() + 4;
+  auto elf = cfi.dwarf().ElfFile();
+  auto current_offset = elf->DataPointerAsFileOffset(cursor.Position());
+
+  ldb::FileOffset cie_offset{*elf, current_offset.Offset() - cursor.S32()};
+  auto& cie = cfi.GetCie(cie_offset);
+
+  current_offset = elf->DataPointerAsFileOffset(cursor.Position());
+  auto text_section_start =
+      elf->GetSectonStartAddress(".text").value_or(ldb::FileAddr{});
+  auto initial_location_address = ParseEhFramePointer(
+      *elf, cursor, cie.fde_pointer_encoding, current_offset.Offset(),
+      text_section_start.Addr(), 0, 0);
+  ldb::FileAddr initial_location{*elf, initial_location_address};
+  auto address_range =
+      ParseEhFramePointerWithBase(cursor, cie.fde_pointer_encoding, 0);
+  if (cie.fde_has_augmentation) {
+    auto augmentation_length = cursor.Uleb128();
+    cursor += augmentation_length;
+  }
+
+  ldb::Span<const std::byte> instructions{cursor.Position(), start + length};
+  return {length, &cie, initial_location, address_range, instructions};
 }
 }  // namespace
 
@@ -911,5 +1050,20 @@ std::vector<LineTable::iterator> LineTable::GetEntriesByLine(
     }
   }
   return entries;
+}
+
+const CallFrameInformation::CommonInformationEntry&
+CallFrameInformation::GetCie(FileOffset at) const {
+  auto offset = at.Offset();
+  if (cie_map_.contains(offset)) {
+    return cie_map_.at(offset);
+  }
+
+  // Get Cies table
+  auto section = at.ElfFile()->GetSectionContents(".eh_frame");
+  Cursor cursor{{at.ElfFile()->FileOffsetAsDataPointer(at), section.End()}};
+  auto cie = ParseCie(cursor);
+  cie_map_.emplace(offset, cie);
+  return cie_map_.at(offset);
 }
 }  // namespace ldb
