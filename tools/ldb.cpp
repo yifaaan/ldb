@@ -1,17 +1,13 @@
-#include <fmt/base.h>
-#include <fmt/format.h>
-#include <fmt/ranges.h>
-#include <readline/history.h>
-#include <readline/readline.h>
-#include <signal.h>
-#include <sys/ptrace.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <ranges>
+#include <string>
+#include <vector>
+
+#include <fmt/base.h>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <libldb/breakpoint.hpp>
 #include <libldb/breakpoint_site.hpp>
 #include <libldb/disassembler.hpp>
@@ -22,9 +18,13 @@
 #include <libldb/syscall.hpp>
 #include <libldb/target.hpp>
 #include <libldb/watchpoint.hpp>
-#include <ranges>
-#include <string>
-#include <vector>
+#include <readline/history.h>
+#include <readline/readline.h>
+#include <signal.h>
+#include <sys/ptrace.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 namespace {
 ldb::Process* LdbProcess = nullptr;

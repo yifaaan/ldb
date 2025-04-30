@@ -2,13 +2,14 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <ranges>
+#include <span>
+
 #include <libldb/bit.hpp>
 #include <libldb/dwarf.hpp>
 #include <libldb/elf.hpp>
 #include <libldb/error.hpp>
 #include <libldb/types.hpp>
-#include <ranges>
-#include <span>
 
 namespace {
 bool PathEndsIn(const std::filesystem::path& lhs,
@@ -489,6 +490,24 @@ ldb::CallFrameInformation::FrameDescriptionEntry ParseFde(
 
   ldb::Span<const std::byte> instructions{cursor.Position(), start + length};
   return {length, &cie, initial_location, address_range, instructions};
+}
+
+ldb::CallFrameInformation::EhFrameHeader ParseEhFrameHeader(ldb::Dwarf& dwarf) {
+  auto elf = dwarf.ElfFile();
+  auto eh_header_start = *elf->GetSectonStartAddress(".eh_frame_hdr");
+  auto eh_header_content = elf->GetSectionContents(".eh_frame_hdr");
+  auto text_start = *elf->GetSectonStartAddress(".text");
+
+  Cursor cursor{eh_header_content};
+  auto start = cursor.Position();
+  auto version = cursor.U8();
+  auto eh_frame_ptr_encode = cursor.U8();
+  auto fde_count_encode = cursor.U8();
+  auto table_enc = cursor.U8();
+  ParseEhFramePointerWithBase(cursor, eh_frame_ptr_encode, 0);
+  auto fde_count = ParseEhFramePointerWithBase(cursor, fde_count_encode, 0);
+  auto binary_search_table = cursor.Position();
+  return {start, binary_search_table, fde_count, table_enc, nullptr};
 }
 }  // namespace
 

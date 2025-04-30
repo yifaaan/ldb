@@ -1,16 +1,16 @@
 #pragma once
 
-#include <libldb/detail/dwarf.h>
-
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <iterator>
-#include <libldb/types.hpp>
 #include <memory>
 #include <optional>
 #include <unordered_map>
 #include <vector>
+
+#include <libldb/detail/dwarf.h>
+#include <libldb/types.hpp>
 
 namespace ldb {
 
@@ -275,6 +275,16 @@ class CallFrameInformation {
     FileAddr initial_location;
     std::uint64_t address_range;
     Span<const std::byte> instructions;
+  };
+
+  struct EhFrameHeader {
+    const std::byte* start;
+    const std::byte* search_table;
+    std::size_t count;
+    std::uint8_t encoding;
+    CallFrameInformation* parent;
+
+    const std::byte* operator[](FileAddr address) const;
   };
 
   const Dwarf& dwarf() const { return *dwarf_; }
