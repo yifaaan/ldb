@@ -12,252 +12,288 @@
 #include <optional>
 #include <unordered_map>
 
-namespace ldb {
-enum class ProcessState {
-  stopped,
-  running,
-  exited,
-  terminated,
-};
+namespace ldb
+{
+    enum class ProcessState
+    {
+        stopped,
+        running,
+        exited,
+        terminated,
+    };
 
-struct SyscallInformation {
-  std::uint16_t id;
-  bool entry;
-  union {
-    std::array<std::uint64_t, 6> args;
-    std::uint64_t ret;
-  };
-};
+    struct SyscallInformation
+    {
+        std::uint16_t id;
+        bool          entry;
+        union
+        {
+            std::array<std::uint64_t, 6> args;
+            std::uint64_t                ret;
+        };
+    };
 
-/// <summary>
-/// whether a SIGTRAP occurred due to these reasons
-/// </summary>
-enum class TrapType {
-  singleStep,
-  softwareBreak,
-  hardwareBreak,
-  syscall,
-  unknown,
-};
+    /// <summary>
+    /// whether a SIGTRAP occurred due to these reasons
+    /// </summary>
+    enum class TrapType
+    {
+        singleStep,
+        softwareBreak,
+        hardwareBreak,
+        syscall,
+        unknown,
+    };
 
-/// <summary>
-/// the reason why the process stopped(exited, terminated, or just stopped)
-/// using in WaitOnSignal()
-/// </summary>
-struct StopReason {
-  StopReason() = default;
-  explicit StopReason(int waitStatus);
+    /// <summary>
+    /// the reason why the process stopped(exited, terminated, or just stopped)
+    /// using in WaitOnSignal()
+    /// </summary>
+    struct StopReason
+    {
+        StopReason() = default;
+        explicit StopReason(int waitStatus);
 
-  StopReason(ProcessState _reason, std::uint8_t _info,
-             std::optional<TrapType> _trapReason = std::nullopt,
-             std::optional<SyscallInformation> _syscallInfo = std::nullopt)
-      : reason(_reason),
-        info(_info),
-        trapReason(_trapReason),
-        syscallInfo(_syscallInfo) {}
+        StopReason(ProcessState _reason, std::uint8_t _info, std::optional<TrapType> _trapReason = std::nullopt,
+                   std::optional<SyscallInformation> _syscallInfo = std::nullopt)
+            : reason(_reason), info(_info), trapReason(_trapReason), syscallInfo(_syscallInfo)
+        {
+        }
 
-  bool IsStep() const {
-    return reason == ProcessState::stopped && info == SIGTRAP &&
-           trapReason == TrapType::singleStep;
-  }
+        bool IsStep() const
+        {
+            return reason == ProcessState::stopped && info == SIGTRAP && trapReason == TrapType::singleStep;
+        }
 
-  bool IsBreakpoint() const {
-    return reason == ProcessState::stopped && info == SIGTRAP &&
-           (trapReason == TrapType::softwareBreak ||
-            trapReason == TrapType::hardwareBreak);
-  }
+        bool IsBreakpoint() const
+        {
+            return reason == ProcessState::stopped && info == SIGTRAP &&
+                (trapReason == TrapType::softwareBreak || trapReason == TrapType::hardwareBreak);
+        }
 
-  ProcessState reason;
-  /// <summary>
-  /// information about the stop(return value of the exit or signal that caused
-  /// a stop or termination)
-  /// </summary>
-  std::uint8_t info;
+        ProcessState reason;
+        /// <summary>
+        /// information about the stop(return value of the exit or signal that caused
+        /// a stop or termination)
+        /// </summary>
+        std::uint8_t info;
 
-  /// <summary>
-  /// stop occurred due to SIGTRAP
-  /// </summary>
-  std::optional<TrapType> trapReason;
+        /// <summary>
+        /// stop occurred due to SIGTRAP
+        /// </summary>
+        std::optional<TrapType> trapReason;
 
-  std::optional<SyscallInformation> syscallInfo;
-};
+        std::optional<SyscallInformation> syscallInfo;
+    };
 
-class SyscallCatchPolicy {
- public:
-  enum Mode {
-    none,
-    some,
-    all,
-  };
+    class SyscallCatchPolicy
+    {
+    public:
+        enum Mode
+        {
+            none,
+            some,
+            all,
+        };
 
-  static SyscallCatchPolicy CatchAll() { return {Mode::all, {}}; }
-  static SyscallCatchPolicy CatchNone() { return {Mode::none, {}}; }
-  static SyscallCatchPolicy CatchSome(std::vector<int> toCatch) {
-    return {Mode::some, std::move(toCatch)};
-  }
+        static SyscallCatchPolicy CatchAll()
+        {
+            return {Mode::all, {}};
+        }
+        static SyscallCatchPolicy CatchNone()
+        {
+            return {Mode::none, {}};
+        }
+        static SyscallCatchPolicy CatchSome(std::vector<int> toCatch)
+        {
+            return {Mode::some, std::move(toCatch)};
+        }
 
-  Mode GetMode() const { return mode; }
-  const std::vector<int>& GetToCatch() const { return toCatch; }
+        Mode GetMode() const
+        {
+            return mode;
+        }
+        const std::vector<int>& GetToCatch() const
+        {
+            return toCatch;
+        }
 
- private:
-  SyscallCatchPolicy(Mode _mode, std::vector<int> _toCatch)
-      : mode(_mode), toCatch(_toCatch) {}
+    private:
+        SyscallCatchPolicy(Mode _mode, std::vector<int> _toCatch) : mode(_mode), toCatch(_toCatch)
+        {
+        }
 
-  Mode mode = Mode::none;
-  std::vector<int> toCatch;
-};
+        Mode             mode = Mode::none;
+        std::vector<int> toCatch;
+    };
 
-class Target;
-class Process {
- public:
-  /// <summary>
-  /// launch a process
-  /// </summary>
-  /// <param name="path">program path</param>
-  /// <param name="debug">whether attch it or not</param>
-  /// <returns></returns>
-  static std::unique_ptr<Process> Launch(
-      std::filesystem::path path, bool debug = true,
-      std::optional<int> stdoutReplacement = std::nullopt);
+    class Target;
+    class Process
+    {
+    public:
+        /// <summary>
+        /// launch a process
+        /// </summary>
+        /// <param name="path">program path</param>
+        /// <param name="debug">whether attch it or not</param>
+        /// <returns></returns>
+        static std::unique_ptr<Process> Launch(std::filesystem::path path, bool debug = true,
+                                               std::optional<int> stdoutReplacement = std::nullopt);
 
-  /// <summary>
-  /// attach a existing process
-  /// </summary>
-  /// <param name="pid"></param>
-  /// <returns></returns>
-  static std::unique_ptr<Process> Attach(pid_t pid);
+        /// <summary>
+        /// attach a existing process
+        /// </summary>
+        /// <param name="pid"></param>
+        /// <returns></returns>
+        static std::unique_ptr<Process> Attach(pid_t pid);
 
-  Process() = delete;
-  Process(const Process&) = delete;
-  Process& operator=(const Process&) = delete;
-  Process(Process&&) = delete;
-  Process& operator=(Process&&) = delete;
+        Process()                          = delete;
+        Process(const Process&)            = delete;
+        Process& operator=(const Process&) = delete;
+        Process(Process&&)                 = delete;
+        Process& operator=(Process&&)      = delete;
 
-  ~Process();
+        ~Process();
 
-  void Resume();
+        void Resume();
 
-  StopReason StepInstruction();
+        StopReason StepInstruction();
 
-  /// <summary>
-  /// wait the process to stop
-  /// </summary>
-  /// <returns>signal that occurred</returns>
-  StopReason WaitOnSignal();
+        /// <summary>
+        /// wait the process to stop
+        /// </summary>
+        /// <returns>signal that occurred</returns>
+        StopReason WaitOnSignal();
 
-  void AugmentStopReason(StopReason& reason);
+        void AugmentStopReason(StopReason& reason);
 
-  pid_t Pid() const { return pid; }
+        pid_t Pid() const
+        {
+            return pid;
+        }
 
-  ProcessState State() const { return state; }
+        ProcessState State() const
+        {
+            return state;
+        }
 
-  VirtAddr GetPc() const {
-    auto pc = GetRegisters().ReadByIdAs<std::uint64_t>(RegisterId::rip);
-    return VirtAddr{pc};
-  }
+        VirtAddr GetPc() const
+        {
+            auto pc = GetRegisters().ReadByIdAs<std::uint64_t>(RegisterId::rip);
+            return VirtAddr{pc};
+        }
 
-  void SetPc(VirtAddr address) {
-    GetRegisters().WriteById(RegisterId::rip, address.Addr());
-  }
+        void SetPc(VirtAddr address)
+        {
+            GetRegisters().WriteById(RegisterId::rip, address.Addr());
+        }
 
-  std::vector<std::byte> ReadMemory(VirtAddr address, std::size_t amount) const;
-  std::vector<std::byte> ReadMemoryWithoutTraps(VirtAddr address,
-                                                std::size_t amount) const;
-  void WriteMemory(VirtAddr address, Span<const std::byte> data);
+        std::vector<std::byte> ReadMemory(VirtAddr address, std::size_t amount) const;
+        std::vector<std::byte> ReadMemoryWithoutTraps(VirtAddr address, std::size_t amount) const;
+        void                   WriteMemory(VirtAddr address, Span<const std::byte> data);
 
-  template <typename T>
-  T ReadMemoryAs(VirtAddr address) const {
-    auto data = ReadMemory(address, sizeof(T));
-    return FromBytes<T>(data.data());
-  }
+        template <typename T>
+        T ReadMemoryAs(VirtAddr address) const
+        {
+            auto data = ReadMemory(address, sizeof(T));
+            return FromBytes<T>(data.data());
+        }
 
-  Registers& GetRegisters() { return *registers; }
-  const Registers& GetRegisters() const { return *registers; }
+        Registers& GetRegisters()
+        {
+            return *registers;
+        }
+        const Registers& GetRegisters() const
+        {
+            return *registers;
+        }
 
-  void WriteUserArea(std::size_t offset, std::uint64_t data);
+        void WriteUserArea(std::size_t offset, std::uint64_t data);
 
-  void WriteFprs(const user_fpregs_struct& fprs);
-  void WriteGprs(const user_regs_struct& gprs);
+        void WriteFprs(const user_fpregs_struct& fprs);
+        void WriteGprs(const user_regs_struct& gprs);
 
-  BreakpointSite& CreateBreakpointSite(VirtAddr address, bool hardware = false,
-                                       bool internal = false);
-  BreakpointSite& CreateBreakpointSite(Breakpoint* parent,
-                                       BreakpointSite::IdType id,
-                                       VirtAddr address, bool hardware = false,
-                                       bool internal = false);
+        BreakpointSite& CreateBreakpointSite(VirtAddr address, bool hardware = false, bool internal = false);
+        BreakpointSite& CreateBreakpointSite(Breakpoint* parent, BreakpointSite::IdType id, VirtAddr address,
+                                             bool hardware = false, bool internal = false);
 
-  int SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address);
-  void ClearHardwareStoppoint(int index);
-  int SetWatchpoint(Watchpoint::IdType id, VirtAddr address, StoppointMode mode,
-                    std::size_t size);
+        int  SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address);
+        void ClearHardwareStoppoint(int index);
+        int  SetWatchpoint(Watchpoint::IdType id, VirtAddr address, StoppointMode mode, std::size_t size);
 
-  StoppointCollection<BreakpointSite>& BreakpointSites() {
-    return breakpointSites;
-  }
-  const StoppointCollection<BreakpointSite>& BreakpointSites() const {
-    return breakpointSites;
-  }
+        StoppointCollection<BreakpointSite>& BreakpointSites()
+        {
+            return breakpointSites;
+        }
+        const StoppointCollection<BreakpointSite>& BreakpointSites() const
+        {
+            return breakpointSites;
+        }
 
-  Watchpoint& CreateWatchpoint(VirtAddr address, StoppointMode mode,
-                               std::size_t size);
-  StoppointCollection<Watchpoint>& Watchpoints() { return watchpoints; }
-  const StoppointCollection<Watchpoint>& Watchpoints() const {
-    return watchpoints;
-  }
+        Watchpoint&                      CreateWatchpoint(VirtAddr address, StoppointMode mode, std::size_t size);
+        StoppointCollection<Watchpoint>& Watchpoints()
+        {
+            return watchpoints;
+        }
+        const StoppointCollection<Watchpoint>& Watchpoints() const
+        {
+            return watchpoints;
+        }
 
-  std::variant<BreakpointSite::IdType, Watchpoint::IdType>
-  GetCurrentHardwareStoppoint() const;
+        std::variant<BreakpointSite::IdType, Watchpoint::IdType> GetCurrentHardwareStoppoint() const;
 
-  void SetSyscallCatchPolicy(SyscallCatchPolicy policy) {
-    syscallCatchPolicy = std::move(policy);
-  }
+        void SetSyscallCatchPolicy(SyscallCatchPolicy policy)
+        {
+            syscallCatchPolicy = std::move(policy);
+        }
 
-  std::unordered_map<int, std::uint64_t> GetAuxv() const;
+        std::unordered_map<int, std::uint64_t> GetAuxv() const;
 
-  void SetTarget(Target* _target) { target = _target; }
+        void SetTarget(Target* _target)
+        {
+            target = _target;
+        }
 
- private:
-  Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
-      : pid(_pid),
-        terminateOnEnd(_terminateOnEnd),
-        isAttached(_isAttached),
-        registers(new Registers(*this)) {}
+    private:
+        Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
+            : pid(_pid), terminateOnEnd(_terminateOnEnd), isAttached(_isAttached), registers(new Registers(*this))
+        {
+        }
 
-  int SetHardwareStoppoint(VirtAddr address, StoppointMode mode,
-                           std::size_t size);
+        int SetHardwareStoppoint(VirtAddr address, StoppointMode mode, std::size_t size);
 
-  void ReadAllRegisters();
+        void ReadAllRegisters();
 
- private:
-  StopReason MaybeResumeFromSyscall(const StopReason& reason);
+    private:
+        StopReason MaybeResumeFromSyscall(const StopReason& reason);
 
-  pid_t pid = 0;
+        pid_t pid = 0;
 
-  /// <summary>
-  /// whether clean up the inferior process if we launched it ourselves or not
-  /// </summary>
-  bool terminateOnEnd = true;
+        /// <summary>
+        /// whether clean up the inferior process if we launched it ourselves or not
+        /// </summary>
+        bool terminateOnEnd = true;
 
-  ProcessState state = ProcessState::stopped;
+        ProcessState state = ProcessState::stopped;
 
-  /// <summary>
-  /// whether debug the launched process or not
-  /// </summary>
-  bool isAttached = true;
+        /// <summary>
+        /// whether debug the launched process or not
+        /// </summary>
+        bool isAttached = true;
 
-  std::unique_ptr<Registers> registers;
+        std::unique_ptr<Registers> registers;
 
-  /// <summary>
-  /// physical breakpoint sites
-  /// </summary>
-  StoppointCollection<BreakpointSite> breakpointSites;
+        /// <summary>
+        /// physical breakpoint sites
+        /// </summary>
+        StoppointCollection<BreakpointSite> breakpointSites;
 
-  StoppointCollection<Watchpoint> watchpoints;
+        StoppointCollection<Watchpoint> watchpoints;
 
-  SyscallCatchPolicy syscallCatchPolicy = SyscallCatchPolicy::CatchNone();
+        SyscallCatchPolicy syscallCatchPolicy = SyscallCatchPolicy::CatchNone();
 
-  bool expectingSyscallExit = false;
+        bool expectingSyscallExit = false;
 
-  Target* target = nullptr;
-};
-}  // namespace ldb
+        Target* target = nullptr;
+    };
+} // namespace ldb
