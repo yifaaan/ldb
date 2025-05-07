@@ -2,6 +2,7 @@
 #include <libldb/bit.hpp>
 #include <libldb/process.hpp>
 #include <libldb/registers.hpp>
+#include "libldb/register_info.hpp"
 
 namespace
 {
@@ -47,6 +48,10 @@ namespace ldb
 {
     Registers::Value Registers::Read(const RegisterInfo& info) const
     {
+        if (IsUndefined(info.id))
+        {
+            ldb::Error::Send("Register is undefined");
+        }
         auto bytes = AsBytes(data);
 
         if (info.format == RegisterFormat::uint)
@@ -83,7 +88,7 @@ namespace ldb
         }
     }
 
-    void Registers::Write(const RegisterInfo& info, Value val)
+    void Registers::Write(const RegisterInfo& info, Value val, bool commit)
     {
         // update the data
         auto bytes = AsBytes(data);
@@ -93,7 +98,7 @@ namespace ldb
                 if (sizeof(v) <= info.size)
                 {
                     // widen to fit the target register
-                    auto wide     = Widen(info, v);
+                    auto wide = Widen(info, v);
                     auto valBytes = AsBytes(wide);
                     std::copy(valBytes, valBytes + info.size, bytes + info.offset);
                 }
@@ -121,5 +126,22 @@ namespace ldb
             auto alignOffset = info.offset & ~0b111;
             process->WriteUserArea(alignOffset, FromBytes<std::uint64_t>(bytes + alignOffset));
         }
+    }
+
+    bool Registers::Undefine(RegisterId id)
+    {
+        std::size_t canonical_offset = RegisterInfoById(id).offset >> 1;
+        undefined_.push_back(canonical_offset);
+    }
+    bool Registers::IsUndefined(RegisterId id) const
+    {
+        std::size_t canonical_offset = RegisterInfoById(id).offset >> 1;
+        return std::ranges::find(undefined_, canonical_offset) != std::end(undefined_);
+    }
+    void Registers::Flush()
+    {
+        process->WriteFprs(data.i387);
+        process->WriteGprs(data.regs);
+        auto info = RegisterInfoById(RegisterId::dr0);
     }
 } // namespace ldb

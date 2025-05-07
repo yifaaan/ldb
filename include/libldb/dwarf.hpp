@@ -322,13 +322,14 @@ namespace ldb
         CallFrameInformation& operator=(CallFrameInformation&&) = delete;
 
 
-        // The Common Information Entry contains information shared by multiple functions.
+        // The Common Information Entry contains information shared by multiple functions' frame description entry.
         struct CommonInformationEntry
         {
             std::uint32_t length;
             std::uint64_t code_alignment_factor;
             std::int64_t data_alignment_factor;
             bool fde_has_augmentation;
+            // The encoding format for the FDE pointer that references the cie.
             std::uint8_t fde_pointer_encoding;
             Span<const std::byte> instructions;
         };
@@ -339,8 +340,11 @@ namespace ldb
             std::uint32_t length;
             // References its corresponding CIE.
             const CommonInformationEntry* cie;
+            // The initial location of the function.
             FileAddr initial_location;
+            // The address range of the function.
             std::uint64_t address_range;
+            // The instructions for the frame description entry.
             Span<const std::byte> instructions;
         };
 
@@ -372,10 +376,12 @@ namespace ldb
             return *dwarf_;
         }
 
+        // Get the CIE for the given file offset.
         const CommonInformationEntry& GetCie(FileOffset at) const;
 
     private:
         const Dwarf* dwarf_;
+        // The file offset of the CIE -> CIE mapping.
         mutable std::unordered_map<std::uint32_t, CommonInformationEntry> cie_map_;
         EhFrameHeader eh_frame_header_;
     };

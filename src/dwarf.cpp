@@ -1,9 +1,12 @@
-
-
 #include <algorithm>
 #include <cstddef>
+#include <memory>
 #include <ranges>
 #include <span>
+#include <string_view>
+#include <unordered_map>
+#include <variant>
+#include <vector>
 
 #include <libldb/bit.hpp>
 #include <libldb/dwarf.hpp>
@@ -610,6 +613,54 @@ namespace
         auto eh_header = ParseEhFrameHeader(dwarf);
         return std::make_unique<ldb::CallFrameInformation>(&dwarf, eh_header);
     }
+
+
+    // Can't reccovery the register.
+    struct UndefineRule
+    {
+    };
+    // Register does not change.
+    struct SameRule
+    {
+    };
+    // The previous value is stored int the current offset of CFA + offset.
+    struct OffsetRule
+    {
+        std::int64_t offset;
+    };
+    // The previous value is stored int the CFA + offset.
+    struct ValOffsetRule
+    {
+        std::int64_t offset;
+    };
+    // The previous value is stored in the register.
+    struct RegisterRule
+    {
+        std::uint32_t reg;
+    };
+    // CfaRegisterRule
+    struct CfaRegisterRule
+    {
+        std::uint32_t reg;
+        std::int64_t offset;
+    };
+
+    struct UnwindContext
+    {
+        Cursor cursor{{}};
+        // Current instruction location.
+        ldb::FileAddr location;
+        // Current CFA rule.
+        CfaRegisterRule cfa_rule;
+        // Register recovery rules.
+        using Rule = std::variant<UndefineRule, SameRule, OffsetRule, ValOffsetRule, RegisterRule>;
+        // Register number -> rule.
+        using RuleSet = std::unordered_map<std::uint32_t, Rule>;
+        // CIE initial rules.
+        RuleSet cie_register_rules;
+        // Current rules.
+        RuleSet register_rules;
+    };
 } // namespace
 
 namespace ldb
