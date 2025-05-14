@@ -4,9 +4,23 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <libldb/error.hpp>
+#include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
+
+namespace
+{
+    // 如果发生错误，则将错误信息写入管道并退出
+    void exit_with_perror(ldb::pipe& channel, const std::string& prefix)
+    {
+        auto message = prefix + ": " + std::strerror(errno);
+        channel.write(reinterpret_cast<std::byte*>(message.data()), message.size());
+        exit(-1);
+    }
+}
 
 ldb::stop_reason::stop_reason(int wait_status)
 {
@@ -39,6 +53,8 @@ ldb::stop_reason::stop_reason(int wait_status)
 
 std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path)
 {
+    pipe channel{/*close_on_exec*/ true};
+
     pid_t pid;
     if ((pid = fork()) < 0)
     {
@@ -46,14 +62,25 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path)
     }
     if (pid == 0)
     {
+        channel.close_read();
         if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
         {
-            error::send_errno("Tracing failed");
+            exit_with_perror(channel, "Tracing failed");
         }
         if (execlp(path.c_str(), path.c_str(), nullptr) < 0)
         {
-            error::send_errno("execlp failed");
+            exit_with_perror(channel, "execlp failed");
         }
+    }
+    channel.close_write();
+    auto data = channel.read();
+    if (!data.empty())
+    {
+        // 如果管道中存在数据，则说明子进程退出了
+        waitpid(pid, nullptr, 0);
+        // 将管道中的数据转换为字符串并发送
+        auto chars = reinterpret_cast<char*>(data.data());
+        error::send(std::string{chars, chars + data.size()});
     }
     std::unique_ptr<ldb::process> proc{new ldb::process{pid, /*terminate_on_end=*/true}};
     proc->wait_on_signal();
