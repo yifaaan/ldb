@@ -1,7 +1,9 @@
 #include <iostream>
+
 #include <libldb/libldb.hpp>
 
-void ldb::SayHello()
+
+void ldb::say_hello()
 {
-    std::cout << "Hello, ldb!\n";
+    std::cout << "Hello, World!" << std::endl;
 }
