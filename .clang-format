@@ -6,7 +6,10 @@ AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
 AlignOperands: false
 AlignTrailingComments: true
+AllowShortBlocksOnASingleLine: false
 AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: false
+BinPackParameters: false
 BraceWrapping: 
   AfterCaseLabel: true
   AfterClass: true
@@ -26,7 +29,10 @@ BraceWrapping:
   SplitEmptyNamespace: true
 BreakConstructorInitializers: BeforeComma
 BreakConstructorInitializersBeforeComma: false
+ColumnLimit: 160
 ConstructorInitializerAllOnOneLineOrOnePerLine: false
+ContinuationIndentWidth: 8
+IncludeBlocks: Regroup
 IncludeCategories: 
   - Regex: '^<.*'
     Priority: 1
@@ -39,7 +45,6 @@ IndentCaseBlocks: true
 InsertNewlineAtEOF: true
 MacroBlockBegin: ''
 MacroBlockEnd: ''
-MaxEmptyLinesToKeep: 2
 NamespaceIndentation: All
 PointerAlignment: Left
 SpaceInEmptyParentheses: false
