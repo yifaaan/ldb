@@ -10,7 +10,7 @@
       "installDir": "${sourceDir}/out/install/${presetName}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "g++"
+        "CMAKE_CXX_COMPILER": "clang++"
       },
       "toolchainFile": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
       "condition": {

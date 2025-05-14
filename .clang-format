@@ -34,9 +34,11 @@ ConstructorInitializerAllOnOneLineOrOnePerLine: false
 ContinuationIndentWidth: 8
 IncludeBlocks: Regroup
 IncludeCategories: 
-  - Regex: '^<.*'
+  - Regex: '^<ext/.*\.h>'
+    Priority: 2
+  - Regex: '^<.*\.h>'
     Priority: 1
-  - Regex: '^".*'
+  - Regex: '^<.*'
     Priority: 2
   - Regex: '.*'
     Priority: 3

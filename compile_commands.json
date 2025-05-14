@@ -1,19 +1,25 @@
 [
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/g++ -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -g -std=gnu++20 -o src/CMakeFiles/libldb.dir/libldb.cpp.o -c /home/smooth/Code/ldb/src/libldb.cpp",
+  "command": "/usr/bin/clang++ -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/libldb.cpp.o.modmap -o src/CMakeFiles/libldb.dir/libldb.cpp.o -c /home/smooth/Code/ldb/src/libldb.cpp",
   "file": "/home/smooth/Code/ldb/src/libldb.cpp",
   "output": "src/CMakeFiles/libldb.dir/libldb.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/g++ -I/home/smooth/Code/ldb/include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/debug/lib/pkgconfig/../../../include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/debug/lib/pkgconfig/../../../include/ncurses -g -std=gnu++20 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=600 -o tools/CMakeFiles/ldb.dir/ldb.cpp.o -c /home/smooth/Code/ldb/tools/ldb.cpp",
+  "command": "/usr/bin/clang++ -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/process.cpp.o.modmap -o src/CMakeFiles/libldb.dir/process.cpp.o -c /home/smooth/Code/ldb/src/process.cpp",
+  "file": "/home/smooth/Code/ldb/src/process.cpp",
+  "output": "src/CMakeFiles/libldb.dir/process.cpp.o"
+},
+{
+  "directory": "/home/smooth/Code/ldb/build",
+  "command": "/usr/bin/clang++ -I/home/smooth/Code/ldb/include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/debug/lib/pkgconfig/../../../include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/debug/lib/pkgconfig/../../../include/ncurses -g -std=gnu++20 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=600 @tools/CMakeFiles/ldb.dir/ldb.cpp.o.modmap -o tools/CMakeFiles/ldb.dir/ldb.cpp.o -c /home/smooth/Code/ldb/tools/ldb.cpp",
   "file": "/home/smooth/Code/ldb/tools/ldb.cpp",
   "output": "tools/CMakeFiles/ldb.dir/ldb.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/g++ -I/home/smooth/Code/ldb/include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/include -g -std=gnu++20 -o test/CMakeFiles/tests.dir/tests.cpp.o -c /home/smooth/Code/ldb/test/tests.cpp",
+  "command": "/usr/bin/clang++ -I/home/smooth/Code/ldb/include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/include -g -std=gnu++20 @test/CMakeFiles/tests.dir/tests.cpp.o.modmap -o test/CMakeFiles/tests.dir/tests.cpp.o -c /home/smooth/Code/ldb/test/tests.cpp",
   "file": "/home/smooth/Code/ldb/test/tests.cpp",
   "output": "test/CMakeFiles/tests.dir/tests.cpp.o"
 }
