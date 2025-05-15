@@ -28,5 +28,17 @@
   "command": "/usr/bin/clang++ -I/home/smooth/Code/ldb/include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/include -g -std=gnu++20 @test/CMakeFiles/tests.dir/tests.cpp.o.modmap -o test/CMakeFiles/tests.dir/tests.cpp.o -c /home/smooth/Code/ldb/test/tests.cpp",
   "file": "/home/smooth/Code/ldb/test/tests.cpp",
   "output": "test/CMakeFiles/tests.dir/tests.cpp.o"
+},
+{
+  "directory": "/home/smooth/Code/ldb/build",
+  "command": "/usr/bin/clang++ -g -std=gnu++20 @test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o.modmap -o test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o -c /home/smooth/Code/ldb/test/targets/run_endlessly.cpp",
+  "file": "/home/smooth/Code/ldb/test/targets/run_endlessly.cpp",
+  "output": "test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o"
+},
+{
+  "directory": "/home/smooth/Code/ldb/build",
+  "command": "/usr/bin/clang++ -g -std=gnu++20 @test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o.modmap -o test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o -c /home/smooth/Code/ldb/test/targets/end_immediately.cpp",
+  "file": "/home/smooth/Code/ldb/test/targets/end_immediately.cpp",
+  "output": "test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o"
 }
 ]

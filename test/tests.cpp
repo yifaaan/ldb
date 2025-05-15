@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <csignal>
 #include <fstream>
+
 #include "libldb/error.hpp"
 #include "libldb/process.hpp"
 
@@ -22,7 +23,7 @@ namespace
         auto index_of_status = index_of_last_parenthesis + 2;
         return data[index_of_status];
     }
-}
+} // namespace
 
 TEST_CASE("validate environment")
 {
@@ -38,4 +39,44 @@ TEST_CASE("process::launch success", "[process]")
 TEST_CASE("process::launch no such program", "[process]")
 {
     REQUIRE_THROWS_AS(process::launch("no such program"), error);
+}
+
+TEST_CASE("process::attach success", "[process]")
+{
+    auto target =  process::launch("targets/run_endlessly", false);
+    auto proc = process::attach(target->pid());
+    REQUIRE(get_process_status(target->pid()) == 't');
+}
+
+TEST_CASE("process::attach invalid PID", "[process]")
+{
+    REQUIRE_THROWS_AS(process::attach(0), error);
+}
+
+TEST_CASE("process::resume success", "[process]")
+{
+    {
+        auto proc = process::launch("targets/run_endlessly");
+        proc->resume();
+        auto status = get_process_status(proc->pid());
+        auto success = status == 'R' || status == 'S';
+        REQUIRE(success);
+    }
+
+    {
+        auto target = process::launch("targets/run_endlessly", false);
+        auto proc = process::attach(target->pid());
+        proc->resume();
+        auto status = get_process_status(proc->pid());
+        auto success = status == 'R' || status == 'S';
+        REQUIRE(success);
+    }
+}
+
+TEST_CASE("process::resume already terminated", "[process]")
+{
+    auto proc = process::launch("targets/end_immediately");
+    proc->resume();
+    proc->wait_on_signal();
+    REQUIRE_THROWS_AS(proc->resume(), error);
 }
