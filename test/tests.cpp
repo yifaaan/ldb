@@ -124,6 +124,30 @@ TEST_CASE("Write register works", "[register]")
     proc->wait_on_signal();
     output = channel.read();
     REQUIRE(to_string_view(output) == "42.22");
+}
 
+TEST_CASE("Read register works", "[register]")
+{
+    auto proc = process::launch("targets/reg_read");
+    auto& regs = proc->get_registers();
 
+    proc->resume();
+    proc->wait_on_signal();// 在 movq $0xaaaaffff, %r13 之后陷入
+    REQUIRE(regs.read_by_id_as<std::uint64_t>(register_id::r13) == 0xaaaaffff);
+
+    proc->resume();
+    proc->wait_on_signal();// 在 movb $8, %r13b 之后陷入
+    REQUIRE(regs.read_by_id_as<std::uint8_t>(register_id::r13b) == 8);
+
+    proc->resume();
+    proc->wait_on_signal();// 在 movq %r13, %mm0 之后陷入
+    REQUIRE(regs.read_by_id_as<byte64>(register_id::mm0) == to_byte64(0xaaaaffffull));
+
+    proc->resume();
+    proc->wait_on_signal();// 在 movsd my_double(%rip), %xmm0 之后陷入
+    REQUIRE(regs.read_by_id_as<byte128>(register_id::xmm0) == to_byte128(64.125));
+
+    proc->resume();
+    proc->wait_on_signal();// 在 fldl my_double(%rip) 之后陷入
+    REQUIRE(regs.read_by_id_as<long double>(register_id::st0) == 64.125L);
 }

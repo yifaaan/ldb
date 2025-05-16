@@ -52,5 +52,11 @@
   "command": "/usr/bin/clang++ -g -pie -o test/targets/CMakeFiles/reg_write.dir/reg_write.s.o -c /home/smooth/Code/ldb/test/targets/reg_write.s",
   "file": "/home/smooth/Code/ldb/test/targets/reg_write.s",
   "output": "test/targets/CMakeFiles/reg_write.dir/reg_write.s.o"
+},
+{
+  "directory": "/home/smooth/Code/ldb/build",
+  "command": "/usr/bin/clang++ -g -pie -o test/targets/CMakeFiles/reg_read.dir/reg_read.s.o -c /home/smooth/Code/ldb/test/targets/reg_read.s",
+  "file": "/home/smooth/Code/ldb/test/targets/reg_read.s",
+  "output": "test/targets/CMakeFiles/reg_read.dir/reg_read.s.o"
 }
 ]
