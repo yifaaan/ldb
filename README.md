@@ -154,28 +154,19 @@ trap
 # 含义：产生一个断点中断。如果程序在调试器下运行，这会导致程序暂停执行，让开发者可以检查状态。如果程序正常运行（没有调试器附加），这通常会导致程序异常终止，并可能显示 "Trace/breakpoint trap" 之类的消息。这常用于调试目的，在代码的特定点强制停止。
 ```
 
-## Software Breakpoints
+# 软件断点
 
-Hardware breakpoints involve **setting architecture-specific registers** to
-produce breaks for you, whereas software breakpoints involve **modifying the
-machine instructions** in the process’s memory.
+## 如何实现
 
-- Hardware breakpoints trigger breaks if a given address is executed, written to, or read from.
-- Software breakpoints trigger breaks on execution only.
+修改目标进程内存中目标指令的字节码，通过用 `int3` 指令覆盖该地址处的指令,当处理器执行 `int3` 指令时，它会将控制权传递给断点中断处理程序，在 Linux 的情况下，该处理程序会向进程发送一个 `SIGTRAP` 信号。
 
-Use `ptrace` to read and write memory. On x64, we can overwrite the instruction at the address with the `int3` instruction.
+## 如何通知调试器发生了中断
 
-When the processor executes the `int3` instruction, it passes control to the breakpoint interrupt handler, which-in the case of Linux-signals the p
+当子进程因为执行 `int3` 指令而收到 `SIGTRAP` 信号时，它会暂停执行，并且内核会通知正在跟踪它的父进程（调试器）,`wait_on_signal` 函数，等待子进程的状态改变。
 
-`WaitOnSignal()` can listen for signals being sent to the inferior process by the argument `waitStatus`。
+## 断点位置 
 
-### Logical Breakpoint `ldb::Breakpoint` and Physical Breakpoint `ldb::BreakpointSite`
-It may be associated with several locations. For example, set a breakpoint in the function `ToString()`. There are many overloads of `ToString()` with differenct types, so we need to create multiple physical breakpoints for each overload.
-
-```bash
-break set 0xcafecafe
-continue
-```
+设置一个逻辑断点时，该断点可能与多个实际位置相关联。例如，假设在函数 `to_string` 中设置了一个断点。`to_string` 有许多重载版本，因此要为每个重载版本创建物理断点。称前者为 `ldb::breakpoint`（逻辑断点），后者为 `ldb::breakpoint_site`（物理断点位置）来区分用户级别的逻辑断点和实际的物理断点。
 
 ### PIE
 

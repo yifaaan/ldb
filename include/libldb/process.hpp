@@ -5,7 +5,9 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <libldb/breakpoint_site.hpp>
 #include <libldb/registers.hpp>
+#include <libldb/stoppoint_collection.hpp>
 #include <memory>
 #include <optional>
 
@@ -102,6 +104,23 @@ namespace ldb
         /// @param gprs 通用寄存器
         void write_gprs(const user_regs_struct& gprs);
 
+        /// @brief 创建内存位置断点
+        /// @param address 地址
+        /// @return 断点
+        breakpoint_site& create_breakpoint_site(virt_addr address);
+
+        /// @brief 获取内存位置断点集合
+        stoppoint_collection<breakpoint_site>& breakpoint_sites()
+        {
+            return breakpoint_sites_;
+        }
+
+        /// @brief 获取内存位置断点集合
+        const stoppoint_collection<breakpoint_site>& breakpoint_sites() const
+        {
+            return breakpoint_sites_;
+        }
+
     private:
         process(pid_t pid, bool terminate_on_end, bool is_attached, std::optional<int> stdout_replacement = std::nullopt)
             : pid_{pid}
@@ -128,5 +147,8 @@ namespace ldb
 
         /// @brief 寄存器
         std::unique_ptr<registers> registers_;
+
+        /// @brief 内存位置断点集合
+        stoppoint_collection<breakpoint_site> breakpoint_sites_;
     };
 } // namespace ldb
