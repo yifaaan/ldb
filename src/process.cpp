@@ -51,7 +51,7 @@ ldb::stop_reason::stop_reason(int wait_status)
     }
 }
 
-std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path, bool debug)
+std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path, bool debug, std::optional<int> stdout_replacement)
 {
     pipe channel{/*close_on_exec*/ true};
 
@@ -63,6 +63,13 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path, b
     if (pid == 0)
     {
         channel.close_read();
+        if (stdout_replacement)
+        {
+            if (dup2(*stdout_replacement, STDOUT_FILENO) < 0)
+            {
+                exit_with_perror(channel, "stdout replacement failed");
+            }
+        }
         if (debug && ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
         {
             exit_with_perror(channel, "Tracing failed");
@@ -187,7 +194,7 @@ void ldb::process::read_all_registers()
 
 void ldb::process::write_user_area(std::size_t offset, std::uint64_t data)
 {
-    if (ptrace(PTRACE_POKEDATA, pid_, offset, data) < 0)
+    if (ptrace(PTRACE_POKEUSER, pid_, offset, data) < 0)
     {
         error::send_errno("Could not write to user area");
     }

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <libldb/registers.hpp>
 #include <memory>
+#include <optional>
 
 namespace ldb
 {
@@ -37,7 +38,7 @@ namespace ldb
         /// @param path 进程路径
         /// @param debug 是否调试
         /// @return 进程指针
-        static std::unique_ptr<process> launch(std::filesystem::path path, bool debug = true);
+        static std::unique_ptr<process> launch(std::filesystem::path path, bool debug = true, std::optional<int> stdout_replacement = std::nullopt);
 
         /// @brief 附加进程
         /// @param pid 进程 ID
@@ -96,7 +97,7 @@ namespace ldb
         void write_gprs(const user_regs_struct& gprs);
 
     private:
-        process(pid_t pid, bool terminate_on_end, bool is_attached)
+        process(pid_t pid, bool terminate_on_end, bool is_attached, std::optional<int> stdout_replacement = std::nullopt)
             : pid_{pid}
             , terminate_on_end_{terminate_on_end}
             , is_attached_{is_attached}

@@ -32,6 +32,7 @@ namespace
         }
         else if constexpr (std::is_signed_v<T>)
         {
+            // 有符号数写入无符号寄存器，需要符号扩展到对应大小
             if (info.format == register_format::uint)
             {
                 switch (info.size)

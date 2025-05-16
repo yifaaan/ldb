@@ -46,5 +46,11 @@
   "command": "/usr/bin/clang++ -g -std=gnu++20 @test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o.modmap -o test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o -c /home/smooth/Code/ldb/test/targets/end_immediately.cpp",
   "file": "/home/smooth/Code/ldb/test/targets/end_immediately.cpp",
   "output": "test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o"
+},
+{
+  "directory": "/home/smooth/Code/ldb/build",
+  "command": "/usr/bin/clang++ -g -pie -o test/targets/CMakeFiles/reg_write.dir/reg_write.s.o -c /home/smooth/Code/ldb/test/targets/reg_write.s",
+  "file": "/home/smooth/Code/ldb/test/targets/reg_write.s",
+  "output": "test/targets/CMakeFiles/reg_write.dir/reg_write.s.o"
 }
 ]

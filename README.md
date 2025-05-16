@@ -68,51 +68,65 @@ echo 完成后，bash 收到 echo进程的 SIGCHLD 信号。
 - 流式 SIMD 扩展 (SSE)，改进了 MMX。该指令集添加了八个 128 位寄存器，名为 xmm0 到 xmm7,SSE2 后来扩展了该集合，添加了寄存器 xmm8 到 xmm15, `unsigned int xmm_space[64]`。
 - 调试寄存器允许设置硬件断点（当执行到达特定地址时暂停）和数据观察点（当特定内存地址被读取或写入时暂停），这些是由 CPU硬件直接支持的，比软件实现的断点/观察点效率更高。
 
-## ptrace
+# x64 Assembly
 
-- `PTRACE_GETREGS` 和 `PTRACE_SETREGS`：用于一次性读取和写入所有通用寄存器。
-- `PTRACE_GETFPREGS` 和 `PTRACE_SETFPREGS`：用于读取和写入 x87、MMX 和 SSE 寄存器。
-- `PTRACE_PEEKUSER`：用于读取调试寄存器。
-- `PTRACE_POKEUSER`：用于写入调试寄存器或单个通用寄存器。
+## dup2
+`dup2(int oldfd, int newfd)`系统调用
+`dup2` 的核心功能是复制一个现有的文件描述符 (`oldfd`) 到另一个指定的文件描述符 (`newfd`)。
+- 如果 `newfd` 已经打开，那么首先自动关闭 `newfd` 指向的文件。这个关闭操作是原子性的，与后续的复制操作一起完成。
+- 在确保 `newfd` 可用（或已被关闭）之后，dup2 会使 `newfd` 指向与 `oldfd` 相同的打开文件表项 (open file table entry)。这意味着 `newfd` 现在变成了 `oldfd` 的一个副本或别名。它们共享相同的文件状态标志（如文件偏移量、读写模式、访问模式等）。
 
-```shell
-register read <register name>
-register read all
-register write <register name> <value>
-```
+## 文件结构
+### 进程文件描述符表
 
-### FR
+每个进程都有自己的文件描述符表。这是一个数组（或类似结构），其索引就是文件描述符。表中的每个条目是一个指针，指向系统级的打开文件表 (Open File Table) 中的一个表项。
 
-`st_space[32]` for st/mm
+`dup2(oldfd, newfd)` 会修改当前进程的文件描述符表。
+它将 `newfd` 这个索引位置的指针，设置为与 `oldfd` 索引位置相同的指针值，即让它们都指向同一个打开文件表项。
+如果 `newfd` 之前指向另一个打开文件表项，那么对那个旧表项的引用计数会减少（如果这是最后一个指向它的文件描述符，并且没有其他进程共享它，那么该表项可能被释放，相应的文件也会被关闭）。
 
-`xmm_space[64]` for xmm
+### 系统打开文件表
 
-## Assembly
+内核维护，包含了系统中所有当前打开的文件的信息。
+每个表项代表一个打开的文件实例，并存储：
+- 文件状态标志 (File status flags: e.g., O_RDONLY, O_WRONLY, O_APPEND, O_NONBLOCK 等，这些是在 open() 时设置的)。
+- 当前文件偏移量 (Current file offset: 即下一次读写操作将在文件的哪个位置开始)。
+- 指向该文件对应 v-node (或 inode) 表项的指针。
+- 一个引用计数，表示有多少个进程文件描述符表条目指向这个打开文件表项。
 
-The syscall ID goes in rax; subsequent arguments go in rdi,
-rsi, rdx, r10, r8, and r9; and the return value of the syscall is stored in rax.
+`dup2` 不会创建新的打开文件表项。它只是让 `newfd` 指向 `oldfd` 已经指向的那个现有的打开文件表项。
+`因此，oldfd` 和 `newfd` 将共享相同的文件状态标志和文件偏移量。这意味着：
+如果通过 `newfd` 读取了文件内容，文件偏移量会前进。随后通过 `oldfd` 读取时，会从新的偏移量开始。
+如果通过 `oldfd` 修改了文件状态标志（例如，使用 fcntl 设置 O_APPEND），那么通过 newfd 访问文件时也会受到这个新标志的影响。
+
+### i-node 表:
+也称为 v-node 表。存储了关于文件本身的元数据，如文件类型、权限、所有者、大小、时间戳以及指向数据块的指针等。一个 i-node 代表磁盘上的一个文件或目录。
+
+dup2 对 i-node 表没有直接影响。它操作的是文件描述符和打开文件表项的层面。多个打开文件表项（可能来自不同进程，或者同一进程的不同文件描述符通过多次 `open` 同一个文件）可以指向同一个 i-node。
+
+## 发起系统调用
+
+系统调用号放入 `rax`；后续参数依次放入 `rdi, rsi, rdx, r10, r8` 和 `r9`,其余放入栈中；系统调用的返回值存储在 `rax` 中。
+
+为了向进程自己发送一个 `SIGTRAP` 信号:
+- 将 `kill` 系统调用的编号62放入 `rax`.
+- 将正在运行进程的 PID 放入 `rdi`。
+- 将 `SIGTRAP` 的信号编号 (5) 放入 `rsi`。
+- 执行 `syscall` 指令。
 
 
 ```ass
-
-movq %mm0, %rsi
 # movq: "Move Quadword" 指令，用于移动 64 位（8 字节）的数据。
+movq %mm0, %rsi
 
 
-leaq hex_format(%rip), %rdi
 # leaq: "Load Effective Address Quadword" 指令。它计算源操作数的内存地址，并将该地址（而不是地址处的内容）加载到目的寄存器中。
-# hex_format(%rip): 源操作数。这是 RIP 相对寻址。它表示 "标签 hex_format 的地址相对于当前指令指针（%rip）的偏移量"。这是一种在位置无关代码 (PIC) 中访问全局或静态数据的常用方式。`hex_format` 很有可能是一个指向数据段中字符串的标签。
-# %rdi: 目的操作数。通用 64 位寄存器。
-# 含义：计算标签 `hex_format` 的有效内存地址，并将这个地址存储到 rdi 寄存器中。
-#       根据 System V AMD64 ABI，rdi 寄存器用于传递函数的 *第一个* 整数/指针参数。
-#       结合上一条指令和接下来的 `call printf`，我们可以推断 `hex_format` 指向的是一个格式化字符串，用于 `printf` 函数，很可能是类似 `"%016llx\n"` 或 `"%p\n"` 的形式，以便将 rsi 中的 64 位值以十六进制格式打印出来。
+# hex_format(%rip): 源操作数。这是 RIP 相对寻址。它表示 "标签 hex_format 的地址相对于当前指令指针（%rip）的偏移量"。这是一种在位置无关代码 (PIC) 中访问全局或静态数据的常用方式
+leaq hex_format(%rip), %rdi
 
+# 可变参数函数期望 rax 包含参与参数传递的向量寄存器的数量
 movq $0, %rax
-# movq: 移动 64 位数据。
-# $0: 源操作数。一个立即数 0。
-# %rax: 目的操作数。通用 64 位寄存器。
-# 含义：将立即数 0 移动到 rax 寄存器中。
-#       根据 System V AMD64 ABI，对于可变参数函数（如 `printf`），rax 寄存器需要包含传递给该函数的 *向量寄存器* (XMM/YMM/ZMM) 的数量。因为这里我们没有通过向量寄存器传递浮点或向量参数（mm0 不是调用约定中定义的向量寄存器），所以需要将 rax 设置为 0。
+
 
 call printf@plt
 # call: 调用指令。它将下一条指令的地址压入栈中（作为返回地址），然后跳转到目标地址执行。

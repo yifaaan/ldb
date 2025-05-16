@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstring>
+#include <string_view>
+#include <vector>
 
 #include "libldb/types.hpp"
 
@@ -63,4 +65,20 @@ namespace ldb
         return ret;
     }
 
+    /// @brief 将字节数组转换为 std::string_view
+    /// @param bytes 字节数组
+    /// @param n_bytes 字节数组大小
+    /// @return std::string_view
+    inline std::string_view to_string_view(const std::byte* bytes, std::size_t n_bytes)
+    {
+        return {reinterpret_cast<const char*>(bytes), n_bytes};
+    }
+
+    /// @brief 将字节数组转换为 std::string_view
+    /// @param bytes 字节数组
+    /// @return std::string_view
+    inline std::string_view to_string_view(const std::vector<std::byte>& bytes)
+    {
+        return to_string_view(bytes.data(), bytes.size());
+    }
 } // namespace ldb
