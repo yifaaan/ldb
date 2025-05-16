@@ -114,6 +114,7 @@ namespace
             std::cerr << R"(Available commands:
             continue    - Resume the process
             register    - Commands for operating on registers
+            breakpoint  - Commands for operating on breakpoints
             )";
         }
         else if (is_prefix(args[1], "register"))
@@ -123,6 +124,16 @@ namespace
             read <register>
             read all
             write <register> <value>
+            )";
+        }
+        else if (is_prefix(args[1], "breakpoint"))
+        {
+            std::cerr << R"(Available commands:
+            list
+            set <address>
+            enable <id>
+            disable <id>
+            delete <id>
             )";
         }
         else
@@ -251,6 +262,7 @@ namespace
             }
             return;
         }
+
         if (args.size() < 3)
         {
             print_help({"help", "breakpoint"});
@@ -266,6 +278,27 @@ namespace
             proc.create_breakpoint_site(ldb::virt_addr{*address}).enable();
             return;
         }
+
+        auto id = ldb::to_integral<std::uint64_t>(args[2]);
+        if (!id)
+        {
+            fmt::print(stderr, "Breakpoint command expects breakpoint id in decimal\n");
+            return;
+        }
+        if (is_prefix(command, "enable"))
+        {
+            proc.breakpoint_sites().get_by_id(*id).enable();
+        }
+        else if (is_prefix(command, "disable"))
+        {
+            proc.breakpoint_sites().get_by_id(*id).disable();
+        }
+        else if (is_prefix(command, "delete"))
+        {
+            proc.breakpoint_sites().remove_by_id(*id);
+        }
+        
+
     }
 
     std::unique_ptr<ldb::process> attach(int argc, const char** argv)
