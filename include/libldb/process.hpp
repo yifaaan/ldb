@@ -83,6 +83,12 @@ namespace ldb
             return *registers_;
         }
 
+        /// @brief 获取程序计数器
+        virt_addr get_pc() const
+        {
+            return virt_addr{get_registers().read_by_id_as<std::uint64_t>(register_id::rip)};
+        }
+
         /// @brief 写入用户区域, 用于写入寄存器值
         /// @param offset 偏移量
         /// @param data 数据
