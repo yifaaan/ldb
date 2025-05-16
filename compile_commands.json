@@ -19,6 +19,12 @@
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
+  "command": "/usr/bin/clang++ -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/registers.cpp.o.modmap -o src/CMakeFiles/libldb.dir/registers.cpp.o -c /home/smooth/Code/ldb/src/registers.cpp",
+  "file": "/home/smooth/Code/ldb/src/registers.cpp",
+  "output": "src/CMakeFiles/libldb.dir/registers.cpp.o"
+},
+{
+  "directory": "/home/smooth/Code/ldb/build",
   "command": "/usr/bin/clang++ -I/home/smooth/Code/ldb/include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/debug/lib/pkgconfig/../../../include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/debug/lib/pkgconfig/../../../include/ncurses -g -std=gnu++20 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=600 @tools/CMakeFiles/ldb.dir/ldb.cpp.o.modmap -o tools/CMakeFiles/ldb.dir/ldb.cpp.o -c /home/smooth/Code/ldb/tools/ldb.cpp",
   "file": "/home/smooth/Code/ldb/tools/ldb.cpp",
   "output": "tools/CMakeFiles/ldb.dir/ldb.cpp.o"

@@ -148,5 +148,63 @@ ldb::stop_reason ldb::process::wait_on_signal()
     }
     auto reason = stop_reason{wait_status};
     state_ = reason.reason;
+
+    // 如果进程是附加的并且状态是停止的, 则读取所有寄存器，更新寄存器值
+    if (is_attached_ && state_ == process_state::stopped)
+    {
+        read_all_registers();
+    }
     return reason;
+}
+
+void ldb::process::read_all_registers()
+{
+    // 读取通用寄存器
+    if (ptrace(PTRACE_GETREGS, pid_, nullptr, &get_registers().data_.regs) < 0)
+    {
+        error::send_errno("Could not read GPR registers");
+    }
+    // 读取浮点寄存器
+    if (ptrace(PTRACE_GETFPREGS, pid_, nullptr, &get_registers().data_.i387) < 0)
+    {
+        error::send_errno("Could not read FPR registers");
+    }
+    // 读取调试寄存器
+    for (int i = 0; i < 8; i++)
+    {
+        auto id = static_cast<int>(register_id::dr0) + i;
+        auto& info = register_info_by_id(static_cast<register_id>(id));
+
+        errno = 0;
+        std::int64_t data = ptrace(PTRACE_PEEKUSER, pid_, info.offset, nullptr);
+        if (errno != 0)
+        {
+            error::send_errno("Could not read debug registers");
+        }
+        get_registers().data_.u_debugreg[i] = data;
+    }
+}
+
+void ldb::process::write_user_area(std::size_t offset, std::uint64_t data)
+{
+    if (ptrace(PTRACE_POKEDATA, pid_, offset, data) < 0)
+    {
+        error::send_errno("Could not write to user area");
+    }
+}
+
+void ldb::process::write_fprs(const user_fpregs_struct& fprs)
+{
+    if (ptrace(PTRACE_SETFPREGS, pid_, nullptr, &fprs) < 0)
+    {
+        error::send_errno("Could not write floating point registers");
+    }
+}
+
+void ldb::process::write_gprs(const user_regs_struct& gprs)
+{
+    if (ptrace(PTRACE_SETREGS, pid_, nullptr, &gprs) < 0)
+    {
+        error::send_errno("Could not write general purpose registers");
+    }
 }

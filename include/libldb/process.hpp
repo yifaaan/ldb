@@ -1,13 +1,16 @@
 #pragma once
 
 #include <sys/types.h>
+#include <sys/user.h>
 
 #include <cstdint>
 #include <filesystem>
+#include <libldb/registers.hpp>
 #include <memory>
 
 namespace ldb
 {
+    /// @brief 进程状态
     enum class process_state
     {
         stopped,
@@ -16,6 +19,7 @@ namespace ldb
         terminated,
     };
 
+    /// @brief 进程停止原因
     struct stop_reason
     {
         explicit stop_reason(int wait_status);
@@ -25,10 +29,19 @@ namespace ldb
         uint8_t info;
     };
 
+    /// @brief 进程
     class process
     {
     public:
+        /// @brief 启动进程
+        /// @param path 进程路径
+        /// @param debug 是否调试
+        /// @return 进程指针
         static std::unique_ptr<process> launch(std::filesystem::path path, bool debug = true);
+
+        /// @brief 附加进程
+        /// @param pid 进程 ID
+        /// @return 进程指针
         static std::unique_ptr<process> attach(pid_t pid);
 
         process() = delete;
@@ -38,31 +51,75 @@ namespace ldb
         process& operator=(process&&) = delete;
         ~process();
 
+        /// @brief 恢复进程
         void resume();
 
+        /// @brief 等待信号
+        /// @return 进程停止原因
         stop_reason wait_on_signal();
 
+        /// @brief 进程状态
         process_state state() const
         {
             return state_;
         }
 
+        /// @brief 进程 ID
         pid_t pid() const
         {
             return pid_;
         }
+
+        /// @brief 获取寄存器
+        registers& get_registers()
+        {
+            return *registers_;
+        }
+
+        /// @brief 获取寄存器
+        const registers& get_registers() const
+        {
+            return *registers_;
+        }
+
+        /// @brief 写入用户区域, 用于写入寄存器值
+        /// @param offset 偏移量
+        /// @param data 数据
+        void write_user_area(std::size_t offset, std::uint64_t data);
+
+        /// @brief 写入浮点寄存器
+        /// @param fprs 浮点寄存器
+        void write_fprs(const user_fpregs_struct& fprs);
+
+        /// @brief 写入通用寄存器
+        /// @param gprs 通用寄存器
+        void write_gprs(const user_regs_struct& gprs);
 
     private:
         process(pid_t pid, bool terminate_on_end, bool is_attached)
             : pid_{pid}
             , terminate_on_end_{terminate_on_end}
             , is_attached_{is_attached}
+            , registers_{new registers(*this)}
         {
         }
 
+        /// @brief 读取所有寄存器
+        void read_all_registers();
+
+        /// @brief 进程 ID
         pid_t pid_ = 0;
+
+        /// @brief 是否在进程结束时终止
         bool terminate_on_end_ = true;
+
+        /// @brief 进程状态
         process_state state_ = process_state::stopped;
+
+        /// @brief 是否附加
         bool is_attached_ = false;
+
+        /// @brief 寄存器
+        std::unique_ptr<registers> registers_;
     };
 } // namespace ldb

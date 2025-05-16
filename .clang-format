@@ -5,8 +5,10 @@ AccessModifierOffset: -4
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
 AlignOperands: false
+# AlignAfterOpenBracket: BlockIndent
 AlignTrailingComments: true
 AllowShortBlocksOnASingleLine: false
+AllowShortLambdasOnASingleLine: false
 AlwaysBreakTemplateDeclarations: Yes
 BinPackArguments: false
 BinPackParameters: false
@@ -31,7 +33,7 @@ BreakConstructorInitializers: BeforeComma
 BreakConstructorInitializersBeforeComma: false
 ColumnLimit: 160
 ConstructorInitializerAllOnOneLineOrOnePerLine: false
-ContinuationIndentWidth: 8
+ContinuationIndentWidth: 0
 IncludeBlocks: Regroup
 IncludeCategories: 
   - Regex: '^<ext/.*\.h>'

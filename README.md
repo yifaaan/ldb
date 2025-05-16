@@ -4,7 +4,7 @@ LDB is a debugging tool for C++ programs.
 
 cmake .. -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake
 
-## Attaching to a Process
+# Attaching to a Process
 
 ### Process Interaction
 
@@ -54,7 +54,26 @@ echo 完成后，bash 收到 echo进程的 SIGCHLD 信号。
 结果就是：你只看到一次 "I'm alive!"，然后进程又停了，需要再次输入 continue。
 
 
-## Registers
+# 寄存器
+
+- 包含通用寄存器、x87 寄存器、MMX 寄存器、SSE 寄存器、SSE2 寄存器、AVX 寄存器、AVX-512 寄存器以及调试寄存器
+- x64 架构拥有 16 个 64 位通用寄存器 (GPRs)
+- ABI规定了寄存器的具体用途，特别是在函数调用时（参数如何传递，返回值在哪里，哪些寄存器需要保存等）。Linux 使用 System V ABI。
+- 调用者保存的寄存器可以在函数内部安全地覆写。如果被调用者保存的寄存器要在函数内修改，则必须在函数开始时保存它们，并在函数结束时恢复
+    - 调用约定：
+        - 调用者保存: 如果函数 A 调用函数 B，函数 A 在调用 B 之前不需要担心 B 会修改这些寄存器；如果 A 自己需要这些寄存器的值在 B 返回后保持不变，A 负责在调用 B 之前保存它们。rax, rcx, rdx, rsi, rdi, r8-r11 通常是调用者保存的。
+        - 被调用者保存 (Callee-saved): 如果函数 B 要使用这些寄存器，B 必须在修改它们之前先保存其原始内容，并在返回给 A 之前恢复它们。rbx, rbp, r12-r15 通常是被调用者保存的。
+- 浮点寄存器x87包括八个 80 位寄存器，名为 st0 到 st7,`unsigned int st_space[32]`。
+- SIMD (单指令多数据)MMX包括八个 64 位寄存器，名为 mm0 到 mm7，映射到与 x87 寄存器相同的内存区域，不能与 x87 浮点运算同时使用。
+- 流式 SIMD 扩展 (SSE)，改进了 MMX。该指令集添加了八个 128 位寄存器，名为 xmm0 到 xmm7,SSE2 后来扩展了该集合，添加了寄存器 xmm8 到 xmm15, `unsigned int xmm_space[64]`。
+- 调试寄存器允许设置硬件断点（当执行到达特定地址时暂停）和数据观察点（当特定内存地址被读取或写入时暂停），这些是由 CPU硬件直接支持的，比软件实现的断点/观察点效率更高。
+
+## ptrace
+
+- `PTRACE_GETREGS` 和 `PTRACE_SETREGS`：用于一次性读取和写入所有通用寄存器。
+- `PTRACE_GETFPREGS` 和 `PTRACE_SETFPREGS`：用于读取和写入 x87、MMX 和 SSE 寄存器。
+- `PTRACE_PEEKUSER`：用于读取调试寄存器。
+- `PTRACE_POKEUSER`：用于写入调试寄存器或单个通用寄存器。
 
 ```shell
 register read <register name>
