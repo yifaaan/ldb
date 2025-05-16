@@ -226,6 +226,47 @@ namespace
             print_help({"help", "register"});
         }
     }
+    void handle_breakpoint_command(ldb::process& proc, std::span<std::string_view> args)
+    {
+        if (args.size() < 2)
+        {
+            print_help({"help", "breakpoint"});
+            return;
+        }
+
+        auto command = args[1];
+        if (is_prefix(command, "list"))
+        {
+            if (proc.breakpoint_sites().empty())
+            {
+                fmt::print("No breakpoints set\n");
+            }
+            else
+            {
+                fmt::print("Current breakpoints:\n");
+                proc.breakpoint_sites().for_each([](const auto& site)
+                {
+                    fmt::print("{}: address = {:#x}, {}\n", site.id(), site.address().addr(), site.is_enabled() ? "enabled" : "disabled");
+                });
+            }
+            return;
+        }
+        if (args.size() < 3)
+        {
+            print_help({"help", "breakpoint"});
+        }
+        if (is_prefix(command, "set"))
+        {
+            auto address = ldb::to_integral<std::uint64_t>(args[2], 16);
+            if (!address)
+            {
+                fmt::print(stderr, "Breakpoint command expects address in hexadecimal, prefixed with 0x\n");
+                return;
+            }
+            proc.create_breakpoint_site(ldb::virt_addr{*address}).enable();
+            return;
+        }
+    }
 
     std::unique_ptr<ldb::process> attach(int argc, const char** argv)
     {
@@ -260,6 +301,10 @@ namespace
         else if (is_prefix(command, "register"))
         {
             handle_register_command(*proc, args);
+        }
+        else if (is_prefix(command, "breakpoint"))
+        {
+            handle_breakpoint_command(*proc, args);
         }
         else
         {
