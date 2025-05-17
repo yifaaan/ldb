@@ -6,6 +6,7 @@
 #include <libldb/error.hpp>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 namespace ldb
 {
@@ -99,5 +100,38 @@ namespace ldb
             return static_cast<std::byte>(*uint8);
         }
         return std::nullopt;
+    }
+
+    inline auto parse_vector(std::string_view text)
+    {
+        auto invalid = []
+        {
+            ldb::error::send("Invalid vector format");
+        };
+        const char* c = text.data();
+        std::vector<std::byte> bytes;
+        if (*c++ != '[')
+        {
+            invalid();
+        }
+        while (*c != ']')
+        {
+            auto byte = to_integral<std::byte>({c, 4}, 16).value();
+            bytes.push_back(byte);
+            c += 4;
+            if (*c == ',')
+            {
+                c++;
+            }
+            else if (*c != ']')
+            {
+                invalid();
+            }
+        }
+        if (++c != text.end())
+        {
+            invalid();
+        }
+        return bytes;
     }
 } // namespace ldb

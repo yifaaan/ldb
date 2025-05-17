@@ -118,6 +118,7 @@ namespace
             register    - Commands for operating on registers
             breakpoint  - Commands for operating on breakpoints
             step        - Single step the process
+            memory      - Commands for operating on memory
             )";
         }
         else if (is_prefix(args[1], "register"))
@@ -137,6 +138,13 @@ namespace
             enable <id>
             disable <id>
             delete <id>
+            )";
+        }
+        else if (is_prefix(args[1], "memory"))
+        {
+            std::cerr << R"(Available commands:
+            read <address> [<n_bytes>]
+            write <address> <data>
             )";
         }
         else
@@ -303,6 +311,69 @@ namespace
         }
     }
 
+    void handle_memory_read_command(ldb::process& proc, std::span<std::string_view> args)
+    {
+        auto address = ldb::to_integral<std::uint64_t>(args[2], 16);
+        if (!address)
+        {
+            ldb::error::send("Invalid address format");
+        }
+        auto n_bytes = 32;
+        if (args.size() == 4)
+        {
+            auto bytes = ldb::to_integral<std::uint64_t>(args[3]);
+            if (!bytes)
+            {
+                ldb::error::send("Invalid number of bytes format");
+            }
+            n_bytes = *bytes;
+        }
+        auto data = proc.read_memory(ldb::virt_addr{*address}, n_bytes);
+        for (int i = 0; i < data.size(); i += 16)
+        {
+            auto start = data.begin() + i;
+            auto end = data.begin() + std::min<int>(i + 16, data.size());
+            fmt::print("{:#016x}: {:02x}\n", *address + i, fmt::join(start, end, " "));
+        }
+    }
+
+    void handle_memory_write_command(ldb::process& proc, std::span<std::string_view> args)
+    {
+        if (args.size() != 4)
+        {
+            print_help({"help", "memory"});
+            return;
+        }
+        auto address = ldb::to_integral<std::uint64_t>(args[2], 16);
+        if (!address)
+        {
+            ldb::error::send("Invalid address format");
+        }
+        auto data = ldb::parse_vector(args[3]);
+        proc.write_memory(ldb::virt_addr{*address}, data);
+    }
+
+    void handle_memory_command(ldb::process& proc, std::span<std::string_view> args)
+    {
+        if (args.size() < 3)
+        {
+            print_help({"help", "memory"});
+            return;
+        }
+        if (is_prefix(args[1], "read"))
+        {
+            handle_memory_read_command(proc, args);
+        }
+        else if (is_prefix(args[1], "write"))
+        {
+            handle_memory_write_command(proc, args);
+        }
+        else
+        {
+            print_help({"help", "memory"});
+        }
+    }
+
     std::unique_ptr<ldb::process> attach(int argc, const char** argv)
     {
         pid_t pid = 0;
@@ -347,6 +418,10 @@ namespace
         {
             auto reason = proc->step_instruction();
             print_stop_reason(*proc, reason);
+        }
+        else if (is_prefix(command, "memory"))
+        {
+            handle_memory_command(*proc, args);
         }
         else
         {
