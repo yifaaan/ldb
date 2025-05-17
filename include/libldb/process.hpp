@@ -8,6 +8,7 @@
 #include <libldb/breakpoint_site.hpp>
 #include <libldb/registers.hpp>
 #include <libldb/stoppoint_collection.hpp>
+#include <libldb/bit.hpp>
 #include <memory>
 #include <optional>
 
@@ -131,6 +132,23 @@ namespace ldb
         /// @brief 单步执行指令
         /// @return 进程停止原因
         stop_reason step_instruction();
+
+        /// @brief 读取内存
+        /// @param address 地址
+        /// @param size 大小
+        /// @return 内存
+        std::vector<std::byte> read_memory(virt_addr address, std::size_t size);
+
+        /// @brief 写入内存
+        /// @param address 地址
+        /// @param data 数据
+        void write_memory(virt_addr address, span<const std::byte> data);
+
+        template <typename T>
+        T read_memory_as(virt_addr address)
+        {
+            return from_bytes<T>(read_memory(address, sizeof(T)).data());
+        }
 
     private:
         process(pid_t pid, bool terminate_on_end, bool is_attached, std::optional<int> stdout_replacement = std::nullopt)

@@ -2,6 +2,7 @@
 #include <sys/personality.h>
 #include <sys/ptrace.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -11,6 +12,7 @@
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
+#include <libldb/bit.hpp>
 
 namespace
 {
@@ -276,4 +278,51 @@ ldb::stop_reason ldb::process::step_instruction()
         to_reenable.value()->enable();
     }
     return reason;
+}
+
+std::vector<std::byte> ldb::process::read_memory(virt_addr address, std::size_t size)
+{
+    std::vector<std::byte> ret(size);
+    iovec local_desc{ret.data(), size};
+    std::vector<iovec> remote_desc;
+    while (size > 0)
+    {
+        auto up_to_next_page = 0x1000 - (address.addr() & 0xfff);
+        auto chunk_size = std::min(up_to_next_page, size);
+        remote_desc.push_back({reinterpret_cast<void*>(address.addr()), chunk_size});
+        address += chunk_size;
+        size -= chunk_size;
+    }
+    if (process_vm_readv(pid_, &local_desc, 1, remote_desc.data(), remote_desc.size(), 0) < 0)
+    {
+        error::send_errno("Could not read memory");
+    }
+    return ret;
+}
+
+void ldb::process::write_memory(virt_addr address, span<const std::byte> data)
+{
+    std::size_t written = 0;
+    while (written < data.size())
+    {
+        auto remaining = data.size() - written;
+        std::uint64_t word;
+        if (remaining >= 8)
+        {
+            word = from_bytes<std::uint64_t>(data.begin() + written);
+        }
+        else
+        {
+            // ptrace一次写入8个字节
+            auto read = read_memory(address + written, 8);
+            // 写入的8个字节中，前remaining个字节是data中的，剩余的8 - remaining个字节是read中的
+            std::memcpy(reinterpret_cast<char*>(&word), data.begin() + written, remaining);
+            std::memcpy(reinterpret_cast<char*>(&word) + remaining, read.data() + remaining, 8 - remaining);
+        }
+        if (ptrace(PTRACE_POKEDATA, pid_, address.addr() + written, word) < 0)
+        {
+            error::send_errno("Could not write memory");
+        }
+        written += 8;
+    }
 }

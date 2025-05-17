@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace ldb
 {
@@ -79,5 +80,55 @@ namespace ldb
 
     private:
         std::uint64_t addr_;
+    };
+
+    template <typename T>
+    class span
+    {
+    public:
+        span() = default;
+        span(T* data, std::size_t size)
+            : data_{data}
+            , size_{size}
+        {
+        }
+
+        span(T* begin, T* end)
+            : data_{begin}
+            , size_{end - begin}
+        {
+        }
+
+        template <typename U>
+            requires std::is_convertible_v<U, T>
+        span(const std::vector<U>& vec)
+            : data_{vec.data()}
+            , size_{vec.size()}
+        {
+        }
+
+        T* begin() const
+        {
+            return data_;
+        }
+
+        T* end() const
+        {
+            return data_ + size_;
+        }
+
+        std::size_t size() const
+        {
+            return size_;
+        }
+
+        T& operator[](std::size_t index) const
+        {
+            return data_[index];
+        }
+
+    private:
+        T* data_;
+        std::size_t size_;
     };
 } // namespace ldb
