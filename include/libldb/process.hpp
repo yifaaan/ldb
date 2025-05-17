@@ -137,7 +137,13 @@ namespace ldb
         /// @param address 地址
         /// @param size 大小
         /// @return 内存
-        std::vector<std::byte> read_memory(virt_addr address, std::size_t size);
+        std::vector<std::byte> read_memory(virt_addr address, std::size_t size) const;
+
+        /// @brief 读取内存, 不读取暂停点, 用于反汇编
+        /// @param address 地址
+        /// @param size 大小
+        /// @return 修复后的指令数据
+        std::vector<std::byte> read_memory_without_traps(virt_addr address, std::size_t size) const;
 
         /// @brief 写入内存
         /// @param address 地址

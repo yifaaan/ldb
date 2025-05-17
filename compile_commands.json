@@ -1,33 +1,39 @@
 [
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/clang++ -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/libldb.cpp.o.modmap -o src/CMakeFiles/libldb.dir/libldb.cpp.o -c /home/smooth/Code/ldb/src/libldb.cpp",
+  "command": "/usr/bin/clang++ -DZYCORE_STATIC_BUILD -DZYDIS_STATIC_BUILD -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/libldb.cpp.o.modmap -o src/CMakeFiles/libldb.dir/libldb.cpp.o -c /home/smooth/Code/ldb/src/libldb.cpp",
   "file": "/home/smooth/Code/ldb/src/libldb.cpp",
   "output": "src/CMakeFiles/libldb.dir/libldb.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/clang++ -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/process.cpp.o.modmap -o src/CMakeFiles/libldb.dir/process.cpp.o -c /home/smooth/Code/ldb/src/process.cpp",
+  "command": "/usr/bin/clang++ -DZYCORE_STATIC_BUILD -DZYDIS_STATIC_BUILD -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/process.cpp.o.modmap -o src/CMakeFiles/libldb.dir/process.cpp.o -c /home/smooth/Code/ldb/src/process.cpp",
   "file": "/home/smooth/Code/ldb/src/process.cpp",
   "output": "src/CMakeFiles/libldb.dir/process.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/clang++ -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/pipe.cpp.o.modmap -o src/CMakeFiles/libldb.dir/pipe.cpp.o -c /home/smooth/Code/ldb/src/pipe.cpp",
+  "command": "/usr/bin/clang++ -DZYCORE_STATIC_BUILD -DZYDIS_STATIC_BUILD -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/pipe.cpp.o.modmap -o src/CMakeFiles/libldb.dir/pipe.cpp.o -c /home/smooth/Code/ldb/src/pipe.cpp",
   "file": "/home/smooth/Code/ldb/src/pipe.cpp",
   "output": "src/CMakeFiles/libldb.dir/pipe.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/clang++ -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/registers.cpp.o.modmap -o src/CMakeFiles/libldb.dir/registers.cpp.o -c /home/smooth/Code/ldb/src/registers.cpp",
+  "command": "/usr/bin/clang++ -DZYCORE_STATIC_BUILD -DZYDIS_STATIC_BUILD -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/registers.cpp.o.modmap -o src/CMakeFiles/libldb.dir/registers.cpp.o -c /home/smooth/Code/ldb/src/registers.cpp",
   "file": "/home/smooth/Code/ldb/src/registers.cpp",
   "output": "src/CMakeFiles/libldb.dir/registers.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/clang++ -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/breakpoint_site.cpp.o.modmap -o src/CMakeFiles/libldb.dir/breakpoint_site.cpp.o -c /home/smooth/Code/ldb/src/breakpoint_site.cpp",
+  "command": "/usr/bin/clang++ -DZYCORE_STATIC_BUILD -DZYDIS_STATIC_BUILD -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/breakpoint_site.cpp.o.modmap -o src/CMakeFiles/libldb.dir/breakpoint_site.cpp.o -c /home/smooth/Code/ldb/src/breakpoint_site.cpp",
   "file": "/home/smooth/Code/ldb/src/breakpoint_site.cpp",
   "output": "src/CMakeFiles/libldb.dir/breakpoint_site.cpp.o"
+},
+{
+  "directory": "/home/smooth/Code/ldb/build",
+  "command": "/usr/bin/clang++ -DZYCORE_STATIC_BUILD -DZYDIS_STATIC_BUILD -I/home/smooth/Code/ldb/src/include -I/home/smooth/Code/ldb/include -isystem /home/smooth/Code/ldb/build/vcpkg_installed/x64-linux/include -g -std=gnu++20 @src/CMakeFiles/libldb.dir/disassembler.cpp.o.modmap -o src/CMakeFiles/libldb.dir/disassembler.cpp.o -c /home/smooth/Code/ldb/src/disassembler.cpp",
+  "file": "/home/smooth/Code/ldb/src/disassembler.cpp",
+  "output": "src/CMakeFiles/libldb.dir/disassembler.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
@@ -58,6 +64,12 @@
   "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie @test/targets/CMakeFiles/hello_ldb.dir/hello_ldb.cpp.o.modmap -o test/targets/CMakeFiles/hello_ldb.dir/hello_ldb.cpp.o -c /home/smooth/Code/ldb/test/targets/hello_ldb.cpp",
   "file": "/home/smooth/Code/ldb/test/targets/hello_ldb.cpp",
   "output": "test/targets/CMakeFiles/hello_ldb.dir/hello_ldb.cpp.o"
+},
+{
+  "directory": "/home/smooth/Code/ldb/build",
+  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie @test/targets/CMakeFiles/memory.dir/memory.cpp.o.modmap -o test/targets/CMakeFiles/memory.dir/memory.cpp.o -c /home/smooth/Code/ldb/test/targets/memory.cpp",
+  "file": "/home/smooth/Code/ldb/test/targets/memory.cpp",
+  "output": "test/targets/CMakeFiles/memory.dir/memory.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",

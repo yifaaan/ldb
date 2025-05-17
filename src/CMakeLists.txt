@@ -1,10 +1,11 @@
-add_library(libldb libldb.cpp process.cpp pipe.cpp registers.cpp breakpoint_site.cpp)
+add_library(libldb libldb.cpp process.cpp pipe.cpp registers.cpp breakpoint_site.cpp disassembler.cpp)
 add_library(ldb::libldb ALIAS libldb)
 
 set_target_properties(
     libldb 
     PROPERTIES OUTPUT_NAME ldb
 )
+target_link_libraries(libldb PRIVATE Zydis::Zydis)
 
 target_compile_features(libldb PUBLIC cxx_std_20)
 

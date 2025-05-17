@@ -78,6 +78,12 @@ namespace ldb
             return stoppoints_.empty();
         }
 
+        /// @brief 获取指定区域内的暂停点
+        /// @param low 低地址
+        /// @param high 高地址
+        /// @return 暂停点
+        std::vector<Stoppoint*> get_in_region(virt_addr low, virt_addr high) const;
+
     private:
         using points_t = std::vector<std::unique_ptr<Stoppoint>>;
 
@@ -229,4 +235,17 @@ namespace ldb
         }
     }
 
+    template <typename Stoppoint>
+    std::vector<Stoppoint*> stoppoint_collection<Stoppoint>::get_in_region(virt_addr low, virt_addr high) const
+    {
+        std::vector<Stoppoint*> ret;
+        for (const auto& site : stoppoints_)
+        {
+            if (site->in_range(low, high))
+            {
+                ret.push_back(site.get());
+            }
+        }
+        return ret;
+    }
 } // namespace ldb

@@ -280,7 +280,7 @@ ldb::stop_reason ldb::process::step_instruction()
     return reason;
 }
 
-std::vector<std::byte> ldb::process::read_memory(virt_addr address, std::size_t size)
+std::vector<std::byte> ldb::process::read_memory(virt_addr address, std::size_t size) const
 {
     std::vector<std::byte> ret(size);
     iovec local_desc{ret.data(), size};
@@ -298,6 +298,22 @@ std::vector<std::byte> ldb::process::read_memory(virt_addr address, std::size_t 
         error::send_errno("Could not read memory");
     }
     return ret;
+}
+
+std::vector<std::byte> ldb::process::read_memory_without_traps(virt_addr address, std::size_t size) const
+{
+    auto memory = read_memory(address, size);
+    auto sites = breakpoint_sites_.get_in_region(address, address + size);
+    for (auto site : sites)
+    {
+        if (!site->is_enabled())
+        {
+            continue;
+        }
+        auto offset = site->address().addr() - address.addr();
+        memory[offset] = site->saved_data_;
+    }
+    return memory;
 }
 
 void ldb::process::write_memory(virt_addr address, span<const std::byte> data)

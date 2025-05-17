@@ -37,14 +37,13 @@ namespace
     std::int64_t get_section_load_bias(std::filesystem::path path, Elf64_Addr file_addr)
     {
         auto command = fmt::format("readelf -WS {}", path.c_str());
-        fmt::print("command: {}\n", command);
         auto pipe = popen(command.c_str(), "r");
         char* line = nullptr;
         size_t len = 0;
         std::regex text_regex{R"(PROGBITS\s+(\w+)\s+(\w+)\s+(\w+))"};
         while (getline(&line, &len, pipe) != -1)
         {
-            
+
             std::cmatch group;
             if (std::regex_search(line, group, text_regex))
             {
@@ -54,7 +53,7 @@ namespace
                 // fmt::print("address: {}, offset: {}, size: {}\n", address, offset, size);
                 if (address <= file_addr && file_addr < address + size)
                 {
-                    
+
                     free(line);
                     pclose(pipe);
                     return address - offset;
@@ -321,22 +320,44 @@ TEST_CASE("Breakpoint on address works", "[breakpoint]")
 
     auto proc = process::launch("targets/hello_ldb", true, channel.get_write());
     channel.close_write();
-    
+
     auto file_offset = get_entry_point_file_offset("targets/hello_ldb");
     auto load_address = get_load_address(proc->pid(), file_offset);
 
     proc->create_breakpoint_site(load_address).enable();
     proc->resume(); // 在int3指令处停止
-    
+
     auto reason = proc->wait_on_signal(); // wait_on_signal会pc = pc - 1
     REQUIRE(reason.reason == process_state::stopped);
     REQUIRE(reason.info == SIGTRAP);
     REQUIRE(proc->get_pc() == load_address);
 
-    
     proc->resume(); // 关闭int3指令，单步执行完再恢复
     reason = proc->wait_on_signal();
     REQUIRE(reason.reason == process_state::exited);
     REQUIRE(reason.info == 0);
+}
 
+TEST_CASE("Reading and writing memory works", "[memory]")
+{
+    bool close_on_exec = false;
+    auto channel = ldb::pipe{close_on_exec};
+
+    auto proc = process::launch("targets/memory", true, channel.get_write());
+    channel.close_write();
+    proc->resume();
+    proc->wait_on_signal();
+    auto a_address = from_bytes<std::uint64_t>(channel.read().data());
+    auto a_value_bytes = proc->read_memory(virt_addr{a_address}, 8);
+    auto a = from_bytes<std::uint64_t>(a_value_bytes.data());
+    REQUIRE(a == 0xcafecafe);
+
+    proc->resume();
+    proc->wait_on_signal();
+    auto b_address = from_bytes<std::uint64_t>(channel.read().data());
+    proc->write_memory(virt_addr{b_address}, {reinterpret_cast<const std::byte*>("Hello, World!"), 14});
+    proc->resume();
+    proc->wait_on_signal();
+    auto b_value_bytes = channel.read();
+    REQUIRE(to_string_view(b_value_bytes) == "Hello, World!");
 }
