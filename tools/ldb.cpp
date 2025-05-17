@@ -1,3 +1,4 @@
+#include <elf.h>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 #include <readline/history.h>
@@ -21,6 +22,7 @@
 
 namespace
 {
+
     std::vector<std::string_view> split(std::string_view str, std::string_view delimiter)
     {
         std::vector<std::string_view> result;
@@ -115,6 +117,7 @@ namespace
             continue    - Resume the process
             register    - Commands for operating on registers
             breakpoint  - Commands for operating on breakpoints
+            step        - Single step the process
             )";
         }
         else if (is_prefix(args[1], "register"))
@@ -255,7 +258,8 @@ namespace
             else
             {
                 fmt::print("Current breakpoints:\n");
-                proc.breakpoint_sites().for_each([](const auto& site)
+                proc.breakpoint_sites().for_each(
+                [](const auto& site)
                 {
                     fmt::print("{}: address = {:#x}, {}\n", site.id(), site.address().addr(), site.is_enabled() ? "enabled" : "disabled");
                 });
@@ -297,8 +301,6 @@ namespace
         {
             proc.breakpoint_sites().remove_by_id(*id);
         }
-        
-
     }
 
     std::unique_ptr<ldb::process> attach(int argc, const char** argv)
@@ -340,6 +342,11 @@ namespace
         else if (is_prefix(command, "breakpoint"))
         {
             handle_breakpoint_command(*proc, args);
+        }
+        else if (is_prefix(command, "step"))
+        {
+            auto reason = proc->step_instruction();
+            print_stop_reason(*proc, reason);
         }
         else
         {

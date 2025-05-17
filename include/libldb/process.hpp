@@ -128,6 +128,10 @@ namespace ldb
             return breakpoint_sites_;
         }
 
+        /// @brief 单步执行指令
+        /// @return 进程停止原因
+        stop_reason step_instruction();
+
     private:
         process(pid_t pid, bool terminate_on_end, bool is_attached, std::optional<int> stdout_replacement = std::nullopt)
             : pid_{pid}

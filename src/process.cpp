@@ -253,3 +253,27 @@ ldb::breakpoint_site& ldb::process::create_breakpoint_site(virt_addr address)
     }
     return breakpoint_sites_.push(std::unique_ptr<breakpoint_site>{new breakpoint_site{*this, address}});
 }
+
+ldb::stop_reason ldb::process::step_instruction()
+{
+    std::optional<breakpoint_site*> to_reenable;
+    auto pc = get_pc();
+    if (breakpoint_sites_.enabled_stoppoint_at_address(pc))
+    {
+        auto& bp = breakpoint_sites_.get_by_address(pc);
+        // 禁用断点，恢复原本的指令内容
+        bp.disable();
+        // 执行完该指令后，需要重新启用断点
+        to_reenable = &bp;
+    }
+    if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0)
+    {
+        error::send_errno("Could not single step");
+    }
+    auto reason = wait_on_signal();
+    if (to_reenable)
+    {
+        to_reenable.value()->enable();
+    }
+    return reason;
+}

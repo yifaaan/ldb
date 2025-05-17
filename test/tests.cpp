@@ -1,10 +1,15 @@
+#include <elf.h>
+#include <fmt/format.h>
+
 #include <catch2/catch_test_macros.hpp>
 #include <csignal>
+#include <filesystem>
 #include <fstream>
 #include <libldb/bit.hpp>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
+#include <regex>
 
 using namespace ldb;
 namespace
@@ -23,6 +28,75 @@ namespace
         auto index_of_last_parenthesis = data.rfind(')');
         auto index_of_status = index_of_last_parenthesis + 2;
         return data[index_of_status];
+    }
+
+    /// @brief 获取段加载偏差
+    /// @param path 文件路径
+    /// @param file_addr 文件中的地址
+    /// @return 段加载偏差
+    std::int64_t get_section_load_bias(std::filesystem::path path, Elf64_Addr file_addr)
+    {
+        auto command = fmt::format("readelf -WS {}", path.c_str());
+        fmt::print("command: {}\n", command);
+        auto pipe = popen(command.c_str(), "r");
+        char* line = nullptr;
+        size_t len = 0;
+        std::regex text_regex{R"(PROGBITS\s+(\w+)\s+(\w+)\s+(\w+))"};
+        while (getline(&line, &len, pipe) != -1)
+        {
+            
+            std::cmatch group;
+            if (std::regex_search(line, group, text_regex))
+            {
+                auto address = std::stol(group[1], nullptr, 16);
+                auto offset = std::stol(group[2], nullptr, 16);
+                auto size = std::stol(group[3], nullptr, 16);
+                // fmt::print("address: {}, offset: {}, size: {}\n", address, offset, size);
+                if (address <= file_addr && file_addr < address + size)
+                {
+                    
+                    free(line);
+                    pclose(pipe);
+                    return address - offset;
+                }
+            }
+            free(line);
+            line = nullptr;
+        }
+        pclose(pipe);
+        ldb::error::send("Could not find section load bias for address");
+    }
+
+    /// @brief 获取入口点在文件中的偏移量
+    /// @param path 文件路径
+    /// @return 入口点在文件中的偏移量
+    std::int64_t get_entry_point_file_offset(std::filesystem::path path)
+    {
+        std::ifstream elf_file{path};
+        Elf64_Ehdr header;
+        elf_file.read(reinterpret_cast<char*>(&header), sizeof(header));
+        return header.e_entry - get_section_load_bias(path, header.e_entry);
+    }
+
+    ldb::virt_addr get_load_address(pid_t pid, std::int64_t file_offset)
+    {
+        std::ifstream maps_file{fmt::format("/proc/{}/maps", pid)};
+        std::regex text_regex{R"((\w+)-\w+ ..(.). (\w+))"};
+        std::string line;
+        while (std::getline(maps_file, line))
+        {
+            std::smatch group;
+            if (std::regex_search(line, group, text_regex))
+            {
+                if (group[2] == "x")
+                {
+                    auto start = std::stol(group[1], nullptr, 16);
+                    auto offset = std::stol(group[3], nullptr, 16);
+                    return ldb::virt_addr{static_cast<std::uint64_t>(file_offset - offset + start)};
+                }
+            }
+        }
+        ldb::error::send("Could not find load address for file offset");
     }
 } // namespace
 
@@ -238,4 +312,31 @@ TEST_CASE("Can iterator breakpoint sites", "[breakpoint]")
     {
         REQUIRE(site.address().addr() == addr++);
     });
+}
+
+TEST_CASE("Breakpoint on address works", "[breakpoint]")
+{
+    bool close_on_exec = false;
+    auto channel = ldb::pipe{close_on_exec};
+
+    auto proc = process::launch("targets/hello_ldb", true, channel.get_write());
+    channel.close_write();
+    
+    auto file_offset = get_entry_point_file_offset("targets/hello_ldb");
+    auto load_address = get_load_address(proc->pid(), file_offset);
+
+    proc->create_breakpoint_site(load_address).enable();
+    proc->resume(); // 在int3指令处停止
+    
+    auto reason = proc->wait_on_signal(); // wait_on_signal会pc = pc - 1
+    REQUIRE(reason.reason == process_state::stopped);
+    REQUIRE(reason.info == SIGTRAP);
+    REQUIRE(proc->get_pc() == load_address);
+
+    
+    proc->resume(); // 关闭int3指令，单步执行完再恢复
+    reason = proc->wait_on_signal();
+    REQUIRE(reason.reason == process_state::exited);
+    REQUIRE(reason.info == 0);
+
 }
