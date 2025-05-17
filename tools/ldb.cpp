@@ -312,7 +312,9 @@ namespace
         else
         {
             auto program_path = argv[1];
-            return ldb::process::launch(program_path);
+            auto proc = ldb::process::launch(program_path);
+            fmt::print("Launched process with pid {}\n", proc->pid());
+            return proc;
         }
     }
 

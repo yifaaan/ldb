@@ -43,15 +43,21 @@
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/clang++ -g -std=gnu++20 @test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o.modmap -o test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o -c /home/smooth/Code/ldb/test/targets/run_endlessly.cpp",
+  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie @test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o.modmap -o test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o -c /home/smooth/Code/ldb/test/targets/end_immediately.cpp",
+  "file": "/home/smooth/Code/ldb/test/targets/end_immediately.cpp",
+  "output": "test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o"
+},
+{
+  "directory": "/home/smooth/Code/ldb/build",
+  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie @test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o.modmap -o test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o -c /home/smooth/Code/ldb/test/targets/run_endlessly.cpp",
   "file": "/home/smooth/Code/ldb/test/targets/run_endlessly.cpp",
   "output": "test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/clang++ -g -std=gnu++20 @test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o.modmap -o test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o -c /home/smooth/Code/ldb/test/targets/end_immediately.cpp",
-  "file": "/home/smooth/Code/ldb/test/targets/end_immediately.cpp",
-  "output": "test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o"
+  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie @test/targets/CMakeFiles/hello_ldb.dir/hello_ldb.cpp.o.modmap -o test/targets/CMakeFiles/hello_ldb.dir/hello_ldb.cpp.o -c /home/smooth/Code/ldb/test/targets/hello_ldb.cpp",
+  "file": "/home/smooth/Code/ldb/test/targets/hello_ldb.cpp",
+  "output": "test/targets/CMakeFiles/hello_ldb.dir/hello_ldb.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",

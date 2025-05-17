@@ -31,7 +31,7 @@ namespace ldb
         /// @brief 指定地址是否启用
         /// @param address 地址
         /// @return 是否启用
-        bool enabled_at_address(virt_addr address) const;
+        bool enabled_stoppoint_at_address(virt_addr address) const;
 
         /// @brief 获取指定 ID 的暂停点
         /// @param id 暂停点 ID
@@ -156,7 +156,7 @@ namespace ldb
     }
 
     template <typename Stoppoint>
-    bool stoppoint_collection<Stoppoint>::enabled_at_address(virt_addr address) const
+    bool stoppoint_collection<Stoppoint>::enabled_stoppoint_at_address(virt_addr address) const
     {
         return contains_address(address) && get_by_address(address).is_enabled();
     }

@@ -168,43 +168,40 @@ trap
 
 设置一个逻辑断点时，该断点可能与多个实际位置相关联。例如，假设在函数 `to_string` 中设置了一个断点。`to_string` 有许多重载版本，因此要为每个重载版本创建物理断点。称前者为 `ldb::breakpoint`（逻辑断点），后者为 `ldb::breakpoint_site`（物理断点位置）来区分用户级别的逻辑断点和实际的物理断点。
 
-### PIE
+```
+objdump -d hello_sdb
+```
 
+```
+0000000000001140 <main>:
+    1140:       55                      push   %rbp
+    1141:       48 89 e5                mov    %rsp,%rbp
+    1144:       48 8d 3d b9 0e 00 00    lea    0xeb9(%rip),%rdi        # 2004 <_IO_stdin_used+0x4>
+    114b:       e8 e0 fe ff ff          call   1030 <puts@plt>
+    1150:       31 c0                   xor    %eax,%eax
+    1152:       5d                      pop    %rbp
+    1153:       c3                      ret
+```
+
+`0000000000001149`等是指令在内存中的（通常是相对于**程序加载基址**的）虚拟地址。这些地址在每次编译或链接时，或者由于 *ASLR (地址空间布局随机化)* 的存在，可能会有所不同。
+
+## 位置无关可执行文件 (PIE)
+
+### file_addr
+PIE 内部的内存地址(`file_addr`)不是绝对虚拟地址，它们是相对于二进制文件最终加载地址起始点的偏移量。`0x114b` 并不意味着“虚拟地址 `0x114b`”，而是意味着“距离二进制文件被加载的起始位置 `0x114b` 字节远的地方”。
+
+加载一个 PIE 时，会为其选择随机的基地址，然后将程序的各个段加载到从这个基地址开始的相应偏移处。
+
+### file_offset
+
+磁盘文件的偏移量。这与加载到内存后的`file_addr`可能不同，因为 ELF 文件的加载过程会将不同的段映射到内存中，并且内存布局可能与磁盘文件布局不完全一致（例如，对齐要求、某些段不加载等）。
 These executables don’t expect to be loaded at a specific memory
 address; they can be loaded anywhere and still work. As such, memory ad-
 dresses within PIEs aren’t absolute virtual addresses, they’re offsets from the
 start of the final load address of the binary.
 
-#### objdump
-
-In other words, 0x115b doesn’t mean “virtual address 0x115b,” it means “0x115b bytes away from where the
-binary was loaded.” We’ll refer to these addresses as **file addresses**. We’ll also
-sometimes need to refer to offsets from the start of the object file on disk,
-which we’ll call **file offsets**.
-
-```asm
-.text:
-...
-0000000000001149 <main>:
-#include <cstdio>
-
-    1149:       f3 0f 1e fa             endbr64
-    114d:       55                      push   %rbp
-    114e:       48 89 e5                mov    %rsp,%rbp
-    1151:       48 8d 05 ac 0e 00 00    lea    0xeac(%rip),%rax        # 2004 <_IO_stdin_used+0x4>
-    1158:       48 89 c7                mov    %rax,%rdi
-    115b:       e8 f0 fe ff ff          call   1050 <puts@plt>
-    1160:       b8 00 00 00 00          mov    $0x0,%eax
-    1165:       5d                      pop    %rbp
-    1166:       c3  
-```
-
-
-
-#### /proc/<pid>/maps
-The first part is the address range, followed
-by the read/write/execute permissions of the region. Next comes the file
-offset of the segment.
+### /proc/<pid>/maps
+每一行都是一个映射的内存区域，它们对应于目标文件的不同段。第一部分是地址范围，后面是该区域的读/写/执行权限。接下来是段的文件偏移量(`file_offset`)，设备号 (主:次)， i-node 号，路径。
 
 ```sh
 556e2e531000-556e2e532000 r--p 00000000 08:10 129448  /path/to/run_endlessly
@@ -214,8 +211,26 @@ offset of the segment.
 556e2e535000-556e2e536000 rw-p 00003000 08:10 129448  /path/to/run_endlessly
 ```
 
-#### readelf
+### readelf
 
+```
+smooth@life:~/Code/ldb/build/test$ readelf -S targets/hello_ldb 
+There are 38 section headers, starting at offset 0x4350:
+
+Section Headers:
+  [Nr] Name              Type             Address           Offset
+       Size              EntSize          Flags  Link  Info  Align
+
+  [15] .text             PROGBITS         0000000000001050  00001050
+       0000000000000104  0000000000000000  AX       0     0     16
+```
+
+`Address`: 当文件被加载到内存时，该节期望被加载到的（相对）虚拟地址。对于 PIE，这是`file_addr`。
+`Offset`: 该节在磁盘上的 ELF 文件中的起始字节偏移量`file_offset`。
+- 如果 `Address` 和 `Offset` 不同：这可能发生在 ELF 文件中有其他非加载段占用了文件前面的空间，或者由于对齐等原因，节在文件中的物理布局和加载到内存后的逻辑布局存在差异。
+- 加载偏差 (Load Bias) = `Address` (内存中的相对虚拟地址) - `Offset` (文件中的偏移)。
+- 指令在 ELF 文件中的偏移 = objdump 文件地址 - 加载偏差。这个计算结果是指令相对于 ELF 文件中该节起始的真实偏移。
+- 运行时虚拟地址 = 段的运行时加载基地址 + (指令的`file_addr` - 段在ELF中定义的起始虚拟地址:从 readelf -S 的 `Address` 字段)
 ```sh
 readelf -S test/targets/hello_ldb
 

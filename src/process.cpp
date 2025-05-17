@@ -1,4 +1,5 @@
 
+#include <sys/personality.h>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -62,6 +63,8 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path, b
     }
     if (pid == 0)
     {
+        // 禁用地址空间布局随机化ASLR,加载基地址在多次运行时会保持一致
+        personality(ADDR_NO_RANDOMIZE);
         channel.close_read();
         if (stdout_replacement)
         {
@@ -139,6 +142,25 @@ ldb::process::~process()
 
 void ldb::process::resume()
 {
+    auto pc = get_pc();
+    if (breakpoint_sites_.enabled_stoppoint_at_address(pc))
+    {
+        auto& bp = breakpoint_sites_.get_by_address(pc);
+        // 恢复原本的指令内容
+        bp.disable();
+        // 单步执行该指令
+        if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0)
+        {
+            error::send_errno("Could not single step");
+        }
+        int wait_status;
+        if (waitpid(pid_, &wait_status, 0) < 0)
+        {
+            error::send_errno("waitpid failed");
+        }
+        // 重新启用断点
+        bp.enable();
+    }
     if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0)
     {
         error::send_errno("Could not resume");
@@ -160,6 +182,13 @@ ldb::stop_reason ldb::process::wait_on_signal()
     if (is_attached_ && state_ == process_state::stopped)
     {
         read_all_registers();
+        // in3指令的地址
+        auto instr_begin = get_pc() - 1;
+        // 上条指令是int3指令，需要恢复pc，在resume时执行正确的指令
+        if (reason.info == SIGTRAP && breakpoint_sites_.enabled_stoppoint_at_address(instr_begin))
+        {
+            set_pc(instr_begin);
+        }
     }
     return reason;
 }
