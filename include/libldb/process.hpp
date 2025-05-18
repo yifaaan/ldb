@@ -9,6 +9,7 @@
 #include <libldb/breakpoint_site.hpp>
 #include <libldb/registers.hpp>
 #include <libldb/stoppoint_collection.hpp>
+#include <libldb/watchpoint.hpp>
 #include <memory>
 #include <optional>
 
@@ -168,6 +169,33 @@ namespace ldb
         /// @param index 硬件断点索引: dr0-dr3
         void clear_hardware_stoppoint(int index);
 
+        /// @brief 设置硬件监视点
+        /// @param id 监视点 ID
+        /// @param address 地址
+        /// @param mode 触发模式
+        /// @param size 大小
+        /// @return 硬件监视点索引: dr0-dr3
+        int set_watchpoint(watchpoint::id_type id, virt_addr address, stoppoint_mode mode, std::size_t size);
+
+        /// @brief 创建监视点
+        /// @param address 地址
+        /// @param mode 触发模式
+        /// @param size 大小
+        /// @return 监视点
+        watchpoint& create_watchpoint(virt_addr address, stoppoint_mode mode, std::size_t size);
+
+        /// @brief 获取监视点集合
+        stoppoint_collection<watchpoint>& watchpoints()
+        {
+            return watchpoints_;
+        }
+
+        /// @brief 获取监视点集合
+        const stoppoint_collection<watchpoint>& watchpoints() const
+        {
+            return watchpoints_;
+        }
+
     private:
         process(pid_t pid, bool terminate_on_end, bool is_attached, std::optional<int> stdout_replacement = std::nullopt)
             : pid_{pid}
@@ -204,5 +232,8 @@ namespace ldb
 
         /// @brief 内存位置断点集合
         stoppoint_collection<breakpoint_site> breakpoint_sites_;
+
+        /// @brief 监视点集合
+        stoppoint_collection<watchpoint> watchpoints_;
     };
 } // namespace ldb

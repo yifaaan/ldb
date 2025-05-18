@@ -1,4 +1,5 @@
 #include <elf.h>
+#include <fmt/base.h>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 #include <readline/history.h>
@@ -121,6 +122,7 @@ namespace
             step        - Single step the process
             memory      - Commands for operating on memory
             disassemble - Disassemble machine code to assembly
+            watchpoint  - Commands for operating on watchpoints
             )";
         }
         else if (is_prefix(args[1], "register"))
@@ -156,6 +158,16 @@ namespace
             std::cerr << R"(Available commands:
             -a <address>
             -c <n_instructions>
+            )";
+        }
+        else if (is_prefix(args[1], "watchpoint"))
+        {
+            std::cerr << R"(Available commands:
+            list
+            delete <id>
+            enable <id>
+            disable <id>
+            set <address> <write|rw|execute> <size>
             )";
         }
         else
@@ -464,6 +476,141 @@ namespace
         print_disassembly(proc, address, n_instructions);
     }
 
+    void handle_watchpoint_list(ldb::process& proc, std::span<std::string_view> args)
+    {
+        auto stoppoint_mode_to_string = [](ldb::stoppoint_mode mode)
+        {
+            switch (mode)
+            {
+            case ldb::stoppoint_mode::read_write:
+                return "read_write";
+            case ldb::stoppoint_mode::write:
+                return "write";
+            case ldb::stoppoint_mode::execute:
+                return "execute";
+            }
+            return "unknown mode";
+        };
+        if (proc.watchpoints().empty())
+        {
+            fmt::print("No watchpoints set\n");
+        }
+        else
+        {
+            fmt::print("Current watchpoints:\n");
+            proc.watchpoints().for_each(
+            [&](const auto& watchpoint)
+            {
+                fmt::print("{}: address = {:#x}, mode = {}, size = {}, {}\n",
+                           watchpoint.id(),
+                           watchpoint.address().addr(),
+                           stoppoint_mode_to_string(watchpoint.mode()),
+                           watchpoint.size(),
+                           watchpoint.is_enabled() ? "enabled" : "disabled");
+            });
+        }
+    }
+
+    void handle_watchpoint_set(ldb::process& proc, std::span<std::string_view> args)
+    {
+        if (args.size() != 5)
+        {
+            print_help({"help", "watchpoint"});
+            return;
+        }
+        auto address = ldb::to_integral<std::uint64_t>(args[2], 16);
+        auto mode_text = args[3];
+        auto size = ldb::to_integral<std::size_t>(args[4]);
+        if (!address || !size || !(mode_text == "execute" || mode_text == "write" || mode_text == "rw"))
+        {
+            print_help({"help", "watchpoint"});
+            return;
+        }
+        ldb::stoppoint_mode mode;
+        if (mode_text == "execute")
+        {
+            mode = ldb::stoppoint_mode::execute;
+        }
+        else if (mode_text == "write")
+        {
+            mode = ldb::stoppoint_mode::write;
+        }
+        else if (mode_text == "rw")
+        {
+            mode = ldb::stoppoint_mode::read_write;
+        }
+        proc.create_watchpoint(ldb::virt_addr{*address}, mode, *size).enable();
+    }
+
+    void handle_watchpoint_command(ldb::process& proc, std::span<std::string_view> args)
+    {
+        if (args.size() < 2)
+        {
+            print_help({"help", "watchpoint"});
+        }
+        auto command = args[1];
+        if (is_prefix(command, "list"))
+        {
+            handle_watchpoint_list(proc, args);
+            return;
+        }
+        if (is_prefix(command, "set"))
+        {
+            handle_watchpoint_set(proc, args);
+            return;
+        }
+
+        if (args.size() < 3)
+        {
+            print_help({"help", "watchpoint"});
+        }
+        auto id_opt = ldb::to_integral<std::uint64_t>(args[2]);
+        if (!id_opt)
+        {
+            fmt::print(stderr, "Watchpoint command expects watchpoint id in decimal\n");
+            return;
+        }
+        auto id = *id_opt;
+        if (is_prefix(command, "enable"))
+        {
+            try
+            {
+                proc.watchpoints().get_by_id(id).enable();
+            }
+            catch (const ldb::error& err)
+            {
+                fmt::print(stderr, "No such watchpoint: {}\n", id);
+            }
+        }
+        else if (is_prefix(command, "disable"))
+        {
+            try
+            {
+                proc.watchpoints().get_by_id(id).disable();
+            }
+            catch (const ldb::error& err)
+            {
+                fmt::print(stderr, "No such watchpoint: {}\n", id);
+            }
+        }
+        else if (is_prefix(command, "delete"))
+        {
+            try
+            {
+                proc.watchpoints().remove_by_id(id);
+            }
+            catch (const ldb::error& err)
+            {
+                fmt::print(stderr, "No such watchpoint: {}\n", id);
+            }
+        }
+        else
+        {
+            fmt::print(stderr, "Unknown watchpoint command: {}\n", command);
+            print_help({"help", "watchpoint"});
+        }
+    }
+
     std::unique_ptr<ldb::process> attach(int argc, const char** argv)
     {
         pid_t pid = 0;
@@ -516,6 +663,10 @@ namespace
         else if (is_prefix(command, "disassemble"))
         {
             handle_disassemble_command(*proc, args);
+        }
+        else if (is_prefix(command, "watchpoint"))
+        {
+            handle_watchpoint_command(*proc, args);
         }
         else
         {

@@ -393,3 +393,37 @@ TEST_CASE("Hardware breakpoint evades memory checksums", "[breakpoint]")
     proc->wait_on_signal();
     REQUIRE(to_string_view(channel.read()) == "Putting pineapple on pizza...\n");
 }
+
+TEST_CASE("watchpoint detects read", "[watchpoint]")
+{
+    bool close_on_exec = false;
+    auto channel = ldb::pipe{close_on_exec};
+
+    auto proc = process::launch("targets/anti_debugger", true, channel.get_write());
+    channel.close_write();
+
+    proc->resume(); // 将函数地址写入管道，并触发SIGTRAP
+    proc->wait_on_signal();
+    auto func_addr_bytes = channel.read();
+    auto func_addr = from_bytes<std::uint64_t>(func_addr_bytes.data());
+
+    auto& watch = proc->create_watchpoint(virt_addr{func_addr}, stoppoint_mode::read_write, 1);
+    watch.enable();
+
+    proc->resume(); // 在accumulate读取第一个字节时，触发watchpoint
+    proc->wait_on_signal();
+    proc->step_instruction(); // accumulate完整计算checksum
+
+    // 修改func_addr处第一个字节为0xcc
+    auto& soft = proc->create_breakpoint_site(virt_addr{func_addr});
+    soft.enable();
+
+    proc->resume(); // checksum==safe，执行an_innocent_function，触发软断点
+    auto reason = proc->wait_on_signal();
+    REQUIRE(reason.reason == process_state::stopped);
+    REQUIRE(proc->get_pc().addr() == func_addr);
+
+    proc->resume(); // std::puts("Putting pineapple on pizza...")执行完后; 触发42:raisse(SIGRAP)
+    reason = proc->wait_on_signal();
+    REQUIRE(to_string_view(channel.read()) == "Putting pineapple on pizza...\n");
+}
