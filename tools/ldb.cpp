@@ -24,7 +24,15 @@
 
 namespace
 {
+    ldb::process* g_ldb_process = nullptr;
 
+    void handle_sigint(int)
+    {
+        if (g_ldb_process)
+        {
+            kill(g_ldb_process->pid(), SIGSTOP);
+        }
+    }
     std::vector<std::string_view> split(std::string_view str, std::string_view delimiter)
     {
         std::vector<std::string_view> result;
@@ -720,6 +728,14 @@ int main(int argc, const char** argv)
     try
     {
         auto process = attach(argc, argv);
+        if (!process)
+        {
+            fmt::print(stderr, "Failed to attach or launch process.\n");
+            return -1;
+        }
+        g_ldb_process = process.get();
+
+        signal(SIGINT, handle_sigint);
         main_loop(process);
     }
     catch (const ldb::error& err)

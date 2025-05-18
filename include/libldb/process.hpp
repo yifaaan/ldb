@@ -15,6 +15,19 @@
 
 namespace ldb
 {
+    /// @brief 导致SIGTRAP的原因类型
+    enum class trap_type
+    {
+        /// @brief 单步执行
+        single_step,
+        /// @brief 软件断点
+        software_break,
+        /// @brief 硬件断点或监视点
+        hardware_break,
+        /// @brief 未知原因
+        unknown,
+    };
+
     /// @brief 进程状态
     enum class process_state
     {
@@ -29,9 +42,12 @@ namespace ldb
     {
         explicit stop_reason(int wait_status);
 
-        // 进程停止后的状态
+        /// @brief 进程停止后的状态
         process_state reason;
+        /// @brief 信号编号
         uint8_t info;
+        /// @brief 导致SIGTRAP的原因类型
+        std::optional<trap_type> trap_reason;
     };
 
     /// @brief 进程
@@ -214,6 +230,10 @@ namespace ldb
         /// @param size 大小
         /// @return 硬件断点索引: dr0-dr3
         int set_hardware_stoppoint(virt_addr address, stoppoint_mode mode, std::size_t size);
+
+        /// @brief 补充导致进程SIGTRAP停止的原因，即trap_reason成员
+        /// @param reason 进程停止原因
+        void augment_stop_reason(stop_reason& reason);
 
         /// @brief 进程 ID
         pid_t pid_ = 0;

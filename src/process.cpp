@@ -110,6 +110,10 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path, b
     }
     if (pid == 0)
     {
+        if (setpgid(0, 0) < 0)
+        {
+            exit_with_perror(channel, "setpgid failed");
+        }
         // 禁用地址空间布局随机化ASLR,加载基地址在多次运行时会保持一致
         personality(ADDR_NO_RANDOMIZE);
         channel.close_read();
@@ -229,6 +233,8 @@ ldb::stop_reason ldb::process::wait_on_signal()
     if (is_attached_ && state_ == process_state::stopped)
     {
         read_all_registers();
+        // 补充导致SIGTRAP停止的原因
+        augment_stop_reason(reason);
         // in3指令的地址
         auto instr_begin = get_pc() - 1;
         // 上条指令是int3指令，需要恢复pc，在resume时执行正确的指令
@@ -452,4 +458,32 @@ ldb::watchpoint& ldb::process::create_watchpoint(virt_addr address, stoppoint_mo
         error::send("Watchpoint already created at address: " + std::to_string(address.addr()));
     }
     return watchpoints_.push(std::unique_ptr<watchpoint>{new watchpoint{*this, address, mode, size}});
+}
+
+void ldb::process::augment_stop_reason(stop_reason& reason)
+{
+    siginfo_t sig_info_data;
+    // 获取导致SIGTRAP的详细信息
+    if (ptrace(PTRACE_GETSIGINFO, pid_, nullptr, &sig_info_data) < 0)
+    {
+        error::send_errno("Could not get signal information");
+    }
+    if (reason.info == SIGTRAP)
+    {
+        reason.trap_reason = trap_type::unknown;
+        switch (sig_info_data.si_code)
+        {
+        case TRAP_TRACE:
+            reason.trap_reason = trap_type::single_step;
+            break;
+        case SI_KERNEL:
+            reason.trap_reason = trap_type::software_break;
+            break;
+        case TRAP_HWBKPT:
+            reason.trap_reason = trap_type::hardware_break;
+            break;
+        default:
+            break;
+        }
+    }
 }
