@@ -131,4 +131,15 @@ namespace ldb
         T* data_;
         std::size_t size_;
     };
+
+    /// @brief 硬件断点模式，用于设置硬件断点时选择触发条件
+    enum class stoppoint_mode
+    {
+        /// 写入某个地址触发
+        write,
+        /// 读写某个地址触发
+        read_write,
+        /// 执行某个地址触发
+        execute,
+    };
 } // namespace ldb

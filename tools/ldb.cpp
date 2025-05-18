@@ -108,8 +108,6 @@ namespace
         fmt::print("Process {} {}\n", proc.pid(), message);
     }
 
-    
-
     /// @brief 打印帮助信息
     /// @param args 命令参数
     void print_help(const std::vector<std::string_view>& args)
@@ -139,6 +137,7 @@ namespace
             std::cerr << R"(Available commands:
             list
             set <address>
+            set <address> -h
             enable <id>
             disable <id>
             delete <id>
@@ -147,7 +146,8 @@ namespace
         else if (is_prefix(args[1], "memory"))
         {
             std::cerr << R"(Available commands:
-            read <address> [<n_bytes>]
+            read <address>
+            read <address> <n_bytes>
             write <address> <data>
             )";
         }
@@ -185,7 +185,7 @@ namespace
     void handle_stop(ldb::process& proc, ldb::stop_reason reason)
     {
         print_stop_reason(proc, reason);
-        if(reason.reason == ldb::process_state::stopped)
+        if (reason.reason == ldb::process_state::stopped)
         {
             print_disassembly(proc, proc.get_pc(), 5);
         }
@@ -307,6 +307,8 @@ namespace
                 proc.breakpoint_sites().for_each(
                 [](const auto& site)
                 {
+                    if (site.is_internal())
+                        return;
                     fmt::print("{}: address = {:#x}, {}\n", site.id(), site.address().addr(), site.is_enabled() ? "enabled" : "disabled");
                 });
             }
@@ -325,7 +327,21 @@ namespace
                 fmt::print(stderr, "Breakpoint command expects address in hexadecimal, prefixed with 0x\n");
                 return;
             }
-            proc.create_breakpoint_site(ldb::virt_addr{*address}).enable();
+            // 是否是硬件断点
+            // Example: breakpoint set 0x12345678 -h
+            bool is_hardware = false;
+            if (args.size() == 4)
+            {
+                if (args[3] == "-h")
+                {
+                    is_hardware = true;
+                }
+                else
+                {
+                    ldb::error::send("Invalid breakpoint command argument");
+                }
+            }
+            proc.create_breakpoint_site(ldb::virt_addr{*address}, is_hardware, false).enable();
             return;
         }
 

@@ -9,19 +9,64 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <libldb/bit.hpp>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
-#include <libldb/bit.hpp>
 
 namespace
 {
-    // 如果发生错误，则将错误信息写入管道并退出
+    /// 如果发生错误，则将错误信息写入管道并退出
     void exit_with_perror(ldb::pipe& channel, const std::string& prefix)
     {
         auto message = prefix + ": " + std::strerror(errno);
         channel.write(reinterpret_cast<std::byte*>(message.data()), message.size());
         exit(-1);
+    }
+
+    /// 编码硬件断点模式
+    std::uint64_t encode_hardware_stoppoint_mode(ldb::stoppoint_mode mode)
+    {
+        switch (mode)
+        {
+        case ldb::stoppoint_mode::execute:
+            return 0b00;
+        case ldb::stoppoint_mode::write:
+            return 0b01;
+        case ldb::stoppoint_mode::read_write:
+            return 0b11;
+        default:
+            ldb::error::send("Invalid stoppoint mode");
+        }
+    }
+
+    // 编码硬件断点大小
+    std::uint64_t encode_hardware_stoppoint_size(std::size_t size)
+    {
+        switch (size)
+        {
+        case 1:
+            return 0b00;
+        case 2:
+            return 0b01;
+        case 8:
+            return 0b10;
+        case 4:
+            return 0b11;
+        default:
+            ldb::error::send("Invalid stoppoint size");
+        }
+    }
+
+    /// 找到空闲的调试寄存器编号0-3
+    int find_free_stoppoint_register(std::uint64_t dr7)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            if ((dr7 & (std::uint64_t{0b11} << (i * 2))) == 0)
+                return i;
+        }
+        ldb::error::send("No free stoppoint register");
     }
 } // namespace
 
@@ -247,13 +292,13 @@ void ldb::process::write_gprs(const user_regs_struct& gprs)
     }
 }
 
-ldb::breakpoint_site& ldb::process::create_breakpoint_site(virt_addr address)
+ldb::breakpoint_site& ldb::process::create_breakpoint_site(virt_addr address, bool is_hardware, bool is_internal)
 {
     if (breakpoint_sites_.contains_address(address))
     {
         error::send("Breakpoint site already created at address: " + std::to_string(address.addr()));
     }
-    return breakpoint_sites_.push(std::unique_ptr<breakpoint_site>{new breakpoint_site{*this, address}});
+    return breakpoint_sites_.push(std::unique_ptr<breakpoint_site>{new breakpoint_site{*this, address, is_hardware, is_internal}});
 }
 
 ldb::stop_reason ldb::process::step_instruction()
@@ -306,7 +351,8 @@ std::vector<std::byte> ldb::process::read_memory_without_traps(virt_addr address
     auto sites = breakpoint_sites_.get_in_region(address, address + size);
     for (auto site : sites)
     {
-        if (!site->is_enabled())
+        // 硬件断点并未替换int3指令
+        if (!site->is_enabled() || !site->is_hardware())
         {
             continue;
         }
@@ -341,4 +387,55 @@ void ldb::process::write_memory(virt_addr address, span<const std::byte> data)
         }
         written += 8;
     }
+}
+
+int ldb::process::set_hardware_stoppoint(virt_addr address, stoppoint_mode mode, std::size_t size)
+{
+    auto& regs = get_registers();
+    auto dr7 = regs.read_by_id_as<std::uint64_t>(register_id::dr7);
+    // 找到空闲的调试寄存器编号0-3
+    int free_space = find_free_stoppoint_register(dr7);
+    auto id = static_cast<int>(register_id::dr0) + free_space;
+    // 设置触发地址, 写入drx寄存器
+    regs.write_by_id(static_cast<register_id>(id), address.addr());
+
+    // 00b: stoppoint_mode::execute
+    // 01b: stoppoint_mode::write
+    // 11b: stoppoint_mode::read_write
+    auto mode_flag = encode_hardware_stoppoint_mode(mode);
+
+    // 00b: size:1 字节
+    // 01b: size:2 字节
+    // 10b: size:8 字节
+    // 11b: size:4 字节，对于执行断点，大小必须设为 1 字节（00b）
+    auto size_flag = encode_hardware_stoppoint_size(size);
+
+    // 计算启用位、模式位和大小位
+    auto enable_bits = (std::uint64_t{1} << (free_space * 2));
+    auto mode_bits = (mode_flag << (free_space * 4 + 16));
+    auto size_bits = (size_flag << (free_space * 2 + 18));
+
+    // 清除旧的位
+    auto clear_mask = (std::uint64_t{0b11} << (free_space * 2)) | (std::uint64_t{0b1111} << (free_space * 4 + 16));
+    dr7 &= ~clear_mask;
+    dr7 |= enable_bits | mode_bits | size_bits;
+    regs.write_by_id(register_id::dr7, dr7);
+    return free_space;
+}
+
+int ldb::process::set_hardware_breakpoint(breakpoint_site::id_type id, virt_addr address)
+{
+    return set_hardware_stoppoint(address, stoppoint_mode::execute, 1);
+}
+
+void ldb::process::clear_hardware_stoppoint(int index)
+{
+    // 清除drx中的地址
+    auto dr0_3 = static_cast<register_id>(static_cast<int>(register_id::dr0) + index);
+    get_registers().write_by_id(dr0_3, std::uint64_t{0});
+    // 清除dr7中的相关位
+    auto dr7 = get_registers().read_by_id_as<std::uint64_t>(register_id::dr7);
+    auto clear_mask = (std::uint64_t{0b11} << (index * 2)) | (std::uint64_t{0b1111} << (index * 4 + 16));
+    dr7 &= ~clear_mask;
+    get_registers().write_by_id(register_id::dr7, dr7);
 }

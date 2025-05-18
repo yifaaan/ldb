@@ -241,115 +241,31 @@ Section Headers:
        0000000000000107  0000000000000000  AX       0     0     16
 ```
 
-If the file offset and file ad-
-dresses of the .text are different for your executable, you’ll need to subtract the file offset from the file address to calculate the section load bias for that section, then subtract this load bias from the file address of the call
-instruction to calculate where that instruction lives inside the ELF file.
 
 
-
-#### Address
-
-symbol table gives us a function’s address information in the form of file addresses.
-
-```
-section_load_bias = fileaddr - offset
-offset_call = fileaddr_call - section_load_bias
-                   mem                      ELF
-                |       |               |       |
-    load bias   |       |         offset|  .text|
-                |       |               |       |
-      fileaddr  |       |               |       |
-                |       |               |       |
-                |       |               |       |
-                |       |               |       |
-```
-
-
-   555555555000-555555556000 r-xp 00001000 08:20 203814    # .text section
-虚拟地址 = RVA + 加载基址 - 节偏移
-= 0x115b + 0x555555555000 - 0x1000
-为什么这样计算：
-从 /proc/pid/maps 可以看到:
-0x555555555000 是代码段（.text）的加载基址
-0x1000 是文件偏移（第三列）
-objdump 显示的地址 0x115b:
-这是相对虚拟地址（RVA）
-是相对于节的开始位置的偏移
-
-计算过程:
-要得到实际的虚拟地址，需要：
-从加载基址开始（0x555555555000）
-加上指令的 RVA（0x115b）
-减去节的文件偏移（0x1000）
-这样就能得到指令在内存中的真实地址
-
-为什么要减去 0x1000:
-因为 objdump 显示的地址包含了节偏移
-而加载基址已经考虑了这个偏移
-如果不减去，就会重复计算这个偏移
-
-
-### ELF Address
-
-objdump -s test/targets/hello_ldb结果中的指令地址 = 其所属段基地址(p_vaddr) + 指令在段内的偏移量
-
-```asm
-.text:
-...
-0000000000001149 <main>:
-#include <cstdio>
-
-    1149:       f3 0f 1e fa             endbr64
-    114d:       55                      push   %rbp
-    114e:       48 89 e5                mov    %rsp,%rbp
-    1151:       48 8d 05 ac 0e 00 00    lea    0xeac(%rip),%rax        # 2004 <_IO_stdin_used+0x4>
-    1158:       48 89 c7                mov    %rax,%rdi
-    115b:       e8 f0 fe ff ff          call   1050 <puts@plt>
-    1160:       b8 00 00 00 00          mov    $0x0,%eax
-    1165:       5d                      pop    %rbp
-    1166:       c3  
-```
-
-#### 段基地址(p_vaddr)：
-
-- 在ELF文件的程序头表(Program Header Table)中定义
-- 表示该段预期被加载到内存中的虚拟起始地址
-- 可通过readelf -l命令查看
-#### 反汇编中的指令地址：
-
-- 通过objdump -d或其他反汇编工具显示
-- 这些地址是链接器为指令分配的虚拟内存地址
-- 已经包含了段基地址的偏移计算
-
-#### 相对偏移量计算
-
-要获取指令在段内的相对偏移量：偏移量 = 指令地址 - 段基地址(p_vaddr)
-这个偏移量在文件中是固定的，不会随运行时重定位而改变
-示例
-假设一个可执行文件中：
-
-包含代码的LOAD段p_vaddr = 0x400000
-objdump显示某函数起始地址为0x401240
-则：
-
-获取实际加载基址：
-- 非PIE可执行文件：ELF文件中的地址即运行时地址
-- PIE可执行文件：需通过进程映射获取随机化基址
-
-该函数在段内的偏移量为: 0x401240 - 0x400000 = 0x1240
-如果运行时该段被加载到0x7ff000000000，则函数的实际内存地址为: 0x7ff000000000 + 0x1240 = 0x7ff000001240
-不同可执行文件类型区别
-- 标准可执行文件：p_vaddr通常是较高的固定地址（如0x400000）
-- PIE可执行文件：p_vaddr通常很小（甚至为0），主要依赖运行时重定位
-- 共享库(.so)：类似PIE，使用相对地址，在运行时动态重定位
-
-
-## Hardware breakpoint
+# Hardware breakpoint
 
 x86架构提供4个调试寄存器（DR0到DR3）用于设置硬件断点
 这意味着同一时间最多只能设置4个硬件断点
 
-### Debug Registers
+x64 上的调试寄存器（Debug Registers, DR）共有 16 个，命名为 DR0–DR15，作用如下：
+- DR0–DR3：最多 4 个硬件断点/监视点的地址。
+- DR4, DR5：已废弃（分别是 DR6、DR7 的别名）。
+- DR6：调试状态寄存器。
+- DR7：调试控制寄存器。
+    - 0–7 位：每两位控制一个断点的启用状态
+        - 偶数位：Local（进程级）
+        - 奇数位：Global（系统级，但 Linux 上与 Local 行为相同）
+    - 16–17、20–21、24–25、28–29 位：4 组条件码，决定“执行/写/读写/IO”哪种行为触发
+        - 00b：仅当指令被执行触发（硬件断点）
+        - 01b：仅数据写入触发
+        - 10b：I/O 读写触发（基本用不到）
+        - 11b：数据读或写触发
+    - 18–19、22–23、26–27、30–31 位：4 组大小码，决定监视点监视的字节数。
+        - 00b：1 字节 01b：2 字节 10b：8 字节 11b：4 字节，对于执行断点，大小必须设为 1 字节（00b）
+- DR8–DR15：保留给处理器内部使用。
+
+
 DR6的低4位（0-3位）分别对应DR0-DR3：
 
 位  3   2   1   0

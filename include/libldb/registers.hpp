@@ -61,7 +61,7 @@ namespace ldb
         /// @param v 寄存器值
         template <typename T>
             requires std::is_convertible_v<T, value>
-        void write_by_id_as(register_id id, T v)
+        void write_by_id(register_id id, T v)
         {
             write(register_info_by_id(id), v);
         }
