@@ -212,6 +212,10 @@ namespace ldb
             return watchpoints_;
         }
 
+        /// @brief 获取当前硬件停止点（断点或监视点）
+        /// @return 硬件停止点ID
+        std::variant<breakpoint_site::id_type, watchpoint::id_type> get_current_hardware_stoppoint() const;
+
     private:
         process(pid_t pid, bool terminate_on_end, bool is_attached, std::optional<int> stdout_replacement = std::nullopt)
             : pid_{pid}

@@ -1,12 +1,13 @@
 #include <libldb/process.hpp>
 #include <libldb/watchpoint.hpp>
+#include <utility>
 
 namespace
 {
     auto get_next_id()
     {
         static ldb::watchpoint::id_type next_id = 0;
-        return next_id++;
+        return ++next_id;
     }
 } // namespace
 
@@ -23,6 +24,7 @@ ldb::watchpoint::watchpoint(process& process, virt_addr address, stoppoint_mode 
     {
         throw std::invalid_argument("Watchpoint address must be aligned to size");
     }
+    update_data();
 }
 
 void ldb::watchpoint::enable()
@@ -44,4 +46,20 @@ void ldb::watchpoint::disable()
     process_->clear_hardware_stoppoint(hardware_register_index_);
     hardware_register_index_ = -1;
     is_enabled_ = false;
+}
+
+void ldb::watchpoint::update_data()
+{
+    std::uint64_t current_value = 0;
+    // 从监视点地址读取size_字节的数据
+    auto bytes_read = process_->read_memory(address_, size_);
+    if (bytes_read.size() >= size_)
+    {
+        std::memcpy(&current_value, bytes_read.data(), size_);
+    }
+    else
+    {
+        // TODO: 读取失败
+    }
+    previous_data_ = std::exchange(data_, current_value);
 }

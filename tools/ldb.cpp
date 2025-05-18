@@ -92,6 +92,56 @@ namespace
         ldb::error::send("Invalid format");
     }
 
+    std::string get_sigtrap_info(const ldb::process& proc, ldb::stop_reason reason)
+    {
+        if (!reason.trap_reason)
+        {
+            return " (unknown SIGTRAP reason)";
+        }
+        if (reason.trap_reason == ldb::trap_type::software_break)
+        {
+            try
+            {
+                // 软件断点在wait_on_signal里面已经恢复了pc，所以这里可以获取到
+                auto& site = proc.breakpoint_sites().get_by_address(proc.get_pc());
+                return fmt::format(" (breakpoint id {})", site.id());
+            }
+            catch (const std::out_of_range& err)
+            {
+                return " (breakpoint not found)";
+            }
+        }
+        else if (reason.trap_reason == ldb::trap_type::hardware_break)
+        {
+            auto id_variant = proc.get_current_hardware_stoppoint();
+            if (id_variant.index() == 0)
+            {
+                return fmt::format(" (hardwarebreakpoint id {})", std::get<0>(id_variant));
+            }
+            else
+            {
+                std::string message;
+                auto& watchpoint = proc.watchpoints().get_by_id(std::get<1>(id_variant));
+                message += fmt::format(" (watchpoint id {})", watchpoint.id());
+                if (watchpoint.data() == watchpoint.previous_data())
+                {
+                    message += fmt::format("\nValue: {:#x}", watchpoint.data());
+                }
+                else
+                {
+                    message += fmt::format("\nOld value: {:#x}", watchpoint.previous_data());
+                    message += fmt::format("\nNew value: {:#x}", watchpoint.data());
+                }
+                return message;
+            }
+        }
+        else if (reason.trap_reason == ldb::trap_type::single_step)
+        {
+            return " (single step)";
+        }
+        return "";
+    }
+
     /// @brief 打印进程停止原因
     /// @param proc 进程
     /// @param reason 停止原因
@@ -109,6 +159,11 @@ namespace
             break;
         case ldb::process_state::stopped:
             message = fmt::format("Stopped with signal {} at {:#x}", sigabbrev_np(reason.info), proc.get_pc().addr());
+            if (reason.info == SIGTRAP)
+            {
+                // 获取更详细的SIGTRAP信息
+                message += get_sigtrap_info(proc, reason);
+            }
             break;
         default:
             std::cout << "Unknown stop reason";

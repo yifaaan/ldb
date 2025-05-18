@@ -240,7 +240,33 @@ ldb::stop_reason ldb::process::wait_on_signal()
         // 上条指令是int3指令，需要恢复pc，在resume时执行正确的指令
         if (reason.info == SIGTRAP && breakpoint_sites_.enabled_stoppoint_at_address(instr_begin))
         {
-            set_pc(instr_begin);
+            if (reason.trap_reason)
+            {
+                switch (*reason.trap_reason)
+                {
+                case trap_type::software_break:
+                    {
+                        if (breakpoint_sites_.enabled_stoppoint_at_address(instr_begin))
+                        {
+                            set_pc(instr_begin);
+                        }
+                        break;
+                    }
+                case trap_type::hardware_break:
+                    {
+                        auto id_variant = get_current_hardware_stoppoint();
+                        if (id_variant.index() == 1)
+                        {
+                            watchpoints_.get_by_id(std::get<1>(id_variant)).update_data();
+                        }
+                        break;
+                    }
+                case trap_type::single_step:
+                    break;
+                case trap_type::unknown:
+                    break;
+                }
+            }
         }
     }
     return reason;
@@ -486,4 +512,28 @@ void ldb::process::augment_stop_reason(stop_reason& reason)
             break;
         }
     }
+}
+
+std::variant<ldb::breakpoint_site::id_type, ldb::watchpoint::id_type> ldb::process::get_current_hardware_stoppoint() const
+{
+    auto& regs = get_registers();
+    auto dr6 = regs.read_by_id_as<std::uint64_t>(register_id::dr6);
+    auto hit_drx_index = __builtin_ctzll(dr6);
+    auto drx_id = static_cast<register_id>(static_cast<int>(register_id::dr0) + hit_drx_index);
+    // 读取断点的地址
+    auto stop_address = regs.read_by_id_as<std::uint64_t>(drx_id);
+
+    using return_type = std::variant<breakpoint_site::id_type, watchpoint::id_type>;
+    if (breakpoint_sites_.contains_address(virt_addr{stop_address}))
+    {
+        auto site_id = breakpoint_sites_.get_by_address(virt_addr{stop_address}).id();
+        return return_type{std::in_place_index<0>, site_id};
+    }
+    else if (watchpoints_.contains_address(virt_addr{stop_address}))
+    {
+        auto watch_id = watchpoints_.get_by_address(virt_addr{stop_address}).id();
+        return return_type{std::in_place_index<1>, watch_id};
+    }
+    auto watch_id = watchpoints_.get_by_address(virt_addr{stop_address}).id();
+    return return_type{std::in_place_index<1>, watch_id};
 }
