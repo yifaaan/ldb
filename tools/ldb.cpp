@@ -18,6 +18,7 @@
 #include <libldb/parse.hpp>
 #include <libldb/process.hpp>
 #include <libldb/syscalls.hpp>
+#include <libldb/target.hpp>
 #include <ranges>
 #include <string_view>
 #include <type_traits>
@@ -159,10 +160,27 @@ namespace
         return "";
     }
 
+    std::string get_signal_stop_reason(const ldb::target& target, ldb::stop_reason reason)
+    {
+        auto& proc = target.get_process();
+        std::string message = fmt::format("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), proc.get_pc().addr());
+        // 获取pc所在的符号
+        auto opt_symbol = target.get_elf().get_symbol_containing_address(proc.get_pc());
+        if (opt_symbol && ELF64_ST_TYPE(opt_symbol.value()->st_info) == STT_FUNC)
+        {
+            message += fmt::format(" ({})", target.get_elf().get_string(opt_symbol.value()->st_name));
+        }
+        if (reason.info == SIGTRAP)
+        {
+            message += get_sigtrap_info(proc, reason);
+        }
+        return message;
+    }
+
     /// @brief 打印进程停止原因
     /// @param proc 进程
     /// @param reason 停止原因
-    void print_stop_reason(const ldb::process& proc, ldb::stop_reason reason)
+    void print_stop_reason(const ldb::target& target, ldb::stop_reason reason)
     {
         std::string message;
         // waitpid之后，进程所处状态
@@ -175,18 +193,13 @@ namespace
             message = fmt::format("Terminated with signal {}", sigabbrev_np(reason.info));
             break;
         case ldb::process_state::stopped:
-            message = fmt::format("Stopped with signal {} at {:#x}", sigabbrev_np(reason.info), proc.get_pc().addr());
-            if (reason.info == SIGTRAP)
-            {
-                // 获取更详细的SIGTRAP信息
-                message += get_sigtrap_info(proc, reason);
-            }
+            message = get_signal_stop_reason(target, reason);
             break;
         default:
             std::cout << "Unknown stop reason";
             break;
         }
-        fmt::print("Process {} {}\n", proc.pid(), message);
+        fmt::print("Process {} {}\n", target.get_process().pid(), message);
     }
 
     /// @brief 打印帮助信息
@@ -283,12 +296,12 @@ namespace
     /// @brief 处理进程停止
     /// @param proc 进程
     /// @param reason 停止原因
-    void handle_stop(ldb::process& proc, ldb::stop_reason reason)
+    void handle_stop(ldb::target& target, ldb::stop_reason reason)
     {
-        print_stop_reason(proc, reason);
+        print_stop_reason(target, reason);
         if (reason.reason == ldb::process_state::stopped)
         {
-            print_disassembly(proc, proc.get_pc(), 5);
+            print_disassembly(target.get_process(), target.get_process().get_pc(), 5);
         }
     }
 
@@ -736,27 +749,28 @@ namespace
         }
     }
 
-    std::unique_ptr<ldb::process> attach(int argc, const char** argv)
+    std::unique_ptr<ldb::target> attach(int argc, const char** argv)
     {
         pid_t pid = 0;
         if (argc == 3 && argv[1] == std::string_view{"-p"})
         {
             pid = std::atoi(argv[2]);
-            return ldb::process::attach(pid);
+            return ldb::target::attach(pid);
         }
         else
         {
             auto program_path = argv[1];
-            auto proc = ldb::process::launch(program_path);
-            fmt::print("Launched process with pid {}\n", proc->pid());
-            return proc;
+            auto target = ldb::target::launch(program_path);
+            fmt::print("Launched process with pid {}\n", target->get_process().pid());
+            return target;
         }
     }
 
-    void handle_command(std::unique_ptr<ldb::process>& proc, std::string_view line)
+    void handle_command(std::unique_ptr<ldb::target>& target, std::string_view line)
     {
         auto args = split(line, " ");
         auto command = args[0];
+        auto proc = &target->get_process();
         if (is_prefix(command, "help"))
         {
             print_help(args);
@@ -766,7 +780,7 @@ namespace
 
             proc->resume();
             auto reason = proc->wait_on_signal();
-            handle_stop(*proc, reason);
+            handle_stop(*target, reason);
         }
         else if (is_prefix(command, "register"))
         {
@@ -779,7 +793,7 @@ namespace
         else if (is_prefix(command, "step"))
         {
             auto reason = proc->step_instruction();
-            handle_stop(*proc, reason);
+            handle_stop(*target, reason);
         }
         else if (is_prefix(command, "memory"))
         {
@@ -803,7 +817,7 @@ namespace
         }
     }
 
-    void main_loop(std::unique_ptr<ldb::process>& proc)
+    void main_loop(std::unique_ptr<ldb::target>& target)
     {
         char* line = nullptr;
         while ((line = readline("ldb> ")) != nullptr)
@@ -828,7 +842,7 @@ namespace
             {
                 try
                 {
-                    handle_command(proc, line_str);
+                    handle_command(target, line_str);
                 }
                 catch (const ldb::error& err)
                 {
@@ -848,16 +862,16 @@ int main(int argc, const char** argv)
     }
     try
     {
-        auto process = attach(argc, argv);
-        if (!process)
+        auto target = attach(argc, argv);
+        if (!target)
         {
             fmt::print(stderr, "Failed to attach or launch process.\n");
             return -1;
         }
-        g_ldb_process = process.get();
+        g_ldb_process = &target->get_process();
 
         signal(SIGINT, handle_sigint);
-        main_loop(process);
+        main_loop(target);
     }
     catch (const ldb::error& err)
     {
