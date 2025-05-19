@@ -254,7 +254,7 @@ ldb::stop_reason ldb::process::wait_on_signal()
         // in3指令的地址
         auto instr_begin = get_pc() - 1;
         // 上条指令是int3指令，需要恢复pc，在resume时执行正确的指令
-        if (reason.info == SIGTRAP && breakpoint_sites_.enabled_stoppoint_at_address(instr_begin))
+        if (reason.info == SIGTRAP)
         {
             if (reason.trap_reason)
             {

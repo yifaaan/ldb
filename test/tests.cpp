@@ -1,4 +1,5 @@
 #include <elf.h>
+#include <fcntl.h>
 #include <fmt/format.h>
 
 #include <catch2/catch_test_macros.hpp>
@@ -438,4 +439,35 @@ TEST_CASE("syscall mapping works", "[syscall]")
     REQUIRE(syscall_id_to_name(4) == "stat");
     REQUIRE(syscall_id_to_name(5) == "fstat");
     REQUIRE(syscall_id_to_name(62) == "kill");
+}
+
+TEST_CASE("Syscall catchpoint works", "[catchpoint]")
+{
+    auto dev_null_fd = ::open("/dev/null", O_WRONLY);
+    auto proc = process::launch("targets/anti_debugger", true, dev_null_fd);
+    auto write_syscall_id = syscall_name_to_id("write");
+    auto policy = syscall_catch_policy::catch_some({write_syscall_id});
+    proc->set_syscall_catch_policy(policy);
+
+    proc->resume(); // 在write(STDOUT_FILENO, &func_ptr, sizeof(void*));TRAP
+    auto reason = proc->wait_on_signal();
+    REQUIRE(reason.reason == process_state::stopped);
+    REQUIRE(reason.info == SIGTRAP); // 注意：启用 TRACESYSGOOD 后，这里应该是 SIGTRAP | 0x80，
+                                     // 但 augment_stop_reason 将其改回了 SIGTRAP。
+    REQUIRE(reason.trap_reason.has_value());
+    REQUIRE(reason.trap_reason.value() == trap_type::syscall);
+    REQUIRE(reason.syscall_info.has_value());
+    REQUIRE(reason.syscall_info->id == write_syscall_id);
+    REQUIRE(reason.syscall_info->entry);
+
+    proc->resume(); // 从系统调用进入点恢复执行，期望在同一个 write 系统调用退出时停止
+    reason = proc->wait_on_signal();
+    REQUIRE(reason.reason == process_state::stopped);
+    REQUIRE(reason.info == SIGTRAP);
+    REQUIRE(reason.trap_reason.has_value());
+    REQUIRE(reason.trap_reason.value() == trap_type::syscall);
+    REQUIRE(reason.syscall_info.has_value());
+    REQUIRE(reason.syscall_info->id == write_syscall_id);
+    REQUIRE_FALSE(reason.syscall_info->entry);
+    close(dev_null_fd);
 }
