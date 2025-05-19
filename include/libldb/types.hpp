@@ -128,8 +128,8 @@ namespace ldb
         }
 
     private:
-        T* data_;
-        std::size_t size_;
+        T* data_ = nullptr;
+        std::size_t size_ = 0;
     };
 
     /// @brief 硬件断点模式，用于设置硬件断点时选择触发条件
