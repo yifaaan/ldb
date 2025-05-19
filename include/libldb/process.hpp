@@ -12,6 +12,7 @@
 #include <libldb/watchpoint.hpp>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 
 namespace ldb
 {
@@ -297,6 +298,10 @@ namespace ldb
         {
             syscall_catch_policy_ = std::move(policy);
         }
+
+        /// @brief 获取辅助向量
+        /// @return 辅助向量
+        std::unordered_map<int, std::uint64_t> get_auxv() const;
 
     private:
         process(pid_t pid, bool terminate_on_end, bool is_attached, std::optional<int> stdout_replacement = std::nullopt)

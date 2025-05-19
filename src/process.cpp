@@ -1,4 +1,5 @@
 
+#include <elf.h>
 #include <sys/personality.h>
 #include <sys/ptrace.h>
 #include <sys/types.h>
@@ -9,6 +10,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <libldb/bit.hpp>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
@@ -604,4 +606,26 @@ ldb::stop_reason ldb::process::maybe_resume_from_syscall(const stop_reason& reas
         }
     }
     return reason;
+}
+
+std::unordered_map<int, std::uint64_t> ldb::process::get_auxv() const
+{
+    std::unordered_map<int, std::uint64_t> auxv;
+    std::ifstream auxv_file{"/proc/" + std::to_string(pid_) + "/auxv", std::ios::binary};
+    if (!auxv_file)
+    {
+        error::send_errno("Could not open auxv file");
+    }
+    auto read_from_stream = [&](auto& destination)
+    {
+        auxv_file.read(reinterpret_cast<char*>(&destination), sizeof(destination));
+        return auxv_file.good();
+    };
+    std::uint64_t key, value;
+    for (read_from_stream(key); key != AT_NULL; read_from_stream(key))
+    {
+        read_from_stream(value);
+        auxv.emplace(key, value);
+    }
+    return auxv;
 }
