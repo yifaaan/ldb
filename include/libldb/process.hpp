@@ -15,6 +15,77 @@
 
 namespace ldb
 {
+    class syscall_catch_policy
+    {
+    public:
+        enum mode
+        {
+            /// @brief 不捕获
+            none,
+            /// @brief 捕获部分系统调用
+            some,
+            /// @brief 捕获所有系统调用
+            all,
+        };
+
+        /// @brief 不捕获
+        /// @return 捕获策略
+        static syscall_catch_policy catch_none()
+        {
+            return {mode::none, {}};
+        }
+
+        /// @brief 捕获部分系统调用
+        /// @param to_catch 系统调用编号
+        /// @return 捕获策略
+        static syscall_catch_policy catch_some(std::vector<int> to_catch)
+        {
+            return {mode::some, std::move(to_catch)};
+        }
+
+        /// @brief 捕获所有系统调用
+        /// @return 捕获策略
+        static syscall_catch_policy catch_all()
+        {
+            return {mode::all, {}};
+        }
+
+        /// @brief 捕获的系统调用编号
+        const std::vector<int>& get_to_catch() const
+        {
+            return to_catch_;
+        }
+
+    private:
+        friend process;
+        syscall_catch_policy(mode m, std::vector<int> to_catch)
+            : mode_{m}
+            , to_catch_{std::move(to_catch)}
+        {
+        }
+
+        /// @brief 捕获模式
+        mode mode_ = mode::none;
+        /// @brief 捕获的系统调用编号
+        std::vector<int> to_catch_;
+    };
+
+    /// @brief 系统调用信息
+    struct syscall_information
+    {
+        /// @brief 系统调用编号
+        std::uint16_t id;
+        /// @brief 停止事件是由于进入系统调用还是退出系统调用引起的
+        bool entry;
+        union
+        {
+            /// @brief 系统调用参数
+            std::array<std::uint64_t, 6> args;
+            /// @brief 系统调用返回值
+            std::uint64_t ret;
+        };
+    };
+
     /// @brief 导致SIGTRAP的原因类型
     enum class trap_type
     {
@@ -24,6 +95,8 @@ namespace ldb
         software_break,
         /// @brief 硬件断点或监视点
         hardware_break,
+        /// @brief 系统调用
+        syscall,
         /// @brief 未知原因
         unknown,
     };
@@ -48,6 +121,8 @@ namespace ldb
         uint8_t info;
         /// @brief 导致SIGTRAP的原因类型
         std::optional<trap_type> trap_reason;
+        /// @brief 系统调用信息
+        std::optional<syscall_information> syscall_info;
     };
 
     /// @brief 进程
@@ -216,6 +291,13 @@ namespace ldb
         /// @return 硬件停止点ID
         std::variant<breakpoint_site::id_type, watchpoint::id_type> get_current_hardware_stoppoint() const;
 
+        /// @brief 设置系统调用捕获策略
+        /// @param policy 捕获策略
+        void set_syscall_catch_policy(syscall_catch_policy policy)
+        {
+            syscall_catch_policy_ = std::move(policy);
+        }
+
     private:
         process(pid_t pid, bool terminate_on_end, bool is_attached, std::optional<int> stdout_replacement = std::nullopt)
             : pid_{pid}
@@ -239,6 +321,11 @@ namespace ldb
         /// @param reason 进程停止原因
         void augment_stop_reason(stop_reason& reason);
 
+        /// @brief 当前停止的系统调用不是用户请求追踪的那个，需要恢复执行
+        /// @param reason 进程停止原因
+        /// @return 进程停止原因
+        stop_reason maybe_resume_from_syscall(const stop_reason& reason);
+
         /// @brief 进程 ID
         pid_t pid_ = 0;
 
@@ -259,5 +346,11 @@ namespace ldb
 
         /// @brief 监视点集合
         stoppoint_collection<watchpoint> watchpoints_;
+
+        /// @brief 系统调用捕获策略
+        syscall_catch_policy syscall_catch_policy_ = syscall_catch_policy::catch_none();
+
+        /// @brief 因为系统调用进入还是退出而停止的
+        bool expecting_syscall_exit_ = false;
     };
 } // namespace ldb

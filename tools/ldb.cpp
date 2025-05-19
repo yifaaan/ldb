@@ -17,6 +17,7 @@
 #include <libldb/libldb.hpp>
 #include <libldb/parse.hpp>
 #include <libldb/process.hpp>
+#include <libldb/syscalls.hpp>
 #include <ranges>
 #include <string_view>
 #include <type_traits>
@@ -139,6 +140,22 @@ namespace
         {
             return " (single step)";
         }
+        else if (reason.trap_reason == ldb::trap_type::syscall)
+        {
+            const auto& info = *reason.syscall_info;
+            std::string message = " ";
+            if (info.entry)
+            {
+                message += "(syscall entry)\n";
+                message += fmt::format("syscall : {}({:#x})", ldb::syscall_id_to_name(info.id), fmt::join(info.args, ", "));
+            }
+            else
+            {
+                message += "(syscall exit)\n";
+                message += fmt::format("syscall {} returned: {:#x} ({})", ldb::syscall_id_to_name(info.id), info.ret, info.ret);
+            }
+            return message;
+        }
         return "";
     }
 
@@ -186,6 +203,7 @@ namespace
             memory      - Commands for operating on memory
             disassemble - Disassemble machine code to assembly
             watchpoint  - Commands for operating on watchpoints
+            catchpoint  - Commands for operating on catchpoints
             )";
         }
         else if (is_prefix(args[1], "register"))
@@ -231,6 +249,14 @@ namespace
             enable <id>
             disable <id>
             set <address> <write|rw|execute> <size>
+            )";
+        }
+        else if (is_prefix(args[1], "catchpoint"))
+        {
+            std::cerr << R"(Available commands:
+            syscall
+            syscall none
+            syscall <list of syscall ids or names>
             )";
         }
         else
@@ -674,6 +700,42 @@ namespace
         }
     }
 
+    void handle_syscall_catchpoint_command(ldb::process& proc, std::span<std::string_view> args)
+    {
+        auto policy = ldb::syscall_catch_policy::catch_all();
+        if (args.size() == 3 && args[2] == "none")
+        {
+            policy = ldb::syscall_catch_policy::catch_none();
+        }
+        else if (args.size() >= 3)
+        {
+            auto syscall_ids = split(args[2], ",");
+            std::vector<int> to_catch;
+            to_catch.reserve(syscall_ids.size());
+            std::ranges::transform(syscall_ids,
+                                   std::back_inserter(to_catch),
+                                   [](auto sv)
+                                   {
+                                       return std::isdigit(sv[0]) ? ldb::to_integral<int>(sv).value() : ldb::syscall_name_to_id(sv);
+                                   });
+            policy = ldb::syscall_catch_policy::catch_some(std::move(to_catch));
+        }
+        proc.set_syscall_catch_policy(std::move(policy));
+    }
+
+    void handle_catchpoint_command(ldb::process& proc, std::span<std::string_view> args)
+    {
+        if (args.size() < 2)
+        {
+            print_help({"help", "catchpoint"});
+            return;
+        }
+        if (is_prefix(args[1], "syscall"))
+        {
+            handle_syscall_catchpoint_command(proc, args);
+        }
+    }
+
     std::unique_ptr<ldb::process> attach(int argc, const char** argv)
     {
         pid_t pid = 0;
@@ -730,6 +792,10 @@ namespace
         else if (is_prefix(command, "watchpoint"))
         {
             handle_watchpoint_command(*proc, args);
+        }
+        else if (is_prefix(command, "catchpoint"))
+        {
+            handle_catchpoint_command(*proc, args);
         }
         else
         {

@@ -68,6 +68,18 @@ namespace
         }
         ldb::error::send("No free stoppoint register");
     }
+
+    /// 设置ptrace选项: 跟踪系统调用
+    /// 如果一个 SIGTRAP 是因为系统调用进入或退出而产生的，那么内核传递给 waitpid 的状态信息，
+    /// 在通过 WSTOPSIG(status) 提取信号时，将不再仅仅是 SIGTRAP，而是
+    /// SIGTRAP | 0x80。
+    void set_ptrace_options(pid_t pid)
+    {
+        if (ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACESYSGOOD) < 0)
+        {
+            ldb::error::send_errno("Could not set ptrace options: TRACESYSGOOD");
+        }
+    }
 } // namespace
 
 ldb::stop_reason::stop_reason(int wait_status)
@@ -147,6 +159,7 @@ std::unique_ptr<ldb::process> ldb::process::launch(std::filesystem::path path, b
     if (debug)
     {
         proc->wait_on_signal();
+        set_ptrace_options(pid);
     }
     return proc;
 }
@@ -163,6 +176,7 @@ std::unique_ptr<ldb::process> ldb::process::attach(pid_t pid)
     }
     std::unique_ptr<process> proc{new process{pid, /*terminate_on_end*/ false, /*is_attached*/ true}};
     proc->wait_on_signal();
+    set_ptrace_options(pid);
     return proc;
 }
 
@@ -212,7 +226,9 @@ void ldb::process::resume()
         // 重新启用断点
         bp.enable();
     }
-    if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0)
+    auto request = (syscall_catch_policy_.mode_ == syscall_catch_policy::mode::none) ? PTRACE_CONT : PTRACE_SYSCALL;
+    // PTRACE_SYSCALL:下一次进入系统调用或从系统调用退出时再次停止，并向调试器发送一个 SIGTRAP (如果 PTRACE_O_TRACESYSGOOD 已设置，则信号为 SIGTRAP | 0x80)
+    if (ptrace(request, pid_, nullptr, nullptr) < 0)
     {
         error::send_errno("Could not resume");
     }
@@ -262,6 +278,9 @@ ldb::stop_reason ldb::process::wait_on_signal()
                         break;
                     }
                 case trap_type::single_step:
+                    break;
+                case trap_type::syscall:
+                    reason = maybe_resume_from_syscall(reason);
                     break;
                 case trap_type::unknown:
                     break;
@@ -494,6 +513,38 @@ void ldb::process::augment_stop_reason(stop_reason& reason)
     {
         error::send_errno("Could not get signal information");
     }
+    // 如果SIGTRAP是由于系统调用引起的，则需要获取系统调用信息
+    if (reason.info == (SIGTRAP | 0x80))
+    {
+        // TODO:获取系统调用信息
+        auto& sys_info = reason.syscall_info.emplace();
+        auto& regs = get_registers();
+
+        if (expecting_syscall_exit_)
+        {
+            // 退出系统调用时停止
+            sys_info.entry = false;
+            sys_info.id = regs.read_by_id_as<std::uint64_t>(register_id::orig_rax);
+            sys_info.ret = regs.read_by_id_as<std::uint64_t>(register_id::rax);
+            expecting_syscall_exit_ = false;
+        }
+        else
+        {
+            // 进入系统调用时停止
+            sys_info.entry = true;
+            sys_info.id = regs.read_by_id_as<std::uint64_t>(register_id::orig_rax);
+            std::array<register_id, 6> arg_regs{register_id::rdi, register_id::rsi, register_id::rdx, register_id::rcx, register_id::r8, register_id::r9};
+            for (int i = 0; i < 6; i++)
+            {
+                sys_info.args[i] = regs.read_by_id_as<std::uint64_t>(arg_regs[i]);
+            }
+            expecting_syscall_exit_ = true;
+        }
+        reason.info = SIGTRAP;
+        reason.trap_reason = trap_type::syscall;
+        return;
+    }
+    expecting_syscall_exit_ = false;
     if (reason.info == SIGTRAP)
     {
         reason.trap_reason = trap_type::unknown;
@@ -536,4 +587,21 @@ std::variant<ldb::breakpoint_site::id_type, ldb::watchpoint::id_type> ldb::proce
     }
     auto watch_id = watchpoints_.get_by_address(virt_addr{stop_address}).id();
     return return_type{std::in_place_index<1>, watch_id};
+}
+
+ldb::stop_reason ldb::process::maybe_resume_from_syscall(const stop_reason& reason)
+{
+    if (syscall_catch_policy_.mode_ == syscall_catch_policy::mode::some)
+    {
+        // 导致停止的系统调用编号是否在捕获列表中
+        auto& to_catch = syscall_catch_policy_.get_to_catch();
+        auto found = std::ranges::find(to_catch, reason.syscall_info->id);
+        if (found == to_catch.end())
+        {
+            // 当前停止的系统调用不是用户请求追踪的那个，需要恢复执行
+            resume();
+            return wait_on_signal();
+        }
+    }
+    return reason;
 }

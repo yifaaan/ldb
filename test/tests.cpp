@@ -9,6 +9,7 @@
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
+#include <libldb/syscalls.hpp>
 #include <regex>
 
 using namespace ldb;
@@ -426,4 +427,15 @@ TEST_CASE("watchpoint detects read", "[watchpoint]")
     proc->resume(); // std::puts("Putting pineapple on pizza...")执行完后; 触发42:raisse(SIGRAP)
     reason = proc->wait_on_signal();
     REQUIRE(to_string_view(channel.read()) == "Putting pineapple on pizza...\n");
+}
+
+TEST_CASE("syscall mapping works", "[syscall]")
+{
+    REQUIRE(syscall_id_to_name(0) == "read");
+    REQUIRE(syscall_id_to_name(1) == "write");
+    REQUIRE(syscall_id_to_name(2) == "open");
+    REQUIRE(syscall_id_to_name(3) == "close");
+    REQUIRE(syscall_id_to_name(4) == "stat");
+    REQUIRE(syscall_id_to_name(5) == "fstat");
+    REQUIRE(syscall_id_to_name(62) == "kill");
 }
