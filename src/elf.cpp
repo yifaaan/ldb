@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <iostream>
 #include <libldb/bit.hpp>
 #include <libldb/elf.hpp>
 #include <libldb/error.hpp>
@@ -173,18 +174,21 @@ void ldb::elf::build_symbol_maps()
     {
         // 获取混淆名称
         auto mangled_name = get_string(symbol.st_name);
+
         // demangled
-        int demangle_status;
+        int demangle_status = -1;
         auto demangle_c_str = abi::__cxa_demangle(mangled_name.data(), nullptr, nullptr, &demangle_status);
         if (demangle_status == 0 && demangle_c_str)
         {
             auto demangled_name = std::string_view{demangle_c_str};
             symbol_name_map_.emplace(demangled_name, &symbol);
+            // std::cout << "symbol.st_name: " << mangled_name << " -> " << demangled_name << std::endl;
             free(demangle_c_str);
         }
+
         symbol_name_map_.emplace(mangled_name, &symbol);
         // 如果符号有地址、有名称，并且不是线程局部存储 (TLS) 符号
-        if (symbol.st_value != 0 && symbol.st_name != 0 && ELF64_ST_TYPE(symbol.st_info) == STT_TLS)
+        if (symbol.st_value != 0 && symbol.st_name != 0 && ELF64_ST_TYPE(symbol.st_info) != STT_TLS)
         {
             // 计算符号的文件地址范围
             file_addr start_addr{*this, symbol.st_value};

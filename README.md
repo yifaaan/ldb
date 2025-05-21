@@ -434,3 +434,98 @@ typedef struct {
 辅助向量是内核在启动用户进程时传递给该进程的一系列键值对。这些键值对提供了关于进程环境和配置的各种信息。其中，AT_ENTRY 这个键对应的值就是程序被加载到内存后的实际入口点地址。
 ELF 文件头本身 (Elf64_Ehdr::e_entry) 也记录了一个入口点地址，这是链接器假设的、相对于文件开头的入口点（或者说，相对于期望的加载基址的入口点）。
 通过 实际入口点 (AT_ENTRY) 减去 ELF 文件头中的入口点 (e_entry)，就可以计算出整个 ELF 文件在内存中的加载基址偏移 (load bias)。
+
+# Dwarf
+
+- 它在编译后的二进制文件和产生它的源代码之间建立了桥梁。
+- 核心功能：
+    - 将机器指令映射回源代码行。
+    - 在运行的进程中定位函数和变量的地址（基于源代码中的名称）。
+    - 描述程序中定义的各种数据类型（类、结构体、枚举、基本类型等）。
+    - 支持查找变量的值、解析表达式等。
+
+## 所在section
+
+DWARF 与 ELF 的关系：DWARF 信息通常嵌入在 ELF 文件的特定节区中。这些节区有标准的名称（通常以 .debug_ 开头）。
+
+- .debug_info: 包含了描述程序实体（如编译单元、函数、变量、类型、命名空间等）的主要数据。这些数据以 DWARF 信息条目 (Debugging Information Entries, DIEs) 的形式组织。
+- .debug_abbrev: 包含缩写数据，用于定义 .debug_info 中 DIE 的结构和属性的编码方式，以减小 .debug_info 的体积。每个 DIE 都有一个指向 .debug_abbrev 中某个缩写声明的引用。
+- .debug_aranges: 包含一个已编译代码地址范围到相应编译单元调试信息的快速查找表。可以帮助调试器快速定位与给定代码地址相关的 .debug_info 部分。
+- - .debug_line: 包含行号表程序 (line number program)。这是一个状态机，用于将机器指令地址映射回源代码文件名和行号，并标记语句边界、基本块边界等。对于实现按源代码行单步执行至关重要。
+.debug_str: DWARF 使用的字符串表，存储各种名称（如变量名、函数名、类型名等）。其格式与 ELF 的字符串表（如 .strtab, .shstrtab）类似。DIE 中的某些属性会包含指向此表中字符串的偏移量。
+- .debug_loc (DWARF 4 及更早) / .debug_loclists (DWARF 5): 描述变量在不同代码范围内的存储位置（例如，有时在寄存器中，有时在栈上的不同位置）。
+- .debug_ranges (DWARF 4 及更早) / .debug_rnglists (DWARF 5): 当一个 DIE 描述的实体（如函数）对应的代码地址不是连续的时（例如，由于优化导致代码分散），这个节用于描述这些不连续的地址范围。
+
+### .debug_info
+
+#### DWARF 信息条目 (DIE - Debugging Information Entry)
+
+1. 每个 DIE 描述程序中的一个实体，如：
+    - 编译单元 (DW_TAG_compile_unit)
+    - 命名空间 (DW_TAG_namespace)
+    - 类/结构体/联合体 (DW_TAG_class_type, DW_TAG_structure_type, DW_TAG_union_type)
+    - 函数/方法 (DW_TAG_subprogram)
+    - 变量 (DW_TAG_variable)
+    - 参数 (DW_TAG_formal_parameter)
+    - 基本类型 (DW_TAG_base_type)
+2. 树状结构：DIEs 在每个编译单元内部被组织成一棵树。例如，一个函数的 DIE 可能是编译单元 DIE 的子节点，而该函数的参数和局部变量的 DIE 又是函数 DIE 的子节点。
+3. dwarfdump 工具。输出示例显示：
+- level，offset: 每行 DIE 的开头。level 是嵌套深度，offset 是该 DIE 在 .debug_info 节中的字节偏移。
+- 标签 (Tag)：DW_TAG_xxx，指明了 DIE 所描述的实体类型。
+- 属性 (Attributes)：DW_AT_yyy value，每个 DIE 包含一个或多个属性，每个属性由一个类型 (DW_AT_yyy) 和一个值组成，描述了该实体的具体特性。例如：
+    - DW_AT_name: 实体的名称（如函数名、变量名、文件名）。
+    - DW_AT_language: 源代码语言（如 C++）。
+    - DW_AT_comp_dir: 编译目录。
+    - DW_AT_low_pc 和 DW_AT_high_pc: 实体（如函数或编译单元）对应的机器码在内存中的起始和结束地址（通常是文件地址或相对地址）。
+    - DW_AT_decl_file, DW_AT_decl_line, DW_AT_decl_column: 实体在源代码中声明的文件、行号和列号。
+    - DW_AT_sibling: 指向当前 DIE 在树中的下一个兄弟节点的偏移量。这有助于解析器跳过当前 DIE 的所有子节点，直接处理下一个同级节点。
+
+形式 (Form)：对于每个属性，DWARF 不仅定义了属性的类型（例如 DW_AT_name），还定义了该属性值的编码形式 (form)（例如 DW_FORM_string, DW_FORM_data1, DW_FORM_strp）。这个“形式”告诉解析器如何解释属性值在 .debug_info 节中的二进制表示。
+
+#### 结构
+
+.debug_info 节由一个或多个编译单元 (Compile Unit, CU) 的调试信息组成。每个 CU 的数据块都以一个编译单元头部 (Compile Unit Header) 开头。这个头部包含以下关键信息：
+- unit_length (单元长度)：一个 4 字节或 12 字节（对于 DWARF64）的无符号整数。
+    - 它表示从紧随其后的字段开始，到这个编译单元数据结束的总字节数。这个长度不包括 unit_length 字段本身的大小。
+    - 如果 unit_length 的前 4 字节是 0xffffffff，则表示这是一个 DWARF64 格式的编译单元，实际长度由接下来的 8 个字节给出。本书专注于 32 位 DWARF，所以会检查这种情况并报错。
+- version (DWARF 版本)：一个 2 字节无符号整数，指定了该编译单元调试信息所遵循的 DWARF 标准版本。本书关注 DWARF 版本 4。
+- debug_abbrev_offset (缩写表偏移量)：一个 4 字节或 8 字节（对于 DWARF64）的无符号整数。它是一个偏移量，指向 .debug_abbrev 节中，该编译单元所使用的缩写表的起始位置。
+- address_size (地址大小)：一个 1 字节无符号整数，指定了目标体系结构中地址的大小（以字节为单位）。例如，对于 x64 系统，这个值是 8。
+
+每个编译单元的根节点是代表该编译单元本身的DIE。
+
+### .debug_abbrev
+
+缩写表的每个条目`abbrev`包含一个标签（tag）、一个编码该 DIE 是否有子节点（children）的位、一个属性类型列表，以及用于编码每个属性的形式（form）。然后，**DIE 本身只存储一个指向缩写表条目的索引，以及该 DIE 的属性值**。DWARF 将缩写表放置在 .debug_abbrev 节中。
+- 缩写码 (Abbreviation Code)：一个唯一的数字，用于标识这个缩写声明。
+- DIE 标签 (Tag)：例如 DW_TAG_subprogram。
+- 是否有子节点 (Has Children)：一个标志位，指示这种类型的 DIE 是否可以有子 DIE。
+- 属性规格列表：一个列表，对于该类型的 DIE 所拥有的每个属性，都指定了：
+    - 属性名称（例如 DW_AT_name）。
+    - 属性值的编码形式（例如 DW_FORM_strp）。
+
+.debug_info 节中的每个 DIE 不再存储完整的属性类型和形式信息。
+取而代之的是，每个 DIE 的开头存储一个缩写码。这个缩写码是一个索引，指向 .debug_abbrev 节中的某个缩写声明。
+在缩写码之后，DIE 只按顺序存储该缩写声明所定义的那些属性的值。解析器在读取 DIE 时，会先读取缩写码，然后去 .debug_abbrev 查找对应的缩写声明，从而知道接下来应该如何解析属性值（即每个属性是什么类型，用什么形式编码的）。
+
+.debug_abbrev 结构：
+- 可能包含多个独立的缩写表。
+- .debug_info 中的每个编译单元头部 (CU DIE) 会有一个属性 (通常是 DW_AT_abbrev_offset) 指向 .debug_abbrev 节中它所使用的那个缩写表的起始偏移量。
+不同的编译单元可以指向同一个缩写表（如果它们的 DIE 结构相似），也可以指向不同的缩写表。
+
+
+### .debug_ranges
+
+用于表示非连续地址范围。包含一系列条目（三种类型，所有条目由2个整数组成）：
+
+1. 常规
+    - 相对于当前基地址的起始地址的偏移
+    - 相对于当前基地址的结束地址的偏移
+2. 基地址选择器
+    - 所有位为1的数（表示是基地址选择器）
+    - 基地址（所有后续条目都视为相对于此基地址的偏移，直到基地址再次被更改或列表结束）
+3. 列表结束指示器
+    - 0
+    - 0
+
+如果当前条目之前没有基地址选择器条目，则基地址被编码为引用该范围列表的 DIE 中的 DW_AT_low_pc 属性。这样的 DIE 将具有 DW_AT_low_pc 属性，但没有匹配的 DW_AT_high_pc 属性。

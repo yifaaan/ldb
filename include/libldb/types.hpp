@@ -100,7 +100,7 @@ namespace ldb
 
         span(T* begin, T* end)
             : data_{begin}
-            , size_{end - begin}
+            , size_{static_cast<std::size_t>(end - begin)}
         {
         }
 

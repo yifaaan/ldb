@@ -11,6 +11,7 @@
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
 #include <libldb/syscalls.hpp>
+#include <libldb/target.hpp>
 #include <regex>
 
 using namespace ldb;
@@ -470,4 +471,22 @@ TEST_CASE("Syscall catchpoint works", "[catchpoint]")
     REQUIRE(reason.syscall_info->id == write_syscall_id);
     REQUIRE_FALSE(reason.syscall_info->entry);
     close(dev_null_fd);
+}
+
+TEST_CASE("Elf parse works", "[elf]")
+{
+    ldb::elf elf{"targets/hello_ldb"};
+    auto entry = elf.header().e_entry;
+    auto symbol = elf.get_symbol_at_address(file_addr{elf, entry});
+    REQUIRE(symbol.has_value());
+    auto name = elf.get_string(symbol.value()->st_name);
+    REQUIRE(name == "_start");
+    auto symbols = elf.get_symbols_by_name("_start");
+    name = elf.get_string(symbols.at(0)->st_name);
+    REQUIRE(name == "_start");
+
+    elf.notify_loaded(virt_addr{0xcafecafe});
+    symbol = elf.get_symbol_at_address(virt_addr{0xcafecafe + entry});
+    name = elf.get_string(symbol.value()->st_name);
+    REQUIRE(name == "_start");
 }
