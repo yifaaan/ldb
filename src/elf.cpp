@@ -41,6 +41,8 @@ ldb::elf::elf(std::filesystem::path path)
     parse_symbol_table();
     // 构建符号表名称到符号的映射
     build_symbol_maps();
+    // 构建 dwarf
+    dwarf_ = std::make_unique<dwarf>(*this);
 }
 
 ldb::elf::~elf()

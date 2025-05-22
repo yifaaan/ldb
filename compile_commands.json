@@ -85,31 +85,31 @@
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie @test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o.modmap -o test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o -c /home/smooth/Code/ldb/test/targets/end_immediately.cpp",
+  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie -gdwarf-4 @test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o.modmap -o test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o -c /home/smooth/Code/ldb/test/targets/end_immediately.cpp",
   "file": "/home/smooth/Code/ldb/test/targets/end_immediately.cpp",
   "output": "test/targets/CMakeFiles/end_immediately.dir/end_immediately.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie @test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o.modmap -o test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o -c /home/smooth/Code/ldb/test/targets/run_endlessly.cpp",
+  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie -gdwarf-4 @test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o.modmap -o test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o -c /home/smooth/Code/ldb/test/targets/run_endlessly.cpp",
   "file": "/home/smooth/Code/ldb/test/targets/run_endlessly.cpp",
   "output": "test/targets/CMakeFiles/run_endlessly.dir/run_endlessly.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie @test/targets/CMakeFiles/hello_ldb.dir/hello_ldb.cpp.o.modmap -o test/targets/CMakeFiles/hello_ldb.dir/hello_ldb.cpp.o -c /home/smooth/Code/ldb/test/targets/hello_ldb.cpp",
+  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie -gdwarf-4 @test/targets/CMakeFiles/hello_ldb.dir/hello_ldb.cpp.o.modmap -o test/targets/CMakeFiles/hello_ldb.dir/hello_ldb.cpp.o -c /home/smooth/Code/ldb/test/targets/hello_ldb.cpp",
   "file": "/home/smooth/Code/ldb/test/targets/hello_ldb.cpp",
   "output": "test/targets/CMakeFiles/hello_ldb.dir/hello_ldb.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie @test/targets/CMakeFiles/memory.dir/memory.cpp.o.modmap -o test/targets/CMakeFiles/memory.dir/memory.cpp.o -c /home/smooth/Code/ldb/test/targets/memory.cpp",
+  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie -gdwarf-4 @test/targets/CMakeFiles/memory.dir/memory.cpp.o.modmap -o test/targets/CMakeFiles/memory.dir/memory.cpp.o -c /home/smooth/Code/ldb/test/targets/memory.cpp",
   "file": "/home/smooth/Code/ldb/test/targets/memory.cpp",
   "output": "test/targets/CMakeFiles/memory.dir/memory.cpp.o"
 },
 {
   "directory": "/home/smooth/Code/ldb/build",
-  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie @test/targets/CMakeFiles/anti_debugger.dir/anti_debugger.cpp.o.modmap -o test/targets/CMakeFiles/anti_debugger.dir/anti_debugger.cpp.o -c /home/smooth/Code/ldb/test/targets/anti_debugger.cpp",
+  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie -gdwarf-4 @test/targets/CMakeFiles/anti_debugger.dir/anti_debugger.cpp.o.modmap -o test/targets/CMakeFiles/anti_debugger.dir/anti_debugger.cpp.o -c /home/smooth/Code/ldb/test/targets/anti_debugger.cpp",
   "file": "/home/smooth/Code/ldb/test/targets/anti_debugger.cpp",
   "output": "test/targets/CMakeFiles/anti_debugger.dir/anti_debugger.cpp.o"
 },
@@ -124,5 +124,17 @@
   "command": "/usr/bin/clang++ -g -pie -o test/targets/CMakeFiles/reg_read.dir/reg_read.s.o -c /home/smooth/Code/ldb/test/targets/reg_read.s",
   "file": "/home/smooth/Code/ldb/test/targets/reg_read.s",
   "output": "test/targets/CMakeFiles/reg_read.dir/reg_read.s.o"
+},
+{
+  "directory": "/home/smooth/Code/ldb/build",
+  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie -gdwarf-4 @test/targets/CMakeFiles/multi_cu.dir/multi_cu_main.cpp.o.modmap -o test/targets/CMakeFiles/multi_cu.dir/multi_cu_main.cpp.o -c /home/smooth/Code/ldb/test/targets/multi_cu_main.cpp",
+  "file": "/home/smooth/Code/ldb/test/targets/multi_cu_main.cpp",
+  "output": "test/targets/CMakeFiles/multi_cu.dir/multi_cu_main.cpp.o"
+},
+{
+  "directory": "/home/smooth/Code/ldb/build",
+  "command": "/usr/bin/clang++ -g -std=gnu++20 -g -O0 -pie -gdwarf-4 @test/targets/CMakeFiles/multi_cu.dir/multi_cu_other.cpp.o.modmap -o test/targets/CMakeFiles/multi_cu.dir/multi_cu_other.cpp.o -c /home/smooth/Code/ldb/test/targets/multi_cu_other.cpp",
+  "file": "/home/smooth/Code/ldb/test/targets/multi_cu_other.cpp",
+  "output": "test/targets/CMakeFiles/multi_cu.dir/multi_cu_other.cpp.o"
 }
 ]

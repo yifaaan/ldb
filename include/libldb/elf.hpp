@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <libldb/dwarf.hpp>
 #include <libldb/types.hpp>
 #include <map>
 #include <optional>
@@ -109,6 +110,20 @@ namespace ldb
         /// @return 符号
         std::optional<const Elf64_Sym*> get_symbol_containing_address(virt_addr addr) const;
 
+        /// @brief 获取 dwarf
+        /// @return dwarf
+        dwarf& get_dwarf()
+        {
+            return *dwarf_;
+        }
+
+        /// @brief 获取 dwarf
+        /// @return dwarf
+        const dwarf& get_dwarf() const
+        {
+            return *dwarf_;
+        }
+
     private:
         /// @brief 解析 section header table
         void parse_section_headers();
@@ -149,5 +164,7 @@ namespace ldb
         std::unordered_multimap<std::string_view, Elf64_Sym*> symbol_name_map_;
         /// @brief 符号表地址范围到符号的映射
         std::map<std::pair<file_addr, file_addr>, Elf64_Sym*, decltype(range_comparator)> symbol_address_map_;
+        /// @brief dwarf
+        std::unique_ptr<dwarf> dwarf_;
     };
 } // namespace ldb

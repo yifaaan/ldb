@@ -1,3 +1,4 @@
+#include <fmt/base.h>
 #include <libldb/detail/dwarf.h>
 
 #include <algorithm>
@@ -268,7 +269,7 @@ namespace
 
             if (code != 0)
             {
-                ret.emplace(code, ldb::abbrev{code, tag, has_children, std::move(attr_specs)});
+                ret.emplace(code, ldb::abbrev{.code = code, .tag = tag, .has_children = has_children, .attr_specs = std::move(attr_specs)});
             }
         }
         while (code != 0);
@@ -280,7 +281,7 @@ namespace
     /// @param obj 所属的 elf 文件
     /// @param cur 编译单元所在位置
     /// @return 编译单元
-    std::unique_ptr<ldb::compile_unit> parse_compile_unit(ldb::dwarf& dwarf, const ldb::elf& obj, cursor& cur)
+    std::unique_ptr<ldb::compile_unit> parse_compile_unit(ldb::dwarf& dwarf, const ldb::elf& obj, cursor cur)
     {
         auto start = cur.position();
         // 表示从紧随其后的字段开始，到这个编译单元数据结束的总字节数。这个长度不包括 size 字段本身的大小
@@ -355,6 +356,108 @@ namespace
         auto next_die_pos = cur.position();
         return ldb::die{start, &unit, &abbrev, next_die_pos, std::move(attr_locations)};
     }
+
+    ldb::line_table::file parse_line_table_file(cursor& cur,
+                                                const std::filesystem::path& compile_dir,
+                                                const std::vector<std::filesystem::path>& include_directories)
+    {
+        // 可以是完整路径、相对路径或仅仅是文件名
+        auto file_name = cur.string();
+        // 指向——include_directories中的一个条目。0表示文件名本身已经是完整路径，或者该文件位于编译单元的编译目录（由 DW_AT_comp_dir 指定）
+        auto dir_index = cur.uleb128();
+        auto last_modified = cur.uleb128();
+        auto file_length = cur.uleb128();
+        std::filesystem::path path{file_name};
+        if (!file_name.starts_with("/"))
+        {
+            if (dir_index == 0)
+            {
+                path = compile_dir / path;
+            }
+            else
+            {
+                path = include_directories[dir_index - 1] / path;
+            }
+        }
+        return {.name = path, .modification_time = last_modified, .length = file_length};
+    }
+
+    /// DWARF 4 标准操作码的操作数数量
+    constexpr std::array<std::uint8_t, 12> expected_opcode_lengths = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1};
+    std::unique_ptr<ldb::line_table> parse_line_table(const ldb::compile_unit& unit)
+    {
+        auto section = unit.dwarf_info()->elf_file()->get_section_contents(".debug_line");
+        // `DW_AT_stmt_list` 的值是一个指向 `.debug_line` 节（section）开头的偏移量（offset)
+        if (!unit.root().contains(DW_AT_stmt_list))
+        {
+            return nullptr;
+        }
+        auto offset = unit.root()[DW_AT_stmt_list].as_section_offset();
+        cursor cur{{section.begin() + offset, section.end()}};
+
+        // unit_length, 行号表大小不包括unit_length字段本身
+        auto line_table_length = cur.u32();
+        auto end = cur.position() + line_table_length;
+        // version
+        auto version = cur.u16();
+        if (version != 4)
+        {
+            ldb::error::send("Only DWARF4 is supported");
+        }
+        // header_length
+        cur.u32();
+        // min_inst_length must 1 in x64
+        auto min_inst_length = cur.u8();
+        if (min_inst_length != 1)
+        {
+            ldb::error::send("min_inst_length must 1 in x64");
+        }
+        // maximum_operations_per_instruction
+        auto max_ops_per_inst = cur.u8();
+        if (max_ops_per_inst != 1)
+        {
+            ldb::error::send("maximum_operations_per_instruction must 1 in x64");
+        }
+        // default_is_stmt
+        auto default_is_stmt = cur.u8();
+        // line_base
+        auto line_base = cur.s8();
+        // line_range
+        auto line_range = cur.u8();
+        // opcode_base，标准操作码的编号从 1 到 opcode_base-1
+        auto opcode_base = cur.u8();
+        // standard_opcode_lengths，标准操作码对应的操作数数量
+        for (int i = 0; i < opcode_base - 1; i++)
+        {
+            if (cur.u8() != expected_opcode_lengths[i])
+            {
+                ldb::error::send("Invalid standard opcode length");
+            }
+        }
+        // include_directories，包括相对路径和绝对路径
+        std::vector<std::filesystem::path> include_directories;
+        std::filesystem::path compile_dir{unit.root()[DW_AT_comp_dir].as_string()};
+        for (auto dir = cur.string(); !dir.empty(); dir = cur.string())
+        {
+            if (dir.starts_with("/"))
+            {
+                include_directories.emplace_back(dir);
+            }
+            else
+            {
+                include_directories.emplace_back(compile_dir / dir);
+            }
+        }
+        std::vector<ldb::line_table::file> file_names;
+        while (*cur.position() != std::byte{0})
+        {
+            file_names.emplace_back(parse_line_table_file(cur, compile_dir, include_directories));
+        }
+        cur += 1;
+        ldb::span<const std::byte> data{cur.position(), end};
+        return std::make_unique<ldb::line_table>(
+        data, &unit, default_is_stmt, line_base, line_range, opcode_base, std::move(include_directories), std::move(file_names));
+    }
 } // namespace
 
 const std::unordered_map<std::uint64_t, ldb::abbrev>& ldb::dwarf::get_abbrev_table(std::size_t offset)
@@ -369,6 +472,12 @@ const std::unordered_map<std::uint64_t, ldb::abbrev>& ldb::dwarf::get_abbrev_tab
 const std::unordered_map<std::uint64_t, ldb::abbrev>& ldb::compile_unit::abbrev_table() const
 {
     return parent_->get_abbrev_table(abbrev_offset_);
+}
+
+ldb::dwarf::dwarf(const elf& parent)
+    : elf_{&parent}
+{
+    compile_units_ = parse_compile_units(*this, parent);
 }
 
 ldb::die ldb::compile_unit::root() const
@@ -760,4 +869,263 @@ bool ldb::die::contains_address(file_addr addr) const
         return low_pc() <= addr && addr < high_pc();
     }
     return false;
+}
+
+const ldb::compile_unit* ldb::dwarf::compile_unit_containing_address(file_addr address) const
+{
+    auto it = std::ranges::find_if(compile_units_,
+                                   [address](const auto& cu_ptr)
+                                   {
+                                       return cu_ptr->root().contains_address(address);
+                                   });
+    if (it == compile_units_.end())
+    {
+        return nullptr;
+    }
+    return it->get();
+}
+
+std::optional<ldb::die> ldb::dwarf::function_containing_address(file_addr address) const
+{
+    index();
+    for (const auto& [name, entry] : function_index_)
+    {
+        cursor cur{{entry.position, entry.cu->data().end()}};
+        auto die = parse_die(*entry.cu, cur);
+        // 如果DIE包含指定地址，并且DIE的标签为DW_TAG_subprogram（非内联），则返回该DIE
+        if (die.contains_address(address) && die.abbrev_entry()->tag == DW_TAG_subprogram)
+        {
+            return die;
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<ldb::die> ldb::dwarf::find_functions(std::string name) const
+{
+    index();
+    std::vector<die> ret;
+    auto [begin, end] = function_index_.equal_range(name);
+    std::ranges::transform(begin,
+                           end,
+                           std::back_inserter(ret),
+                           [](const auto& pair)
+                           {
+                               const auto [name, entry] = pair;
+                               cursor cur{{entry.position, entry.cu->data().end()}};
+                               return parse_die(*entry.cu, cur);
+                           });
+    return ret;
+}
+
+void ldb::dwarf::index() const
+{
+    if (!function_index_.empty())
+    {
+        return;
+    }
+
+    std::ranges::for_each(compile_units_,
+                          [this](const auto& cu_ptr)
+                          {
+                              auto root = cu_ptr->root();
+                              index_die(root);
+                          });
+}
+
+std::optional<std::string_view> ldb::die::name() const
+{
+    if (contains(DW_AT_name))
+    {
+        return (*this)[DW_AT_name].as_string();
+    }
+    if (contains(DW_AT_specification))
+    {
+        // 表示声明，需要通过间接引用获取名称
+        return (*this)[DW_AT_specification].as_reference().name();
+    }
+    if (contains(DW_AT_abstract_origin))
+    {
+        // 表示内联函数的一个实例，需要通过间接引用获取原始函数
+        return (*this)[DW_AT_abstract_origin].as_reference().name();
+    }
+    return std::nullopt;
+}
+
+void ldb::dwarf::index_die(const ldb::die& current) const
+{
+    bool has_range = current.contains(DW_AT_ranges) || current.contains(DW_AT_low_pc);
+    bool is_function = current.abbrev_entry()->tag == DW_TAG_subprogram || current.abbrev_entry()->tag == DW_TAG_inlined_subroutine;
+    if (has_range && is_function)
+    {
+        if (auto name = current.name(); name)
+        {
+            index_entry entry{.cu = current.cu(), .position = current.position()};
+            function_index_.emplace(*name, entry);
+        }
+    }
+    for (auto& child : current.children())
+    {
+        index_die(child);
+    }
+}
+
+ldb::compile_unit::compile_unit(dwarf& parent, span<const std::byte> data, std::size_t abbrev_offset)
+    : parent_{&parent}
+    , data_{data}
+    , abbrev_offset_{abbrev_offset}
+{
+    line_table_ = parse_line_table(*this);
+}
+
+ldb::line_table::iterator::iterator(const line_table* table)
+    : table_{table}
+    , position_{table->data_.begin()}
+{
+    registers_.is_stmt = table_->default_is_stmt_;
+    ++(*this);
+}
+
+ldb::line_table::iterator ldb::line_table::begin() const
+{
+    return iterator{this};
+}
+
+ldb::line_table::iterator ldb::line_table::end() const
+{
+    return {};
+}
+
+ldb::line_table::iterator& ldb::line_table::iterator::operator++()
+{
+    if (position_ == table_->data_.end())
+    {
+        position_ = nullptr;
+        return *this;
+    }
+    bool emit_row = false;
+    do
+    {
+        emit_row = execute_instruction();
+    }
+    while (!emit_row);
+    current_.file_entry = &table_->file_names_[current_.file_index - 1];
+    return *this;
+}
+
+ldb::line_table::iterator ldb::line_table::iterator::operator++(int)
+{
+    auto tmp = *this;
+    ++(*this);
+    return tmp;
+}
+
+bool ldb::line_table::iterator::execute_instruction()
+{
+    auto elf = table_->compile_unit_->dwarf_info()->elf_file();
+    cursor cur{{position_, table_->data_.end()}};
+    auto opcode = cur.u8();
+    bool emit_row = false;
+    if (opcode > 0 && opcode < table_->opcode_base_)
+    {
+        // 标准操作码
+        switch (opcode)
+        {
+        case DW_LNS_copy:
+            // 发出矩阵行
+            current_ = registers_;
+            registers_.basic_block_start = false;
+            registers_.prologue_end = false;
+            registers_.epilogue_begin = false;
+            registers_.discriminator = 0;
+            emit_row = true;
+            break;
+        case DW_LNS_advance_pc:
+            // 推进PC
+            registers_.address += cur.uleb128();
+            break;
+        case DW_LNS_advance_line:
+            // 推进行号
+            registers_.line += cur.sleb128();
+            break;
+        case DW_LNS_set_file:
+            // 设置文件
+            current_.file_index = cur.uleb128();
+            break;
+        case DW_LNS_set_column:
+            // 设置列
+            current_.column = cur.uleb128();
+            break;
+        case DW_LNS_negate_stmt:
+            registers_.is_stmt = !registers_.is_stmt;
+            break;
+        case DW_LNS_set_basic_block:
+            // 设置基本块
+            registers_.basic_block_start = true;
+            break;
+        case DW_LNS_const_add_pc:
+            registers_.address += (255 - table_->opcode_base_) / table_->line_range_;
+            break;
+        case DW_LNS_fixed_advance_pc:
+            // 固定推进PC
+            registers_.address += cur.u16();
+            break;
+        case DW_LNS_set_prologue_end:
+            // 设置函数序言结束
+            registers_.prologue_end = true;
+            break;
+        case DW_LNS_set_epilogue_begin:
+            // 设置函数尾声开始
+            registers_.epilogue_begin = true;
+            break;
+        case DW_LNS_set_isa:
+            break;
+        default:
+            error::send("unknown standard opcode");
+        }
+    }
+    else if (opcode == 0)
+    {
+        // 扩展操作码
+
+        // 指令长度
+        auto length = cur.uleb128();
+        // 扩展操作码
+        auto extended_opcode = cur.u8();
+        switch (extended_opcode)
+        {
+        case DW_LNE_end_sequence:
+            // 结束序列，并发出矩阵行
+            registers_.end_sequence = true;
+            current_ = registers_;
+            registers_ = entry{};
+            registers_.is_stmt = table_->default_is_stmt_;
+            emit_row = true;
+            break;
+        case DW_LNE_set_address:
+            // 设置地址
+            registers_.address = file_addr{*elf, cur.u64()};
+            break;
+        case DW_LNE_define_file:
+            {
+                auto compile_dir = table_->compile_unit_->root()[DW_AT_comp_dir].as_string();
+                auto file = parse_line_table_file(cur, compile_dir, table_->include_directories_);
+                table_->file_names_.push_back(file);
+                break;
+            }
+        case DW_LNE_set_discriminator:
+            // 设置区分符
+            registers_.discriminator = cur.uleb128();
+            break;
+        default:
+            error::send("unknown extended opcode");
+        }
+    }
+    else
+    {
+        error::send("unknown opcode");
+    }
+
+    position_ = cur.position();
+    return emit_row;
 }

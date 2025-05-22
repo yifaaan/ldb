@@ -1,12 +1,14 @@
 #include <elf.h>
 #include <fcntl.h>
 #include <fmt/format.h>
+#include <libldb/detail/dwarf.h>
 
 #include <catch2/catch_test_macros.hpp>
 #include <csignal>
 #include <filesystem>
 #include <fstream>
 #include <libldb/bit.hpp>
+#include <libldb/dwarf.hpp>
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
@@ -489,4 +491,110 @@ TEST_CASE("Elf parse works", "[elf]")
     symbol = elf.get_symbol_at_address(virt_addr{0xcafecafe + entry});
     name = elf.get_string(symbol.value()->st_name);
     REQUIRE(name == "_start");
+}
+
+TEST_CASE("Correct DWARF language", "[dwarf]")
+{
+    ldb::elf elf{"targets/hello_ldb"};
+    auto& cus = elf.get_dwarf().compile_units();
+    REQUIRE(cus.size() == 1);
+    auto& cu = cus[0];
+    auto language = cu->root()[DW_AT_language].as_int();
+    REQUIRE(language == DW_LANG_C_plus_plus_14);
+}
+
+TEST_CASE("Iterator DWARF", "[dwarf]")
+{
+    ldb::elf elf{"targets/hello_ldb"};
+    auto& cus = elf.get_dwarf().compile_units();
+    REQUIRE(cus.size() == 1);
+    auto& cu = cus[0];
+    std::size_t count = 0;
+    for (auto& die : cu->root().children())
+    {
+        auto entry = die.abbrev_entry();
+        REQUIRE(entry->code != 0);
+        ++count;
+    }
+    REQUIRE(count > 0);
+}
+
+TEST_CASE("Find main", "[dwarf]")
+{
+    ldb::elf elf{"targets/multi_cu"};
+    auto& cus = elf.get_dwarf().compile_units();
+    REQUIRE(cus.size() == 2);
+    bool found = false;
+    for (auto& cu : cus)
+    {
+        for (auto& die : cu->root().children())
+        {
+            if (die.abbrev_entry()->tag == DW_TAG_subprogram && die.name() == "main")
+            {
+                found = true;
+                break;
+            }
+        }
+    }
+    REQUIRE(found);
+}
+
+TEST_CASE("Range list", "[dwarf]")
+{
+    auto path = "targets/hello_ldb";
+    ldb::elf elf(path);
+    ldb::dwarf dwarf(elf);
+    auto& cu = dwarf.compile_units()[0];
+
+    // 创建一个范围列表，包含一个常规条目、一个基地址选择器、另一个常规条目和一个列表结束指示器：
+    // 常规条目1之前没有基地址选择器，则基地址被编码为引用该范围列表的 DIE 中的 DW_AT_low_pc 属性
+    std::vector<std::uint64_t> range_data{
+    0x12341234,
+    0x12341236, // 常规条目1: [0x12341234, 0x12341236)
+    ~0ULL,
+    0x32, // 基地址选择器: 新基地址为 0x32
+    0x12341234,
+    0x12341236, // 常规条目2: [0x32 + 0x12341234, 0x32 + 0x12341236)
+    0x0,
+    0x0 // 列表结束指示器
+    };
+
+    auto bytes = reinterpret_cast<const std::byte*>(range_data.data());              // 应为 const std::byte*
+    ldb::range_list list(cu.get(),                                                   // 传递编译单元指针
+                         {bytes, bytes + range_data.size() * sizeof(std::uint64_t)}, // span 的大小应为字节数
+                         ldb::file_addr{});                                          // 初始基地址
+
+    auto it = list.begin();
+    auto e1 = *it;
+    REQUIRE(e1.low.addr() == 0x12341234);
+    REQUIRE(e1.high.addr() == 0x12341236);
+    REQUIRE(e1.contains(ldb::file_addr{elf, 0x12341234}));
+    REQUIRE(e1.contains(ldb::file_addr{elf, 0x12341235}));
+    REQUIRE(!e1.contains(ldb::file_addr{elf, 0x12341236}));
+
+    // 让我们对第二个常规条目执行相同的操作。此条目中的值与第一个条目中的值相同，
+    // 但由于基地址选择器为 0x32，它们应该偏移 0x32：
+    // --snip-- // 省略部分代码
+    ++it;
+    auto e2 = *it;
+    REQUIRE(e2.low.addr() == 0x12341234 + 0x32);  // 0x12341266
+    REQUIRE(e2.high.addr() == 0x12341236 + 0x32); // 0x12341268
+    REQUIRE(e2.contains(ldb::file_addr{elf, 0x12341234 + 0x32}));
+    REQUIRE(e2.contains(ldb::file_addr{elf, 0x12341235 + 0x32}));
+    REQUIRE(!e2.contains(ldb::file_addr{elf, 0x12341236 + 0x32}));
+
+    // 最后，我们可以确保再次递增迭代器会到达列表的末尾，
+    // 并且 range_list::contains 函数有效：
+    // --snip-- // 省略部分代码
+    ++it;
+    REQUIRE(it == list.end());
+    // 测试 list.contains 对所有预期地址的检查
+    REQUIRE(list.contains(ldb::file_addr{elf, 0x12341234}));
+    REQUIRE(list.contains(ldb::file_addr{elf, 0x12341235}));
+    REQUIRE(!list.contains(ldb::file_addr{elf, 0x12341236}));
+    // 调试信息
+
+    REQUIRE(list.contains(ldb::file_addr{elf, 0x12341234 + 0x32}));
+    REQUIRE(list.contains(ldb::file_addr{elf, 0x12341235 + 0x32}));
+    REQUIRE(!list.contains(ldb::file_addr{elf, 0x12341236 + 0x32}));
 }
