@@ -598,3 +598,24 @@ TEST_CASE("Range list", "[dwarf]")
     REQUIRE(list.contains(ldb::file_addr{elf, 0x12341235 + 0x32}));
     REQUIRE(!list.contains(ldb::file_addr{elf, 0x12341236 + 0x32}));
 }
+
+TEST_CASE("Line table", "[dwarf]")
+{
+    auto path = "targets/hello_ldb";
+    ldb::elf elf(path);
+    ldb::dwarf dwarf(elf);
+
+    REQUIRE(dwarf.compile_units().size() == 1);
+    auto& cu = dwarf.compile_units()[0];
+
+    auto it = cu->lines().begin();
+    REQUIRE(it->line == 4);
+    REQUIRE(it->file_entry->name == "/home/smooth/Code/ldb/test/targets/hello_ldb.cpp");
+
+    ++it;
+    REQUIRE(it->line == 5);
+    REQUIRE(!it->end_sequence);
+    ++it;
+    REQUIRE(it->line == 6);
+    REQUIRE(it == cu->lines().end());
+}

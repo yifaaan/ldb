@@ -24,6 +24,17 @@ ldb::breakpoint_site::breakpoint_site(process& proc, virt_addr address, bool is_
     id_ = is_internal ? -1 : get_next_id();
 }
 
+ldb::breakpoint_site::breakpoint_site(breakpoint* parent, process& proc, virt_addr address, bool is_hardware, bool is_internal)
+    : parent_{parent}
+    , process_{&proc}
+    , addr_{address}
+    , is_enabled_{false}
+    , saved_data_{}
+    , is_hardware_{is_hardware}
+    , is_internal_{is_internal}
+{
+}
+
 void ldb::breakpoint_site::enable()
 {
     if (is_enabled_)

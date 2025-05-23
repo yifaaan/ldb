@@ -3,6 +3,7 @@
 #include <sys/types.h>
 #include <sys/user.h>
 
+#include <csignal>
 #include <cstdint>
 #include <filesystem>
 #include <libldb/bit.hpp>
@@ -114,7 +115,31 @@ namespace ldb
     /// @brief 进程停止原因
     struct stop_reason
     {
+        stop_reason() = default;
+
         explicit stop_reason(int wait_status);
+
+        stop_reason(process_state reason_,
+                    uint8_t info_,
+                    std::optional<trap_type> trap_reason_ = std::nullopt,
+                    std::optional<syscall_information> syscall_info_ = std::nullopt)
+            : reason{reason_}
+            , info{info_}
+            , trap_reason{std::move(trap_reason_)}
+            , syscall_info{std::move(syscall_info_)}
+        {
+        }
+
+        bool is_step()
+        {
+            return reason == process_state::stopped && info == SIGTRAP && trap_reason == trap_type::single_step;
+        }
+
+        bool is_breakpoint()
+        {
+            return reason == process_state::stopped && info == SIGTRAP &&
+            (trap_reason == trap_type::software_break || trap_reason == trap_type::hardware_break);
+        }
 
         /// @brief 进程停止后的状态
         process_state reason;
@@ -126,6 +151,7 @@ namespace ldb
         std::optional<syscall_information> syscall_info;
     };
 
+    class target;
     /// @brief 进程
     class process
     {
@@ -211,6 +237,8 @@ namespace ldb
         /// @param is_internal 是否是内部断点
         /// @return 断点
         breakpoint_site& create_breakpoint_site(virt_addr address, bool is_hardware = false, bool is_internal = false);
+
+        breakpoint_site& create_breakpoint_site(breakpoint* parent, virt_addr address, bool is_hardware = false, bool is_internal = false);
 
         /// @brief 获取内存位置断点集合
         stoppoint_collection<breakpoint_site>& breakpoint_sites()
@@ -303,6 +331,11 @@ namespace ldb
         /// @return 辅助向量
         std::unordered_map<int, std::uint64_t> get_auxv() const;
 
+        void set_target(target* tgt)
+        {
+            target_ = tgt;
+        }
+
     private:
         process(pid_t pid, bool terminate_on_end, bool is_attached, std::optional<int> stdout_replacement = std::nullopt)
             : pid_{pid}
@@ -357,5 +390,7 @@ namespace ldb
 
         /// @brief 因为系统调用进入还是退出而停止的
         bool expecting_syscall_exit_ = false;
+
+        target* target_ = nullptr;
     };
 } // namespace ldb

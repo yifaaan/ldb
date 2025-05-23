@@ -15,6 +15,7 @@
 #include <libldb/error.hpp>
 #include <libldb/pipe.hpp>
 #include <libldb/process.hpp>
+#include <libldb/target.hpp>
 
 namespace
 {
@@ -289,6 +290,11 @@ ldb::stop_reason ldb::process::wait_on_signal()
                 }
             }
         }
+        if (target_)
+        {
+            // 更新内联函数栈
+            target_->notify_stop(reason);
+        }
     }
     return reason;
 }
@@ -352,6 +358,15 @@ ldb::breakpoint_site& ldb::process::create_breakpoint_site(virt_addr address, bo
         error::send("Breakpoint site already created at address: " + std::to_string(address.addr()));
     }
     return breakpoint_sites_.push(std::unique_ptr<breakpoint_site>{new breakpoint_site{*this, address, is_hardware, is_internal}});
+}
+
+ldb::breakpoint_site& ldb::process::create_breakpoint_site(breakpoint* parent, virt_addr address, bool is_hardware, bool is_internal)
+{
+    if (breakpoint_sites_.contains_address(address))
+    {
+        error::send("Breakpoint site already created at address: " + std::to_string(address.addr()));
+    }
+    return breakpoint_sites_.push(std::unique_ptr<breakpoint_site>{new breakpoint_site{parent, *this, address, is_hardware, is_internal}});
 }
 
 ldb::stop_reason ldb::process::step_instruction()

@@ -6,6 +6,7 @@
 namespace ldb
 {
     class process;
+    class breakpoint;
 
     /// @brief 基于内存位置的物理断点
     class breakpoint_site
@@ -65,8 +66,8 @@ namespace ldb
 
     private:
         friend process;
+        breakpoint_site(breakpoint* parent, process& proc, virt_addr address, bool is_hardware = false, bool is_internal = false);
         breakpoint_site(process& proc, virt_addr address, bool is_hardware = false, bool is_internal = false);
-
         process* process_;
         virt_addr addr_;
         bool is_enabled_;
@@ -77,5 +78,7 @@ namespace ldb
         bool is_internal_;
         /// 硬件断点在调试寄存器中的索引，dr0-dr3
         int hardware_register_index_ = -1;
+
+        breakpoint* parent_ = nullptr;
     };
 } // namespace ldb

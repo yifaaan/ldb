@@ -217,6 +217,10 @@ namespace
             disassemble - Disassemble machine code to assembly
             watchpoint  - Commands for operating on watchpoints
             catchpoint  - Commands for operating on catchpoints
+            finish      - Step out of the current function
+            next        - Step over the next instruction
+            stepi       - Step instruction step
+            step        - Step in
             )";
         }
         else if (is_prefix(args[1], "register"))
@@ -810,6 +814,26 @@ namespace
         else if (is_prefix(command, "catchpoint"))
         {
             handle_catchpoint_command(*proc, args);
+        }
+        else if (is_prefix(command, "next"))
+        {
+            auto reason = target->step_over();
+            handle_stop(*target, reason);
+        }
+        else if (is_prefix(command, "finish"))
+        {
+            auto reason = target->step_out();
+            handle_stop(*target, reason);
+        }
+        else if (is_prefix(command, "step"))
+        {
+            auto reason = target->step_in();
+            handle_stop(*target, reason);
+        }
+        else if (is_prefix(command, "stepi"))
+        {
+            auto reason = proc->step_instruction();
+            handle_stop(*target, reason);
         }
         else
         {

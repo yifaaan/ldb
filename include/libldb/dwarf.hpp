@@ -229,6 +229,10 @@ namespace ldb
             return file_names_;
         }
 
+        iterator get_entry_by_address(file_addr address) const;
+
+        std::vector<iterator> get_entries_by_line(std::filesystem::path path, std::size_t line) const;
+
     private:
         span<const std::byte> data_;
         const compile_unit* compile_unit_ = nullptr;
@@ -243,10 +247,16 @@ namespace ldb
         mutable std::vector<file> file_names_;
     };
 
+    struct source_location
+    {
+        const line_table::file* file;
+        std::uint64_t line;
+    };
+
     /// @brief 行号表寄存器
     struct line_table::entry
     {
-        file_addr address;
+        file_addr address{};
         /// @brief file_names_的索引
         std::uint64_t file_index = 1;
         /// @brief 行号
@@ -454,6 +464,15 @@ namespace ldb
         /// @brief 获取DIE的名称
         std::optional<std::string_view> name() const;
 
+        /// @brief 获取DIE的源代码位置
+        source_location location() const;
+
+        /// @brief 获取DIE的源代码文件
+        const line_table::file& file() const;
+
+        /// @brief 获取DIE的源代码行号
+        std::uint64_t line() const;
+
     private:
         /// @brief DIE起始位置
         const std::byte* position_ = nullptr;
@@ -574,6 +593,21 @@ namespace ldb
         /// @param name 函数名称
         /// @return 所有包含指定名称的函数DIE
         std::vector<die> find_functions(std::string name) const;
+
+        line_table::iterator line_entry_at_address(file_addr address) const
+        {
+            auto cu = compile_unit_containing_address(address);
+            if (!cu)
+            {
+                return {};
+            }
+            return cu->lines().get_entry_by_address(address);
+        }
+
+        /// @brief 计算address处的内联函数栈
+        /// @param address 文件地址
+        /// @return 所有内联函数DIE
+        std::vector<die> inline_stack_at_address(file_addr address) const;
 
     private:
         /// @brief 索引所有编译单元的所有DIE

@@ -2,6 +2,7 @@
 #include <libldb/detail/dwarf.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <libldb/bit.hpp>
 #include <libldb/dwarf.hpp>
 #include <libldb/elf.hpp>
@@ -368,7 +369,7 @@ namespace
         auto last_modified = cur.uleb128();
         auto file_length = cur.uleb128();
         std::filesystem::path path{file_name};
-        if (!file_name.starts_with("/"))
+        if (file_name[0] != '/')
         {
             if (dir_index == 0)
             {
@@ -439,7 +440,7 @@ namespace
         std::filesystem::path compile_dir{unit.root()[DW_AT_comp_dir].as_string()};
         for (auto dir = cur.string(); !dir.empty(); dir = cur.string())
         {
-            if (dir.starts_with("/"))
+            if (dir[0] == '/')
             {
                 include_directories.emplace_back(dir);
             }
@@ -457,6 +458,18 @@ namespace
         ldb::span<const std::byte> data{cur.position(), end};
         return std::make_unique<ldb::line_table>(
         data, &unit, default_is_stmt, line_base, line_range, opcode_base, std::move(include_directories), std::move(file_names));
+    }
+
+    bool path_ends_with(const std::filesystem::path& path, const std::filesystem::path& suffix)
+    {
+        auto full_path_len = std::distance(path.begin(), path.end());
+        auto suffix_len = std::distance(suffix.begin(), suffix.end());
+        if (full_path_len < suffix_len)
+        {
+            return false;
+        }
+        auto start_comparison_in_full_path = std::next(path.begin(), full_path_len - suffix_len);
+        return std::equal(start_comparison_in_full_path, path.end(), suffix.begin());
     }
 } // namespace
 
@@ -1123,9 +1136,114 @@ bool ldb::line_table::iterator::execute_instruction()
     }
     else
     {
-        error::send("unknown opcode");
+        auto adjust_opcode = opcode - table_->opcode_base_;
+        registers_.address += adjust_opcode / table_->line_range_;
+        registers_.line += table_->line_base_ + (adjust_opcode % table_->line_range_);
+        current_ = registers_;
+        registers_.basic_block_start = false;
+        registers_.prologue_end = false;
+        registers_.epilogue_begin = false;
+        registers_.discriminator = 0;
+        emit_row = true;
     }
 
     position_ = cur.position();
     return emit_row;
+}
+
+ldb::line_table::iterator ldb::line_table::get_entry_by_address(file_addr address) const
+{
+    auto prev = begin();
+    if (prev == end())
+    {
+        return prev;
+    }
+
+    auto it = prev;
+    for (++it; it != end(); prev = it++)
+    {
+        if (prev->address <= address && address < it->address && !prev->end_sequence)
+        {
+            return prev;
+        }
+    }
+    return end();
+}
+
+std::vector<ldb::line_table::iterator> ldb::line_table::get_entries_by_line(std::filesystem::path path, std::size_t line) const
+{
+    std::vector<iterator> ret;
+    for (auto it = begin(); it != end(); ++it)
+    {
+        auto& entry_file_path = it->file_entry->name;
+        if (it->line == line)
+        {
+            if ((path.is_absolute() && path == entry_file_path) || (path.is_relative() && path_ends_with(entry_file_path, path)))
+            {
+                ret.push_back(it);
+            }
+        }
+    }
+    return ret;
+}
+
+ldb::source_location ldb::die::location() const
+{
+    return {.file = &file(), .line = line()};
+}
+
+const ldb::line_table::file& ldb::die::file() const
+{
+    std::uint64_t idx;
+    if (abbrev_->tag == DW_TAG_inlined_subroutine)
+    {
+        // 内联函数使用调用点位置
+        idx = (*this)[DW_AT_call_file].as_int();
+    }
+    else
+    {
+        // 非内联函数使用声明位置
+        idx = (*this)[DW_AT_decl_file].as_int();
+    }
+    return this->compile_unit_->lines().file_names()[idx - 1];
+}
+
+std::uint64_t ldb::die::line() const
+{
+    if (abbrev_->tag == DW_TAG_inlined_subroutine)
+    {
+        return (*this)[DW_AT_call_line].as_int();
+    }
+    return (*this)[DW_AT_decl_line].as_int();
+}
+
+std::vector<ldb::die> ldb::dwarf::inline_stack_at_address(file_addr address) const
+{
+    // 包含给定地址的`非内联函数`（最外层）
+    auto func = function_containing_address(address);
+    std::vector<die> func_stack;
+    if (func)
+    {
+        func_stack.emplace_back(*func);
+        while (true)
+        {
+            // 在子DIE中查找内联函数
+            auto children = func_stack.back().children();
+
+            auto found = std::ranges::find_if(children,
+                                              [address](const auto& child)
+                                              {
+                                                  return child.abbrev_entry()->tag == DW_TAG_inlined_subroutine && child.contains_address(address);
+                                              });
+            if (found == children.end())
+            {
+                break;
+            }
+            else
+            {
+                func_stack.emplace_back(*found);
+            }
+        }
+    }
+    return func_stack;
 }

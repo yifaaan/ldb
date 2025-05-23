@@ -572,3 +572,197 @@ file_names 是行号表程序头部信息的一部分。它是一个包含一系
 - 扩展操作码,以0x00开始，其后跟着一个 ULEB128 值，给出下一条指令的长度。此长度之后是一个 uint8_t，提供实际的扩展操作码，然后是操作数
 - 特殊操作码，用于在单个操作码中同时推进当前行号和地址，并发出一个矩阵行。特殊操作码由单个 uint8_t 组成，没有操作数。
 
+# 源码级别断点
+
+## Step In
+
+Step in 操作的基本思想是单步执行机器指令，直到程序计数器到达与开始时不同的源代码行的指令。当程序计数器到达新的源代码行时，可能已经进入了一个新函数。在这种情况下，我们还要跳过该函数的序言（设置栈的部分）。
+
+```C++
+示例源代码
+c
+// test.c
+1:  int main() {
+2:      int a = 10;
+3:      int b = 20;
+4:      int c = a + b;
+5:      return c;
+6:  }
+编译后的汇编代码
+text
+<main>:
+0x1000:  push   %rbp              # 函数序言
+0x1001:  mov    %rsp,%rbp         # 函数序言
+0x1004:  movl   $0xa,-0x4(%rbp)   # int a = 10;
+0x100b:  movl   $0x14,-0x8(%rbp)  # int b = 20;
+0x1012:  mov    -0x4(%rbp),%eax   # 加载a到eax
+0x1015:  add    -0x8(%rbp),%eax   # 加上b
+0x1018:  mov    %eax,-0xc(%rbp)   # 存储到c
+0x101b:  mov    -0xc(%rbp),%eax   # 返回值
+0x101e:  pop    %rbp              # 函数尾声
+0x101f:  ret                      # 返回
+DWARF行号表映射
+text
+Address    Line   Column  File
+0x1000     1      1       test.c    # int main() {
+0x1004     2      5       test.c    # int a = 10;
+0x100b     3      5       test.c    # int b = 20;
+0x1012     4      5       test.c    # int c = a + b;
+0x101b     5      5       test.c    # return c;
+0x101f     6      1       test.c    # }
+
+调试器的单步执行过程
+第1步：从第2行单步到第3行
+当前状态：PC = 0x1004（第2行开始）
+
+调试器的处理：
+
+查询行号表：当前PC 0x1004对应源代码第2行
+
+寻找下一行：在行号表中查找下一个不同行号的地址 → 0x100b（第3行）
+
+执行策略：
+
+方法A：在0x100b设置临时断点，然后continue
+
+方法B：反复PTRACE_SINGLESTEP直到PC到达0x100b
+
+使用方法B的过程：
+
+text
+ptrace(PTRACE_SINGLESTEP) → PC: 0x1004 → 0x1005 (仍在第2行)
+ptrace(PTRACE_SINGLESTEP) → PC: 0x1005 → 0x1006 (仍在第2行)
+...
+ptrace(PTRACE_SINGLESTEP) → PC: 0x100a → 0x100b (到达第3行！)
+
+```
+
+假设某函数对应的 DWARF 行表大致如下（地址 → 行号 / 标记）：
+| 地址 | 行号 | 备注 |
+|------|------|---------------------|
+|0x1000| 42 | orig_line 起点 |
+|0x1002| 42 | 同一源行的下一条指令|
+|0x1004| 42 | 同一源行的下一条指令|
+|0x1006| end | end_sequence 标记 |
+|0x1008| 43 | 下一条真正的源行 |
+
+| 行号表 row (address, 额外标记) | 覆盖的 PC 范围 | 备注 |
+|--------------------------------|---------------------------------|----------------------|
+| (0x1000, line 42) | [0x1000, 0x1006) | 真正的源码行 42 |
+| (0x1006, end_sequence=true) | ― | 仅表示序列结束；本行本身不映射源码 |
+| (0x1008, line 43) | [0x1008, …) | 源码行 43 |
+
+调试器开始时 PC = 0x1000，对应 orig_line＝行 42。
+step_in() 中的循环条件是
+```Cpp
+while ( (line_entry_at_pc() == orig_line          // A
+       || line_entry_at_pc()->end_sequence)       // B
+      && line_entry_at_pc() != line_table::iterator{} ) // C
+```
+逐项解释：
+- A. line_entry_at_pc() == orig_line
+仍停在同一源代码行（这里都是行 42） → 继续单步。
+- B. line_entry_at_pc()->end_sequence
+行表条目是特殊的 end-sequence（0x1006）。它只表示“这一段机器码结束”，不对应源行。遇到它必须再走一步，直到找到真正的源代码行。
+- C. line_entry_at_pc() != line_table::iterator{}
+确认行表条目有效（有些地址可能根本没有行号，例如进入了优化后的库代码）。若行表为空，则立即退出循环，避免死循环。
+
+结合上表的执行过程：
+1. PC=0x1000 → 行 42
+A 成立，C 成立 → 循环继续。
+2. 单步 → PC=0x1002 → 行 42
+仍是行 42，A 仍成立 → 继续。
+3. 单步 → PC=0x1004 → 行 42
+仍是行 42，继续。
+4. 单步 → PC=0x1006 → end_sequence
+A 不成立，B 成立（end_sequence），C 成立 → 继续。
+5. 单步 → PC=0x1008 → 行 43
+A、B 均不成立，C 成立，但整体 A||B 为假 → 循环结束。
+
+调试器此时停在新的一行源代码（行 43），完成一次“源代码级步入”。
+通过这种写法，调试器既能：
+跳过同一行内的多条指令，直到真正换行；
+跳过行表里的 end_sequence 标记；
+在没有行号信息时及时终止循环。
+
+## Step Over
+
+| 代码片段 | 中文翻译 | 作用示例 |
+|----------|----------|----------|
+| inline_stack_at_pc() | 计算当前 PC 处的内联栈 | [foo, bar] 表示 bar 被内联进 foo |
+| at_start_of_inline | 若 inline_height()>0，说明调试器声称停在调用者，但 PC 仍在被内联函数首指令 | 用户看到的行号在 foo()，实际 PC 是 bar() 入口 |
+| 情况一<br>跳过内联块 | 取到要跳过的 frame → high_pc() 得到这段内联代码尾地址 → run_until_address() 设 临时断点，一次性跑到尾部 | 把整段内联 bar() 执行完，停在 foo() 下一条指令 |
+| 情况二<br>跳过 call | 反汇编两条指令。若第 1 条文本以 "call" 开头，说明是函数调用；第 2 条指令地址就是返回后要执行的下一条。<br>run_until_address() 同样设置临时断点跳过去 | 当前执行 call printf，调试器应停在 add rsp,8 等下一条指令上 |
+| 情况三<br>无特殊需求 | 普通 step_instruction() | 例如 mov eax,1 |
+若在跳过过程中命中断点/异常，!reason.is_step() 成立，立即结束 Step Over 并把真正的停止原因返回给上层。
+
+
+| 调试器当前显示帧 | inline_height() | 公式计算索引 | frame_to_skip 实际指向 |
+|-----------------|-----------------|--------------|--------------------------|
+| main | 3 | 4 − 3 = 1| c()（需要跳过整段 c） |
+| c | 2 | 4 − 2 = 2| b() |
+| b | 1 | 4 − 1 = 3| a() |
+| a（最深） | 0 | —— 不会进入该分支 |
+
+
+## Step Out
+
+调用现场
+假定调用者在执行 call pet_cat 前，栈顶寄存器 rsp = 0x7ffffffff000。
+call 指令会先把下一条指令地址（返回地址）压栈，再跳转到 pet_cat。
+压栈后 rsp = 0x7fffffffeff8，该地址处保存了返回地址 0x555555555ABC。
+进入 pet_cat，编译器生成的序言：
+
+rsp始终指向栈顶元素
+1. 代码段 (.text) 中的指令地址
+```
+
+   ; ------------------ give_cat_attention ------------------
+0x555555555a90 <give_cat_attention+0>:   push   rbp
+0x555555555a91 <give_cat_attention+1>:   mov    rbp,rsp
+···                               ; 省略若干指令
+0x555555555aa5 <give_cat_attention+0x15>: call   0x555555555b00 <pet_cat>
+0x555555555aaa <give_cat_attention+0x1a>: ···    ; ← call 返回后执行的位置
+···
+
+; ------------------------- pet_cat ----------------------
+0x555555555b00 <pet_cat+0>:               push   rbp      ; 保存调用者 rbp
+0x555555555b01 <pet_cat+1>:               mov    rbp,rsp  ; 新帧基址
+0x555555555b04 <pet_cat+4>:               sub    rsp,0x10 ; 给局部变量留空间
+···
+0x555555555b30 <pet_cat+0x30>:            leave
+0x555555555b31 <pet_cat+0x31>:            ret
+```
+
+2.栈在运行过程中的实际地址（高 → 低）
+
+```
+调用 call 之前:  rsp = 0x7fffffffefb0
+----------------------------------------------------------
+0x7fffffffefb0 : （give_cat_attention 的局部变量 / 对齐填充）
+----------------------------------------------------------
+
+执行 call 指令时:
+1) CPU 把 “下一条指令地址” 0x555555555aaa 压栈
+   rsp ↓ 8 ➜ 0x7fffffffefa8
+----------------------------------------------------------
+0x7fffffffefa8 : 0x555555555aaa  ← 返回地址（ret）
+0x7fffffffefb0 : （之前内容）
+----------------------------------------------------------
+
+进入 pet_cat 执行序言 push rbp; mov rbp,rsp:
+2) push rbp  将上一帧的 rbp=0x7fffffffefb0 压栈  
+   rsp ↓ 8 ➜ 0x7fffffffefa0: 执行完后，现在rsp是存上一帧rbp：0x7fffffffefb0的地址
+3) mov rbp,rsp → rbp=0x7fffffffeea0：执行完后，现在rbp是存上一帧rbp：0x7fffffffefb0的地址
+----------------------------------------------------------
+0x7fffffffefa0 : 0x7fffffffefb0  ← Saved RBP（调用者帧基址）
+0x7fffffffefa8 : 0x555555555aaa  ← 返回地址
+0x7fffffffefb0 : （调用者局部等）
+----------------------------------------------------------
+
+在 pet_cat 中继续 sub rsp,0x10
+   rsp ↓ 0x10 ➜ 0x7fffffffee90    ; 留出 16 B 做局部变量
+----------------------------------------------------------
+0x7fffffffee90 : （pet_cat 局部变量空间）
+···
+```
