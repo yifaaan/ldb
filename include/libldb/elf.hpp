@@ -22,12 +22,12 @@ class Elf {
   Elf(Elf&&) = delete;
   Elf& operator=(Elf&&) = delete;
 
-  std::filesystem::path Path() const { return path; }
+  std::filesystem::path Path() const { return path_; }
 
-  VirtAddr LoadBias() const { return loadBias; }
-  void NotifyLoaded(VirtAddr addr) { loadBias = addr; }
+  VirtAddr LoadBias() const { return load_bias_; }
+  void NotifyLoaded(VirtAddr addr) { load_bias_ = addr; }
 
-  const Elf64_Ehdr& GetHeader() const { return header; }
+  const Elf64_Ehdr& GetHeader() const { return header_; }
 
   std::string_view GetSectionName(std::size_t index) const;
 
@@ -47,13 +47,17 @@ class Elf {
   std::optional<const Elf64_Sym*> GetSymbolAtAddress(FileAddr addr) const;
   std::optional<const Elf64_Sym*> GetSymbolAtAddress(VirtAddr addr) const;
 
-  std::optional<const Elf64_Sym*> GetSymbolContainingAddress(
-      FileAddr addr) const;
-  std::optional<const Elf64_Sym*> GetSymbolContainingAddress(
-      VirtAddr addr) const;
+  std::optional<const Elf64_Sym*> GetSymbolContainingAddress(FileAddr addr) const;
+  std::optional<const Elf64_Sym*> GetSymbolContainingAddress(VirtAddr addr) const;
 
-  Dwarf& GetDwarf() { return *dwarf; }
-  const Dwarf& GetDwarf() const { return *dwarf; }
+  Dwarf& GetDwarf() { return *dwarf_; }
+  const Dwarf& GetDwarf() const { return *dwarf_; }
+
+  FileOffset DataPointerAsFileOffset(const std::byte* ptr) const {
+    return FileOffset{*this, static_cast<std::uint64_t>(ptr - data_)};
+  }
+
+  const std::byte* FileOffsetAsDataPointer(FileOffset offset) const { return data_ + offset.Offset(); }
 
  private:
   void ParseSectionHeaders();
@@ -64,28 +68,26 @@ class Elf {
 
   void BuildSymbolMaps();
 
-  static constexpr auto RangeComparator = [](std::pair<FileAddr, FileAddr> a,
-                                             std::pair<FileAddr, FileAddr> b) {
+  static constexpr auto RangeComparator = [](std::pair<FileAddr, FileAddr> a, std::pair<FileAddr, FileAddr> b) {
     return a.first < b.first;
   };
 
-  int fd;
-  std::filesystem::path path;
-  std::size_t fileSize;
-  std::byte* data;
-  Elf64_Ehdr header;
-  VirtAddr loadBias;
+  int fd_;
+  std::filesystem::path path_;
+  std::size_t file_size_;
+  std::byte* data_;
+  Elf64_Ehdr header_;
+  VirtAddr load_bias_;
 
-  std::vector<Elf64_Shdr> sectionHeaders;
+  std::vector<Elf64_Shdr> section_headers_;
 
-  std::unordered_map<std::string_view, Elf64_Shdr*> sectionMap;
+  std::unordered_map<std::string_view, Elf64_Shdr*> section_map_;
 
-  std::vector<Elf64_Sym> symbolTable;
+  std::vector<Elf64_Sym> symbol_table_;
 
-  std::unordered_multimap<std::string_view, Elf64_Sym*> symbolNameMap;
-  std::map<std::pair<FileAddr, FileAddr>, Elf64_Sym*, decltype(RangeComparator)>
-      symbolAddrMap;
+  std::unordered_multimap<std::string_view, Elf64_Sym*> symbol_name_map_;
+  std::map<std::pair<FileAddr, FileAddr>, Elf64_Sym*, decltype(RangeComparator)> symbol_addr_map_;
 
-  std::unique_ptr<Dwarf> dwarf;
+  std::unique_ptr<Dwarf> dwarf_;
 };
 }  // namespace ldb

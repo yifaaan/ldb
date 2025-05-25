@@ -8,8 +8,7 @@
 #include <span>
 
 namespace {
-bool PathEndsIn(const std::filesystem::path& lhs,
-                const std::filesystem::path& rhs) {
+bool PathEndsIn(const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
   auto lhsSize = std::ranges::distance(lhs);
   auto rhsSize = std::ranges::distance(rhs);
   if (rhsSize > lhsSize) return false;
@@ -18,8 +17,7 @@ bool PathEndsIn(const std::filesystem::path& lhs,
 }
 class Cursor {
  public:
-  explicit Cursor(ldb::Span<const std::byte> _data)
-      : data(_data), pos(_data.Begin()) {}
+  explicit Cursor(ldb::Span<const std::byte> _data) : data(_data), pos(_data.Begin()) {}
 
   Cursor& operator++() {
     ++pos;
@@ -60,8 +58,7 @@ class Cursor {
 
   std::string_view String() {
     auto null = std::find(pos, data.End(), std::byte{0});
-    std::string_view ret{reinterpret_cast<const char*>(pos),
-                         static_cast<std::size_t>(null - pos)};
+    std::string_view ret{reinterpret_cast<const char*>(pos), static_cast<std::size_t>(null - pos)};
     pos = null + 1;
     return ret;
   }
@@ -193,8 +190,7 @@ class Cursor {
   const std::byte* pos;
 };
 
-std::unordered_map<std::uint64_t, ldb::Abbrev> ParseAbbrevTable(
-    const ldb::Elf& obj, std::size_t offset) {
+std::unordered_map<std::uint64_t, ldb::Abbrev> ParseAbbrevTable(const ldb::Elf& obj, std::size_t offset) {
   Cursor cursor{obj.GetSectionContents(".debug_abbrev")};
   cursor += offset;
 
@@ -216,16 +212,13 @@ std::unordered_map<std::uint64_t, ldb::Abbrev> ParseAbbrevTable(
     } while (attr != 0 && form != 0);
 
     if (code != 0) {
-      table.emplace(code,
-                    ldb::Abbrev{code, tag, hasChildren, std::move(attrSpecs)});
+      table.emplace(code, ldb::Abbrev{code, tag, hasChildren, std::move(attrSpecs)});
     }
   } while (code != 0);
   return table;
 }
 
-std::unique_ptr<ldb::CompileUnit> ParseCompileUnit(ldb::Dwarf& dwarf,
-                                                   const ldb::Elf& obj,
-                                                   Cursor cursor) {
+std::unique_ptr<ldb::CompileUnit> ParseCompileUnit(ldb::Dwarf& dwarf, const ldb::Elf& obj, Cursor cursor) {
   auto start = cursor.Position();
   auto size = cursor.U32();
   auto version = cursor.U16();
@@ -246,8 +239,7 @@ std::unique_ptr<ldb::CompileUnit> ParseCompileUnit(ldb::Dwarf& dwarf,
   return std::make_unique<ldb::CompileUnit>(dwarf, data, abbrevOffset);
 }
 
-std::vector<std::unique_ptr<ldb::CompileUnit>> ParseCompileUnits(
-    ldb::Dwarf& dwarf, const ldb::Elf& obj) {
+std::vector<std::unique_ptr<ldb::CompileUnit>> ParseCompileUnits(ldb::Dwarf& dwarf, const ldb::Elf& obj) {
   auto debugInfo = obj.GetSectionContents(".debug_info");
   Cursor cursor{debugInfo};
 
@@ -280,9 +272,8 @@ ldb::Die ParseDie(const ldb::CompileUnit& compileUnit, Cursor cursor) {
   return ldb::Die{pos, &compileUnit, &abbrevEntry, std::move(attrLocs), next};
 }
 
-ldb::LineTable::File ParseLineTableFile(
-    Cursor& cursor, std::filesystem::path compilationDir,
-    std::span<const std::filesystem::path> includeDirectories) {
+ldb::LineTable::File ParseLineTableFile(Cursor& cursor, std::filesystem::path compilationDir,
+                                        std::span<const std::filesystem::path> includeDirectories) {
   auto file = cursor.String();
   auto dirIndex = cursor.Uleb128();
   auto modificationTime = cursor.Uleb128();
@@ -323,8 +314,7 @@ std::unique_ptr<ldb::LineTable> ParseLineTable(const ldb::CompileUnit& cu) {
   auto lineBase = cursor.S8();
   auto lineRange = cursor.U8();
   auto opcodeBase = cursor.U8();
-  std::array<std::uint8_t, 12> expectedOpcodeLengths{0, 1, 1, 1, 1, 0,
-                                                     0, 0, 1, 0, 0, 1};
+  std::array<std::uint8_t, 12> expectedOpcodeLengths{0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1};
   for (int i = 0; i < opcodeBase - 1; i++) {
     if (cursor.U8() != expectedOpcodeLengths[i]) {
       ldb::Error::Send("Unexpected opcode length");
@@ -342,27 +332,161 @@ std::unique_ptr<ldb::LineTable> ParseLineTable(const ldb::CompileUnit& cu) {
   }
   std::vector<ldb::LineTable::File> fileNames;
   while (*cursor.Position() != std::byte{0}) {
-    fileNames.push_back(
-        ParseLineTableFile(cursor, compilationDir, includeDirectories));
+    fileNames.push_back(ParseLineTableFile(cursor, compilationDir, includeDirectories));
   }
   cursor += 1;
   ldb::Span<const std::byte> data{cursor.Position(), end};
-  return std::make_unique<ldb::LineTable>(
-      data, &cu, defaultIsStmt, lineBase, lineRange, opcodeBase,
-      std::move(includeDirectories), std::move(fileNames));
+  return std::make_unique<ldb::LineTable>(data, &cu, defaultIsStmt, lineBase, lineRange, opcodeBase,
+                                          std::move(includeDirectories), std::move(fileNames));
+}
+
+std::uint64_t ParseEhFramePointerWithBase(Cursor& cursor, std::uint8_t encoding, std::uint64_t base) {
+  switch (encoding & 0x0f) {
+    case DW_EH_PE_absptr:
+      return base + cursor.U64();
+    case DW_EH_PE_uleb128:
+      return base + cursor.Uleb128();
+    case DW_EH_PE_udata2:
+      return base + cursor.U16();
+    case DW_EH_PE_udata4:
+      return base + cursor.U32();
+    case DW_EH_PE_udata8:
+      return base + cursor.U64();
+    case DW_EH_PE_sleb128:
+      return base + cursor.Sleb128();
+    case DW_EH_PE_sdata2:
+      return base + cursor.S16();
+    case DW_EH_PE_sdata4:
+      return base + cursor.S32();
+    case DW_EH_PE_sdata8:
+      return base + cursor.S64();
+    default:
+      ldb::Error::Send("Invalid eh frame pointer encoding");
+  }
+}
+
+/// 解析 eh_frame 中的指针
+/// func_start 是当前FDE对应的函数的首地址
+std::uint64_t ParseEhFramePointer(const ldb::Elf& elf, Cursor& cursor, std::uint8_t encoding, std::uint64_t pc,
+                                  std::uint64_t text_section_start, std::uint64_t data_section_start,
+                                  std::uint64_t func_start) {
+  std::uint64_t base = 0;
+  switch (encoding & 0x07) {
+    case DW_EH_PE_absptr:  // 绝对地址
+      break;
+    case DW_EH_PE_pcrel:  // 相对地址
+      base = pc;
+      break;
+    case DW_EH_PE_textrel:  // 相对 text 段
+      base = text_section_start;
+      break;
+    case DW_EH_PE_datarel:  // 相对 data 段
+      base = data_section_start;
+      break;
+    case DW_EH_PE_funcrel:  // 相对函数起始地址
+      base = func_start;
+      break;
+    default:
+      ldb::Error::Send("Invalid eh frame pointer encoding");
+  }
+  return ParseEhFramePointerWithBase(cursor, encoding, base);
+}
+
+ldb::CallFrameInformation::CommonInformationEntry ParseCIE(Cursor cursor) {
+  auto start = cursor.Position();
+  // +4包含自身
+  auto length = cursor.U32() + 4;
+  // 区分 CIE / FDE：
+  //  1.debug_frame = 0xffffffff
+  //  2.eh_frame = 0x00000000
+  auto id = cursor.U32();
+  auto version = cursor.U8();
+  if (version != 1 && version != 3 && version != 4) {
+    ldb::Error::Send("Invalid version of CIE");
+  }
+  auto augmentation = cursor.String();
+  if (!augmentation.empty() && !augmentation.starts_with('z')) {
+    ldb::Error::Send("Invalid CIE augmentation string (must begin with 'z' or be empty)");
+  }
+
+  if (version == 4) {
+    auto address_size = cursor.U8();
+    auto segment_size = cursor.U8();
+    if (address_size != 8) {
+      ldb::Error::Send("Invalid address size of CIE");
+    }
+    if (segment_size != 0) {
+      ldb::Error::Send("Invalid segment size of CIE");
+    }
+  }
+
+  // 供 DW_CFA_advance_loc：指令偏移 × CAF = 字节数。
+  auto code_alignment_factor = cursor.Uleb128();
+  // 调整栈向上/向下方向；x86-64 上通常 = -8。
+  auto data_alignment_factor = cursor.Sleb128();
+  // 返回地址所在寄存器号；x86-64 = 16（RIP）。DWARF 2 用 1 B，DWARF 3+ 用 ULEB128。
+  auto return_address_register = version == 1 ? cursor.U8() : cursor.Uleb128();
+
+  std::uint8_t fde_pointer_encoding = DW_EH_PE_absptr | DW_EH_PE_udata8;
+  for (auto c : augmentation) {
+    switch (c) {
+      case 'z':
+        cursor.Uleb128();
+        break;
+      case 'R':
+        // 相对initial_location 地址的偏移
+        fde_pointer_encoding = cursor.U8();
+        break;
+      case 'L':
+        cursor.U8();
+        break;
+      case 'P': {
+        auto encoding = cursor.U8();
+        ParseEhFramePointerWithBase(cursor, encoding, 0);
+        break;
+      }
+      default:
+        ldb::Error::Send("Invalid CIE augmentation string");
+    }
+  }
+  ldb::Span<const std::byte> instructions{cursor.Position(), start + length};
+  bool fde_has_augmentation = !augmentation.empty();
+  return {length,      code_alignment_factor, data_alignment_factor, fde_has_augmentation, fde_pointer_encoding,
+          instructions};
+}
+
+ldb::CallFrameInformation::FrameDescriptionEntry ParseFDE(const ldb::CallFrameInformation& cfi, Cursor cursor) {
+  auto start = cursor.Position();
+  auto length = cursor.U32() + 4;
+  // 负偏移量（s32）：从本字节 向前回溯到配对的 CIE 起始位置。
+  // 若 .debug_frame，此字段恒为 正偏移 (0)；但在常见的 .eh_frame 格式里，它是负数。
+  auto elf = cfi.DwarfInfo().ElfFile();
+  auto current_offset = elf->DataPointerAsFileOffset(cursor.Position());
+  ldb::FileOffset cie_offset{*elf, current_offset.Offset() - cursor.U32()};
+  auto& cie = cfi.GetCIE(cie_offset);
+  current_offset = elf->DataPointerAsFileOffset(cursor.Position());
+  auto text_section_start = elf->GetSectonStartAddress(".text").value_or(ldb::FileAddr{});
+  auto initial_location_addr = ParseEhFramePointer(*elf, cursor, cie.fde_pointer_encoding, current_offset.Offset(),
+                                                   text_section_start.Addr(), 0, 0);
+  ldb::FileAddr initial_location{*elf, initial_location_addr};
+  auto address_range = ParseEhFramePointerWithBase(cursor, cie.fde_pointer_encoding, 0);
+  if (cie.fde_has_augmentation) {
+    auto aug_len = cursor.Uleb128();
+    cursor += aug_len;
+  }
+  ldb::Span<const std::byte> instructions{cursor.Position(), start + length};
+  return {length, &cie, initial_location, address_range, instructions};
 }
 }  // namespace
 
 namespace ldb {
 
-CompileUnit::CompileUnit(Dwarf& _parent, Span<const std::byte> _data,
-                         std::size_t _abbrevOffset)
+CompileUnit::CompileUnit(Dwarf& _parent, Span<const std::byte> _data, std::size_t _abbrevOffset)
     : parent(&_parent), data(_data), abbrevOffset(_abbrevOffset) {
   lineTable = ParseLineTable(*this);
 }
 
-const std::unordered_map<std::uint64_t, Abbrev>& CompileUnit::AbbrevTable()
-    const {
+const std::unordered_map<std::uint64_t, Abbrev>& CompileUnit::AbbrevTable() const {
   return parent->GetAbbrevTable(abbrevOffset);
 }
 
@@ -372,12 +496,9 @@ Die CompileUnit::Root() const {
   return ParseDie(*this, cursor);
 }
 
-Dwarf::Dwarf(const Elf& parent) : elf(&parent) {
-  compileUnits = ParseCompileUnits(*this, parent);
-}
+Dwarf::Dwarf(const Elf& parent) : elf(&parent) { compileUnits = ParseCompileUnits(*this, parent); }
 
-const std::unordered_map<std::uint64_t, Abbrev>& Dwarf::GetAbbrevTable(
-    std::size_t offset) {
+const std::unordered_map<std::uint64_t, Abbrev>& Dwarf::GetAbbrevTable(std::size_t offset) {
   if (!abbrevTables.contains(offset)) {
     abbrevTables.emplace(offset, ParseAbbrevTable(*elf, offset));
   }
@@ -386,10 +507,7 @@ const std::unordered_map<std::uint64_t, Abbrev>& Dwarf::GetAbbrevTable(
 
 const CompileUnit* Dwarf::CompileUnitContainingAddress(FileAddr address) const {
   if (auto it =
-          std::ranges::find_if(compileUnits,
-                               [address](const auto& cu) {
-                                 return cu->Root().ContainsAddress(address);
-                               });
+          std::ranges::find_if(compileUnits, [address](const auto& cu) { return cu->Root().ContainsAddress(address); });
       it != std::end(compileUnits)) {
     return it->get();
   }
@@ -401,9 +519,7 @@ std::optional<Die> Dwarf::FunctionContainingAddress(FileAddr address) const {
   for (const auto& [name, entry] : functionIndex) {
     Cursor cursor{{entry.pos, entry.compileUnit->Data().End()}};
     auto die = ParseDie(*entry.compileUnit, cursor);
-    if (die.ContainsAddress(address) &&
-        die.AbbrevEntry()->tag == DW_TAG_subprogram)
-      return die;
+    if (die.ContainsAddress(address) && die.AbbrevEntry()->tag == DW_TAG_subprogram) return die;
   }
   return std::nullopt;
 }
@@ -428,8 +544,7 @@ std::vector<Die> Dwarf::InlineStackAtAddress(FileAddr address) const {
     while (true) {
       const auto& child = stack.back().Children();
       auto found = std::ranges::find_if(child, [=](auto& child) {
-        return child.AbbrevEntry()->tag == DW_TAG_inlined_subroutine &&
-               child.ContainsAddress(address);
+        return child.AbbrevEntry()->tag == DW_TAG_inlined_subroutine && child.ContainsAddress(address);
       });
       if (found == child.end())
         break;
@@ -442,15 +557,13 @@ std::vector<Die> Dwarf::InlineStackAtAddress(FileAddr address) const {
 
 void Dwarf::Index() const {
   if (!functionIndex.empty()) return;
-  std::ranges::for_each(compileUnits,
-                        [this](auto& cu) { IndexDie(cu->Root()); });
+  std::ranges::for_each(compileUnits, [this](auto& cu) { IndexDie(cu->Root()); });
 }
 
 void Dwarf::IndexDie(const Die& current) const {
-  bool hasRange =
-      current.Contains(DW_AT_ranges) || current.Contains(DW_AT_low_pc);
-  bool isFunc = current.AbbrevEntry()->tag == DW_TAG_subprogram ||
-                current.AbbrevEntry()->tag == DW_TAG_inlined_subroutine;
+  bool hasRange = current.Contains(DW_AT_ranges) || current.Contains(DW_AT_low_pc);
+  bool isFunc =
+      current.AbbrevEntry()->tag == DW_TAG_subprogram || current.AbbrevEntry()->tag == DW_TAG_inlined_subroutine;
   if (hasRange && isFunc) {
     if (auto name = current.Name(); name) {
       IndexEntry entry{current.Cu(), current.Position()};
@@ -478,9 +591,8 @@ std::optional<std::string_view> Die::Name() const {
 }
 
 bool Die::Contains(std::uint64_t attribute) const {
-  return std::ranges::find_if(abbrev->attrSpecs, [=](const auto spec) {
-           return spec.attr == attribute;
-         }) != std::end(abbrev->attrSpecs);
+  return std::ranges::find_if(abbrev->attrSpecs, [=](const auto spec) { return spec.attr == attribute; }) !=
+         std::end(abbrev->attrSpecs);
 }
 
 Attr Die::operator[](std::uint64_t attribute) const {
@@ -649,8 +761,7 @@ std::string_view Attr::AsString() const {
       return cursor.String();
     case DW_FORM_strp: {
       auto offset = cursor.U32();
-      auto section =
-          compileUnit->DwarfInfo()->ElfFile()->GetSectionContents(".debug_str");
+      auto section = compileUnit->DwarfInfo()->ElfFile()->GetSectionContents(".debug_str");
       Cursor cursor{{section.Begin() + offset, section.End()}};
       return cursor.String();
     }
@@ -683,43 +794,33 @@ Die Attr::AsReference() const {
       // so its offset is relative to the start of `.debug_info` section
       {
         offset = cursor.U32();
-        auto section = compileUnit->DwarfInfo()->ElfFile()->GetSectionContents(
-            ".debug_info");
+        auto section = compileUnit->DwarfInfo()->ElfFile()->GetSectionContents(".debug_info");
         auto diePos = section.Begin() + offset;
         auto& compileUnits = compileUnit->DwarfInfo()->CompileUnits();
-        auto belongs =
-            std::ranges::find_if(compileUnits, [diePos](const auto& cu) {
-              return cu->Data().Begin() <= diePos && diePos < cu->Data().End();
-            });
+        auto belongs = std::ranges::find_if(compileUnits, [diePos](const auto& cu) {
+          return cu->Data().Begin() <= diePos && diePos < cu->Data().End();
+        });
         Cursor refCursor{{diePos, belongs->get()->Data().End()}};
         return ParseDie(*belongs->get(), refCursor);
       }
     default:
       Error::Send("Invalid reference type");
   }
-  Cursor refCursor{
-      {compileUnit->Data().Begin() + offset, compileUnit->Data().End()}};
+  Cursor refCursor{{compileUnit->Data().Begin() + offset, compileUnit->Data().End()}};
   return ParseDie(*compileUnit, refCursor);
 }
 
 RangeList Attr::AsRangeList() const {
-  auto section =
-      compileUnit->DwarfInfo()->ElfFile()->GetSectionContents(".debug_ranges");
+  auto section = compileUnit->DwarfInfo()->ElfFile()->GetSectionContents(".debug_ranges");
   auto offset = AsSectionOffset();
   Span<const std::byte> data{section.Begin() + offset, section.End()};
   auto root = compileUnit->Root();
-  FileAddr baseAddress =
-      root.Contains(DW_AT_low_pc) ? root[DW_AT_low_pc].AsAddress() : FileAddr{};
+  FileAddr baseAddress = root.Contains(DW_AT_low_pc) ? root[DW_AT_low_pc].AsAddress() : FileAddr{};
   return {compileUnit, data, baseAddress};
 }
 
-RangeList::iterator::iterator(const CompileUnit* _compileUnit,
-                              Span<const std::byte> _data,
-                              FileAddr _baseAddress)
-    : compileUnit(_compileUnit),
-      data(_data),
-      baseAddress(_baseAddress),
-      pos(_data.Begin()) {
+RangeList::iterator::iterator(const CompileUnit* _compileUnit, Span<const std::byte> _data, FileAddr _baseAddress)
+    : compileUnit(_compileUnit), data(_data), baseAddress(_baseAddress), pos(_data.Begin()) {
   ++(*this);
 }
 
@@ -751,23 +852,19 @@ RangeList::iterator RangeList::iterator::operator++(int) {
   return t;
 }
 
-RangeList::iterator RangeList::begin() const {
-  return {compileUnit, data, baseAddr};
-}
+RangeList::iterator RangeList::begin() const { return {compileUnit, data, baseAddr}; }
 
 RangeList::iterator RangeList::end() const { return {}; }
 
 bool RangeList::Contains(FileAddr addr) const {
-  return std::ranges::any_of(
-      *this, [addr](const auto& e) { return e.Contains(addr); });
+  return std::ranges::any_of(*this, [addr](const auto& e) { return e.Contains(addr); });
 }
 
 LineTable::iterator LineTable::begin() const { return iterator(this); }
 
 LineTable::iterator LineTable::end() const { return {}; }
 
-LineTable::iterator::iterator(const LineTable* _table)
-    : table(_table), pos(table->data.Begin()) {
+LineTable::iterator::iterator(const LineTable* _table) : table(_table), pos(table->data.Begin()) {
   registers.isStmt = table->defaultIsStmt;
   ++(*this);
 }
@@ -860,8 +957,7 @@ bool LineTable::iterator::ExecuteInstruction() {
         break;
       case DW_LNE_define_file: {
         auto compilationDir = table->Cu().Root()[DW_AT_comp_dir].AsString();
-        auto file = ParseLineTableFile(cursor, compilationDir,
-                                       table->includeDirectories);
+        auto file = ParseLineTableFile(cursor, compilationDir, table->includeDirectories);
         table->fileNames.push_back(file);
         break;
       }
@@ -892,20 +988,17 @@ LineTable::iterator LineTable::GetEntryByAddress(FileAddr address) const {
   if (prev == end()) return prev;
   auto it = prev;
   for (++it; it != end(); prev = it++) {
-    if (prev->address <= address && address < it->address && !prev->endSequence)
-      return prev;
+    if (prev->address <= address && address < it->address && !prev->endSequence) return prev;
   }
   return end();
 }
 
-std::vector<LineTable::iterator> LineTable::GetEntriesByLine(
-    std::filesystem::path path, std::size_t line) const {
+std::vector<LineTable::iterator> LineTable::GetEntriesByLine(std::filesystem::path path, std::size_t line) const {
   std::vector<iterator> entries;
   for (auto it = begin(); it != end(); ++it) {
     auto entryPath = it->fileEntry->path;
     if (it->line == line) {
-      if ((path.is_absolute() && entryPath == path) ||
-          (path.is_relative() && PathEndsIn(entryPath, path))) {
+      if ((path.is_absolute() && entryPath == path) || (path.is_relative() && PathEndsIn(entryPath, path))) {
         entries.push_back(it);
       }
     }
@@ -913,3 +1006,18 @@ std::vector<LineTable::iterator> LineTable::GetEntriesByLine(
   return entries;
 }
 }  // namespace ldb
+
+const ldb::CallFrameInformation::CommonInformationEntry& ldb::CallFrameInformation::GetCIE(FileOffset offset) const {
+  auto off = offset.Offset();
+  if (cie_map_.contains(off)) {
+    return cie_map_.at(off);
+  }
+
+  auto secton = offset.ElfFile()->GetSectionContents(".eh_frame");
+  Cursor cursor{{offset.ElfFile()->FileOffsetAsDataPointer(offset), secton.End()}};
+
+  auto cie = ParseCIE(cursor);
+
+  auto [pos, _] = cie_map_.emplace(off, std::move(cie));
+  return pos->second;
+}

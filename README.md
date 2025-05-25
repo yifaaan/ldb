@@ -359,3 +359,40 @@ new_value = S + A - P
 # A: addend值
 # P: 需要重定位的引用符号的运行时地址(e8的下一个字节的地址:0x1001)
 ```
+
+
+## 调用帧信息(CFI)
+展开栈帧需要的信息：
+- CFA（Canonical Frame Address）——在该栈帧里选定的“基准地址”，后续所有偏移计算都以它为参照；
+- 返回地址存放在栈上的什么位置；
+- 被调用者在函数序言（prologue）里保存到栈上的寄存器，如何从栈里恢复。
+
+每一行对应一个程序计数器（PC）起始值；该行的规则适用于从这一地址开始、到下一行 PC 之前（不含）的所有指令。
+每行记录：
+- 该范围内指令应使用的 CFA 计算方法；
+- 如何把寄存器恢复到“当前函数立即返回之后”应有的值。
+
+CFI 由两类条目组成：
+- CIE（Common Information Entry） —— 存放多条 FDE 共同的部分（如返回地址寄存器号、栈增长方向等）；
+- FDE（Frame Description Entry） —— 覆盖某段指令（通常是一整个函数），引用一条 CIE 并补充自身专有的展开规则。
+
+每条 CIE/FDE 内部都是“CFI 指令”序列，用来动态计算那张“大表”的某几行。
+
+调试器查找当前 PC 落在哪个 FDE，把该 FDE+CIE 的指令解释出来→得到本帧的 CFA 和寄存器恢复规则→由此推出上一帧的返回地址；然后用返回地址重复此过程，层层向上，直到回溯到程序起点（对应用而言通常是 main，实际上多半会止于运行时提供的 _start）。
+
+
+
+
+
+| 偏移 | 字段 | 大小 | 说明 |
+|------|------|------|------|
+| `0` | **length** | 4 B（或 12 B） | 当前 CIE 条目总长，不含自身；若为 `0xffffffff` 则使用 64-bit **扩展长度**（随后跟 8 B `length64`）。 |
+| `+4` | **CIE_id** | 4 B | 区分 CIE / FDE：<br>• `.debug_frame` = `0xffffffff`<br>• `.eh_frame` = `0x00000000` |
+| `+8` | **version** | 1 B | DWARF 2 = `1`；DWARF 3/4 = `3` 或 `4`。 |
+| `+9` | **augmentation_string** | N + 1 B | 以 `'\0'` 结尾的 ASCII 字符串，定义后续 *augmentation data* 结构。常见字符：`z`、`L`、`R`、`P`。 |
+| … | **code_alignment_factor** | ULEB128 | 供 `DW_CFA_advance_loc`：指令偏移 × CAF = 字节数。 |
+| … | **data_alignment_factor** | SLEB128 | 调整栈向上/向下方向；x86-64 上通常 = `-8`。 |
+| … | **return_address_register** | ULEB128 | 返回地址所在寄存器号；x86-64 = `16`（RIP）。DWARF 2 用 1 B，DWARF 3+ 用 ULEB128。 |
+| … | *augmentation_data_length* | ULEB128（仅当 `augmentation_string` 含 `z`） | 随后的增补数据总长。 |
+| … | *增补数据*（按 `augmentation_string` 解析） | 变长 | 例：<br>• `R`：1 B **FDE 代码指针编码**（`DW_EH_PE_*`）<br>• `L`：1 B LSDA 编码<br>• `P`：1 B personality 编码 + 指针值 |
+| … | **initial_instructions** | 可变 | 一串 CFI 指令（`DW_CFA_*` / `DW_EH_*`），描述“进入任何 FDE 之前”的初始恢复规则；长度 = `length` − 前面字段总和。 |
