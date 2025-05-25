@@ -477,6 +477,47 @@ ldb::CallFrameInformation::FrameDescriptionEntry ParseFDE(const ldb::CallFrameIn
   ldb::Span<const std::byte> instructions{cursor.Position(), start + length};
   return {length, &cie, initial_location, address_range, instructions};
 }
+
+/// 要想随机跳转到任意表项，需要知道“每条表项占多少字节”。
+/// 字节大小由 .eh_frame_hdr 里的 table_enc 指定——下面这段函数用来根据编码计算大小：
+std::size_t EhFramePointerEncodingSize(std::uint8_t encoding) {
+  switch (encoding & 0x07) {
+    case DW_EH_PE_absptr:
+      return 8;
+    case DW_EH_PE_udata2:
+      return 2;
+    case DW_EH_PE_udata4:
+      return 4;
+    case DW_EH_PE_udata8:
+      return 8;
+  }
+  ldb::Error::Send("Invalid eh frame pointer encoding");
+}
+
+ldb::CallFrameInformation::EhHdr ParseEhHdr(ldb::Dwarf& dwarf) {
+  auto elf = dwarf.ElfFile();
+
+  auto eh_hdr_start = *elf->GetSectonStartAddress(".eh_frame_hdr");
+  auto text_section_start = *elf->GetSectonStartAddress(".text");
+
+  auto eh_hdr_data = elf->GetSectionContents(".eh_frame_hdr");
+  Cursor cursor{eh_hdr_data};
+  auto start = cursor.Position();
+  auto version = cursor.U8();
+  // 指向.eh_frame节的指针编码
+  auto eh_frame_ptr_enc = cursor.U8();
+  // FDE 数编码
+  auto fde_count_enc = cursor.U8();
+  // 查找表编码
+  auto table_enc = cursor.U8();
+  // 解码eh_frame指针
+  ParseEhFramePointerWithBase(cursor, eh_frame_ptr_enc, 0);
+  // 解码FDE数量
+  auto fde_count = ParseEhFramePointerWithBase(cursor, fde_count_enc, 0);
+  // 查找表的开始位置
+  auto search_table = cursor.Position();
+  return {start, search_table, fde_count, table_enc, nullptr};
+}
 }  // namespace
 
 namespace ldb {
@@ -1020,4 +1061,52 @@ const ldb::CallFrameInformation::CommonInformationEntry& ldb::CallFrameInformati
 
   auto [pos, _] = cie_map_.emplace(off, std::move(cie));
   return pos->second;
+}
+
+const std::byte* ldb::CallFrameInformation::EhHdr::operator[](FileAddr pc) const {
+  auto elf = pc.ElfFile();
+  auto text_section_start = *elf->GetSectonStartAddress(".text");
+  // 一条表项含两列指针；列宽由 table_encoding 决定
+  auto table_entry_encoding_size = EhFramePointerEncodingSize(encoding);
+  auto row_size = table_entry_encoding_size * 2;
+  // 表项格式：
+  // ① initial_location（函数首 PC）
+  // ② fde_ptr（FDE 在文件内的偏移）
+  std::size_t low = 0;
+  std::size_t high = count - 1;
+  while (low <= high) {
+    auto mid = (low + high) / 2;
+    // mid 是表项索引，指向表项的开始位置
+    Cursor cursor{{search_table + mid * row_size, search_table + count * row_size}};
+    // initial_location的文件偏移
+    auto current_offset = elf->DataPointerAsFileOffset(cursor.Position());
+    auto eh_hdr_offset = elf->DataPointerAsFileOffset(start);
+    // 解码initial_location
+    auto entry_address = ParseEhFramePointer(*elf, cursor, encoding, current_offset.Offset(), text_section_start.Addr(),
+                                             eh_hdr_offset.Offset(), 0);
+
+    if (entry_address < pc.Addr()) {
+      low = mid + 1;
+    } else if (entry_address > pc.Addr()) {
+      if (mid == 0) {
+        ldb::Error::Send("Address not found in eh_hdr");
+      }
+      high = mid - 1;
+    } else {
+      high = mid;
+      break;
+    }
+  }
+
+  std::size_t row_index = high;
+  const std::byte* row_ptr = search_table + row_index * row_size;
+  // 第二列是fde_ptr
+  Cursor fde_cur{{row_ptr + table_entry_encoding_size, row_ptr + row_size}};
+
+  auto fde_offset = elf->DataPointerAsFileOffset(fde_cur.Position());
+  auto hdr_offset = elf->DataPointerAsFileOffset(start);
+  auto fde_offset_int = ParseEhFramePointer(*elf, fde_cur, encoding, fde_offset.Offset(), text_section_start.Addr(),
+                                            hdr_offset.Offset(), 0);
+  ldb::FileOffset fde_off{*elf, fde_offset_int};
+  return elf->FileOffsetAsDataPointer(fde_off);
 }

@@ -283,6 +283,29 @@ class CallFrameInformation {
     Span<const std::byte> instructions;
   };
 
+  /// 加速索引表，让运行时/调试器能 O(log N) 从 任意 PC 迅速找到对应 FDE。内容：
+  ///  * 版本 & 3 个编码字节
+  ///  * 指向 .eh_frame 的指针
+  ///  * FDE 数量
+  ///  * 二分表：(initial_location , fde_ptr) × N
+  ///      每条连续存放两列：
+  ///      ① initial_location（函数首 PC）
+  ///      ② fde_ptr（FDE 在文件内的偏移）
+  ///     两列都用 table_encoding 编码。表按 initial_location 递增排序，可用二分。
+  struct EhHdr {
+    /// .eh_frame_hdr节的起始地址
+    const std::byte* start;
+    /// 表的开始位置
+    const std::byte* search_table;
+    /// 搜索表中条目数:FDE 的个数
+    std::size_t count;
+    /// 表项编码
+    std::uint8_t encoding;
+    CallFrameInformation* parent;
+
+    const std::byte* operator[](FileAddr pc) const;
+  };
+
   CallFrameInformation() = delete;
   CallFrameInformation(const CallFrameInformation&) = delete;
   CallFrameInformation& operator=(const CallFrameInformation&) = delete;
