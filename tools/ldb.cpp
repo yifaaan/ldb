@@ -130,7 +130,7 @@ std::string GetSignalStopReason(const ldb::Target& target,
   auto& process = target.GetProcess();
   auto pc = process.GetPc();
   auto message = fmt::format("stopped with signal {} at {:#x}",
-                             sigabbrev_np(reason.info), process.GetPc().Addr());
+                             sigabbrev_np(reason.info), pc.Addr());
 
   // look up the symbol corresponding to the current program counter and print
   // out the function name if there is one.
@@ -249,29 +249,32 @@ void PrintDisassembly(ldb::Process& process, ldb::VirtAddr address,
 
 void PrintSource(const std::filesystem::path& path, std::uint64_t line,
                  std::uint64_t n_lines_context) {
-  std::ifstream file{path.string()};
-  // auto start_line = line <= n_lines_context ? 1 : line - n_lines_context;
-  auto start_line = line;
+  std::ifstream file{path};
+  auto start_line = line <= n_lines_context ? 1 : line - n_lines_context;
   auto end_line = line + n_lines_context + 1;
-
+  std::cout << "start_line: " << start_line << ", end_line: " << end_line
+            << '\n';
+  char c{};
+  auto current_line = 1u;
+  while (current_line != start_line && file.get(c)) {
+    if (c == '\n') {
+      ++current_line;
+    }
+  }
   auto PrintLineStart = [&](auto current_line) {
     auto fill_width = static_cast<int>(std::floor(std::log10(end_line))) + 1;
     auto arrow = current_line == line ? ">" : " ";
     fmt::print("{} {:>{}} ", arrow, current_line, fill_width);
   };
-
-  char c{};
-  auto current_line = 1u;
   PrintLineStart(current_line);
   while (current_line <= end_line && file.get(c)) {
-    fmt::print("{}", c);
-
+    std::cout << c;
     if (c == '\n') {
       ++current_line;
       PrintLineStart(current_line);
     }
   }
-  fmt::println("");
+  std::cout << std::endl;
 }
 
 void HandleStop(ldb::Target& target, ldb::StopReason reason) {
