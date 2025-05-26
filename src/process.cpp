@@ -70,8 +70,7 @@ void SetPtraceOptions(pid_t pid) {
 }  // namespace
 
 namespace ldb {
-std::unique_ptr<Process> Process::Launch(std::filesystem::path path, bool debug,
-                                         std::optional<int> stdoutReplacement) {
+std::unique_ptr<Process> Process::Launch(std::filesystem::path path, bool debug, std::optional<int> stdoutReplacement) {
   // channle for son process to send error message back to the parent process
   Pipe channel(/*closeOnExec*/ true);
   pid_t pid;
@@ -113,8 +112,7 @@ std::unique_ptr<Process> Process::Launch(std::filesystem::path path, bool debug,
     Error::Send({chars, errMsg.size()});
   }
 
-  std::unique_ptr<Process> process{
-      new Process{pid, /*terminateOnEnd*/ true, debug}};
+  std::unique_ptr<Process> process{new Process{pid, /*terminateOnEnd*/ true, debug}};
   if (debug) {
     process->WaitOnSignal();
     SetPtraceOptions(pid);
@@ -130,8 +128,7 @@ std::unique_ptr<Process> Process::Attach(pid_t pid) {
     Error::SendErrno("Could not attach");
   }
 
-  std::unique_ptr<Process> process{
-      new Process{pid, /*terminateOnEnd*/ false, /*isAttached*/ true}};
+  std::unique_ptr<Process> process{new Process{pid, /*terminateOnEnd*/ false, /*isAttached*/ true}};
   process->WaitOnSignal();
   SetPtraceOptions(pid);
   return process;
@@ -171,9 +168,7 @@ void Process::Resume() {
     }
     bp.Enable();
   }
-  auto request = syscallCatchPolicy.GetMode() == SyscallCatchPolicy::Mode::none
-                     ? PTRACE_CONT
-                     : PTRACE_SYSCALL;
+  auto request = syscallCatchPolicy.GetMode() == SyscallCatchPolicy::Mode::none ? PTRACE_CONT : PTRACE_SYSCALL;
   if (ptrace(request, pid, nullptr, nullptr) < 0) {
     Error::SendErrno("Could not resume");
   }
@@ -211,8 +206,7 @@ StopReason Process::WaitOnSignal() {
     AugmentStopReason(reason);
     // for continue command
     auto instrBegin = GetPc() - 1;
-    if (reason.info == SIGTRAP &&
-        breakpointSites.EnabledStoppointAtAddress(instrBegin)) {
+    if (reason.info == SIGTRAP && breakpointSites.EnabledStoppointAtAddress(instrBegin)) {
       SetPc(instrBegin);
     } else if (reason.trapReason == TrapType::hardwareBreak) {
       auto id = GetCurrentHardwareStoppoint();
@@ -247,9 +241,8 @@ void Process::AugmentStopReason(StopReason& reason) {
       sysinfo.entry = true;
       // syscall id
       sysinfo.id = regs.ReadByIdAs<std::uint64_t>(RegisterId::orig_rax);
-      std::array<RegisterId, 6> argRegs = {RegisterId::rdi, RegisterId::rsi,
-                                           RegisterId::rdx, RegisterId::r10,
-                                           RegisterId::r8,  RegisterId::r9};
+      std::array<RegisterId, 6> argRegs = {RegisterId::rdi, RegisterId::rsi, RegisterId::rdx,
+                                           RegisterId::r10, RegisterId::r8,  RegisterId::r9};
       for (int i = 0; i < 6; i++) {
         sysinfo.args[i] = regs.ReadByIdAs<std::uint64_t>(argRegs[i]);
       }
@@ -290,10 +283,10 @@ StopReason::StopReason(int waitStatus) {
 }
 
 void Process::ReadAllRegisters() {
-  if (ptrace(PTRACE_GETREGS, pid, nullptr, &GetRegisters().data.regs) < 0) {
+  if (ptrace(PTRACE_GETREGS, pid, nullptr, &GetRegisters().data_.regs) < 0) {
     Error::SendErrno("Could not read GPR registers");
   }
-  if (ptrace(PTRACE_GETFPREGS, pid, nullptr, &GetRegisters().data.i387) < 0) {
+  if (ptrace(PTRACE_GETFPREGS, pid, nullptr, &GetRegisters().data_.i387) < 0) {
     Error::SendErrno("Could not read FPR registers");
   }
   for (int i = 0; i < 8; i++) {
@@ -303,12 +296,11 @@ void Process::ReadAllRegisters() {
     errno = 0;
     std::int64_t data = ptrace(PTRACE_PEEKUSER, pid, info.offset, nullptr);
     if (errno != 0) Error::SendErrno("Could not read debug register");
-    GetRegisters().data.u_debugreg[i] = data;
+    GetRegisters().data_.u_debugreg[i] = data;
   }
 }
 
-std::vector<std::byte> Process::ReadMemory(VirtAddr address,
-                                           std::size_t amount) const {
+std::vector<std::byte> Process::ReadMemory(VirtAddr address, std::size_t amount) const {
   std::vector<std::byte> ret(amount);
   iovec localDesc{ret.data(), ret.size()};
   std::vector<iovec> remoteDescs;
@@ -319,15 +311,13 @@ std::vector<std::byte> Process::ReadMemory(VirtAddr address,
     amount -= chunkSize;
     address += chunkSize;
   }
-  if (process_vm_readv(pid, &localDesc, 1, remoteDescs.data(),
-                       remoteDescs.size(), 0) < 0) {
+  if (process_vm_readv(pid, &localDesc, 1, remoteDescs.data(), remoteDescs.size(), 0) < 0) {
     Error::SendErrno("Could not read process memory");
   }
   return ret;
 }
 
-std::vector<std::byte> Process::ReadMemoryWithoutTraps(
-    VirtAddr address, std::size_t amount) const {
+std::vector<std::byte> Process::ReadMemoryWithoutTraps(VirtAddr address, std::size_t amount) const {
   auto memory = ReadMemory(address, amount);
   auto sites = breakpointSites.GetInRegion(address, address + amount);
   for (auto site : sites) {
@@ -377,30 +367,23 @@ void Process::WriteGprs(const user_regs_struct& gprs) {
   }
 }
 
-BreakpointSite& Process::CreateBreakpointSite(VirtAddr address, bool hardware,
-                                              bool internal) {
+BreakpointSite& Process::CreateBreakpointSite(VirtAddr address, bool hardware, bool internal) {
   if (breakpointSites.ContainsAddress(address)) {
-    Error::Send("Breakpoint site already created at address " +
-                std::to_string(address.Addr()));
+    Error::Send("Breakpoint site already created at address " + std::to_string(address.Addr()));
   }
-  return breakpointSites.Push(std::unique_ptr<BreakpointSite>(
-      new BreakpointSite(*this, address, hardware, internal)));
+  return breakpointSites.Push(std::unique_ptr<BreakpointSite>(new BreakpointSite(*this, address, hardware, internal)));
 }
 
-BreakpointSite& Process::CreateBreakpointSite(Breakpoint* parent,
-                                              BreakpointSite::IdType id,
-                                              VirtAddr address, bool hardware,
-                                              bool internal) {
+BreakpointSite& Process::CreateBreakpointSite(Breakpoint* parent, BreakpointSite::IdType id, VirtAddr address,
+                                              bool hardware, bool internal) {
   if (breakpointSites.ContainsAddress(address)) {
-    Error::Send("Breakpoint site already created at address " +
-                std::to_string(address.Addr()));
+    Error::Send("Breakpoint site already created at address " + std::to_string(address.Addr()));
   }
-  return breakpointSites.Push(std::unique_ptr<BreakpointSite>{
-      new BreakpointSite(parent, id, *this, address, hardware, internal)});
+  return breakpointSites.Push(
+      std::unique_ptr<BreakpointSite>{new BreakpointSite(parent, id, *this, address, hardware, internal)});
 }
 
-int Process::SetHardwareBreakpoint(BreakpointSite::IdType id,
-                                   VirtAddr address) {
+int Process::SetHardwareBreakpoint(BreakpointSite::IdType id, VirtAddr address) {
   // execute mode must 1 byte
   return SetHardwareStoppoint(address, StoppointMode::execute, 1);
 }
@@ -414,29 +397,23 @@ void Process::ClearHardwareStoppoint(int index) {
   GetRegisters().WriteById(RegisterId::dr7, masked);
 }
 
-int Process::SetWatchpoint(Watchpoint::IdType id, VirtAddr address,
-                           StoppointMode mode, std::size_t size) {
+int Process::SetWatchpoint(Watchpoint::IdType id, VirtAddr address, StoppointMode mode, std::size_t size) {
   return SetHardwareStoppoint(address, mode, size);
 }
 
-Watchpoint& Process::CreateWatchpoint(VirtAddr address, StoppointMode mode,
-                                      std::size_t size) {
+Watchpoint& Process::CreateWatchpoint(VirtAddr address, StoppointMode mode, std::size_t size) {
   if (watchpoints.ContainsAddress(address)) {
-    Error::Send("Watchpoint already created at address " +
-                std::to_string(address.Addr()));
+    Error::Send("Watchpoint already created at address " + std::to_string(address.Addr()));
   }
-  return watchpoints.Push(
-      std::unique_ptr<Watchpoint>{new Watchpoint(*this, address, mode, size)});
+  return watchpoints.Push(std::unique_ptr<Watchpoint>{new Watchpoint(*this, address, mode, size)});
 }
 
-std::variant<BreakpointSite::IdType, Watchpoint::IdType>
-Process::GetCurrentHardwareStoppoint() const {
+std::variant<BreakpointSite::IdType, Watchpoint::IdType> Process::GetCurrentHardwareStoppoint() const {
   auto& regs = GetRegisters();
   auto status = regs.ReadByIdAs<std::uint64_t>(RegisterId::dr6);
   auto index = __builtin_ctzll(status);
   auto id = static_cast<int>(RegisterId::dr0) + index;
-  auto addr =
-      VirtAddr{regs.ReadByIdAs<std::uint64_t>(static_cast<RegisterId>(id))};
+  auto addr = VirtAddr{regs.ReadByIdAs<std::uint64_t>(static_cast<RegisterId>(id))};
   using Ret = std::variant<BreakpointSite::IdType, Watchpoint::IdType>;
   if (breakpointSites.ContainsAddress(addr)) {
     auto id = breakpointSites.GetByAddress(addr).Id();
@@ -452,9 +429,7 @@ std::unordered_map<int, std::uint64_t> Process::GetAuxv() const {
   std::ifstream auxv{path};
   std::unordered_map<int, std::uint64_t> ret;
   std::uint64_t id, value;
-  auto read = [&](auto& into) {
-    auxv.read(reinterpret_cast<char*>(&into), sizeof(into));
-  };
+  auto read = [&](auto& into) { auxv.read(reinterpret_cast<char*>(&into), sizeof(into)); };
   for (read(id); id != AT_NULL; read(id)) {
     read(value);
     ret.emplace(id, value);
@@ -462,8 +437,7 @@ std::unordered_map<int, std::uint64_t> Process::GetAuxv() const {
   return ret;
 }
 
-int Process::SetHardwareStoppoint(VirtAddr address, StoppointMode mode,
-                                  std::size_t size) {
+int Process::SetHardwareStoppoint(VirtAddr address, StoppointMode mode, std::size_t size) {
   auto& regs = GetRegisters();
   auto control = regs.ReadByIdAs<std::uint64_t>(RegisterId::dr7);
   int freeSpace = FindFreeStoppointRegister(control);

@@ -6,6 +6,7 @@
 #include <libldb/types.hpp>
 #include <ranges>
 #include <span>
+#include <variant>
 
 namespace {
 bool PathEndsIn(const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
@@ -523,6 +524,39 @@ std::unique_ptr<ldb::CallFrameInformation> ParseCallFrameInformation(ldb::Dwarf&
   auto eh_hdr = ParseEhHdr(dwarf);
   return std::make_unique<ldb::CallFrameInformation>(&dwarf, eh_hdr);
 }
+
+struct UndefinedRule {};
+struct SameRule {};
+struct OffsetRule {
+  std::int64_t offset;
+};
+struct RegisterRule {
+  std::uint32_t register;
+};
+struct ValOffsetRule {
+  std::int64_t offset;
+};
+struct CfaRegisterRule {
+  std::uint32_t register;
+  std::int64_t offset;
+};
+
+struct UnwindContext {
+  /// CFI instructions
+  Cursor cursor{{}};
+  ldb::FileAddr location;
+  CfaRegisterRule cfa_rule;
+
+  using Rule = std::variant<UndefinedRule, SameRule, OffsetRule, ValOffsetRule, RegisterRule>;
+  /// Dwarf register id -> rule
+  using RuleSet = std::unordered_map<std::uint32_t, Rule>;
+
+  /// CIE 初始化时的规则
+  RuleSet cie_register_rules;
+  /// 解析FDE时的规则
+  RuleSet register_rules;
+  std::vector<std::pair<RuleSet, CfaRegisterRule>> rule_stack;
+};
 
 }  // namespace
 
