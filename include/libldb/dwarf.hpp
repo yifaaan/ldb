@@ -312,6 +312,8 @@ class CallFrameInformation {
   CallFrameInformation(CallFrameInformation&&) = delete;
   CallFrameInformation& operator=(CallFrameInformation&&) = delete;
 
+  CallFrameInformation(const Dwarf* parent, EhHdr eh_hdr) : dwarf_{parent}, eh_hdr_{eh_hdr} { eh_hdr.parent = this; }
+
   const Dwarf& DwarfInfo() const { return *dwarf_; }
 
   /// 获取 CIE 条目, 键为 CIE 的 file-offset
@@ -322,6 +324,8 @@ class CallFrameInformation {
 
   /// 保存所有 CIE 条目, 键为 CIE 的 offset
   mutable std::unordered_map<std::uint64_t, CommonInformationEntry> cie_map_;
+
+  EhHdr eh_hdr_;
 };
 
 class Elf;
@@ -349,6 +353,8 @@ class Dwarf {
 
   std::vector<Die> InlineStackAtAddress(FileAddr address) const;
 
+  const CallFrameInformation& call_frame_information() const { return *call_frame_information_; }
+
  private:
   void Index() const;
   void IndexDie(const Die& current) const;
@@ -365,6 +371,8 @@ class Dwarf {
   std::vector<std::unique_ptr<CompileUnit>> compileUnits;
 
   mutable std::unordered_multimap<std::string, IndexEntry> functionIndex;
+
+  std::unique_ptr<CallFrameInformation> call_frame_information_;
 };
 
 // for inline func

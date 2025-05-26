@@ -518,6 +518,12 @@ ldb::CallFrameInformation::EhHdr ParseEhHdr(ldb::Dwarf& dwarf) {
   auto search_table = cursor.Position();
   return {start, search_table, fde_count, table_enc, nullptr};
 }
+
+std::unique_ptr<ldb::CallFrameInformation> ParseCallFrameInformation(ldb::Dwarf& dwarf) {
+  auto eh_hdr = ParseEhHdr(dwarf);
+  return std::make_unique<ldb::CallFrameInformation>(&dwarf, eh_hdr);
+}
+
 }  // namespace
 
 namespace ldb {
@@ -537,7 +543,10 @@ Die CompileUnit::Root() const {
   return ParseDie(*this, cursor);
 }
 
-Dwarf::Dwarf(const Elf& parent) : elf(&parent) { compileUnits = ParseCompileUnits(*this, parent); }
+Dwarf::Dwarf(const Elf& parent) : elf(&parent) {
+  compileUnits = ParseCompileUnits(*this, parent);
+  call_frame_information_ = ParseCallFrameInformation(*this);
+}
 
 const std::unordered_map<std::uint64_t, Abbrev>& Dwarf::GetAbbrevTable(std::size_t offset) {
   if (!abbrevTables.contains(offset)) {
