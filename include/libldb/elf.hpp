@@ -12,6 +12,13 @@
 #include <vector>
 
 namespace ldb {
+
+struct RangeComparator {
+  bool operator()(std::pair<FileAddr, FileAddr> a, std::pair<FileAddr, FileAddr> b) const {
+    return a.first < b.first;
+  }
+};
+
 class Elf {
  public:
   Elf(const std::filesystem::path& path);
@@ -68,10 +75,6 @@ class Elf {
 
   void BuildSymbolMaps();
 
-  static constexpr auto RangeComparator = [](std::pair<FileAddr, FileAddr> a, std::pair<FileAddr, FileAddr> b) {
-    return a.first < b.first;
-  };
-
   int fd_;
   std::filesystem::path path_;
   std::size_t file_size_;
@@ -86,7 +89,7 @@ class Elf {
   std::vector<Elf64_Sym> symbol_table_;
 
   std::unordered_multimap<std::string_view, Elf64_Sym*> symbol_name_map_;
-  std::map<std::pair<FileAddr, FileAddr>, Elf64_Sym*, decltype(RangeComparator)> symbol_addr_map_;
+  std::map<std::pair<FileAddr, FileAddr>, Elf64_Sym*, RangeComparator> symbol_addr_map_;
 
   std::unique_ptr<Dwarf> dwarf_;
 };

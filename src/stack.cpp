@@ -10,11 +10,6 @@ std::vector<Die> Stack::InlineStackAtPc() const {
 
 void Stack::ResetInlineHeight() {
   auto stack = InlineStackAtPc();
-  inlineHeight = 0;
-  auto pc = target->GetPcFileAddress();
-  for (auto it = stack.rbegin(); it != stack.rend() && it->LowPc() == pc;
-       ++it) {
-    ++inlineHeight;
-  }
+  inlineHeight = stack.size() > 0 ? stack.size() - 1 : 0;
 }
 }  // namespace ldb

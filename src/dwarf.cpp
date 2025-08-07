@@ -531,13 +531,13 @@ struct OffsetRule {
   std::int64_t offset;
 };
 struct RegisterRule {
-  std::uint32_t register;
+  std::uint32_t reg;
 };
 struct ValOffsetRule {
   std::int64_t offset;
 };
 struct CfaRegisterRule {
-  std::uint32_t register;
+  std::uint32_t reg;
   std::int64_t offset;
 };
 

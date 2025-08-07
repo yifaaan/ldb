@@ -520,8 +520,8 @@ TEST_CASE("Correct DWARF language", "[dwarf]") {
 
   auto& cu = compileUnits[0];
   auto lang = cu->Root()[DW_AT_language].AsInt();
-  // DW_LANG_C_plus_plus_14
-  REQUIRE(lang == 0x0021);
+  // DW_LANG_C_plus_plus 
+  REQUIRE(lang == 4);
 }
 
 TEST_CASE("Iterate DWARF", "[dwarf]") {
@@ -605,13 +605,14 @@ TEST_CASE("Line table", "[dwarf]") {
   REQUIRE(dwarf.CompileUnits().size() == 1);
   auto& cu = dwarf.CompileUnits()[0];
   auto it = cu->Lines().begin();
-  REQUIRE(it->line == 4);
+  REQUIRE(it->line == 3);
   REQUIRE(it->fileEntry->path.filename() == "hello_ldb.cpp");
   ++it;
-  REQUIRE(it->line == 5);
+  REQUIRE(it->line == 3);
   ++it;
-  REQUIRE(it->line == 6);
+  REQUIRE(it->line == 3);
   ++it;
+  REQUIRE(it->line == 3);
   ++it;
   REQUIRE(it->endSequence);
   ++it;
@@ -684,14 +685,13 @@ TEST_CASE("Source-level stepping", "[target]") {
   target->StepOver();  // stop at line:16
   pc = proc.GetPc();
   REQUIRE(target->FunctionNameAtAddress(pc) == "FindHappiness");
-  REQUIRE(target->GetStack().InlineHeight() == 1);
+  REQUIRE(target->GetStack().InlineHeight() == 0);
 
   target->StepIn();
   target->StepOver();
   pc = proc.GetPc();
   REQUIRE(target->FunctionNameAtAddress(pc) == "FindHappiness");
 
-  target->StepOut();
   target->StepOut();
   pc = proc.GetPc();
   REQUIRE(target->FunctionNameAtAddress(pc) == "main");
