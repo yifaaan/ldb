@@ -39,3 +39,15 @@ TEST_CASE("Process::Launch no such program", "[Process]")
 {
     REQUIRE_THROWS_AS(Process::Launch("you_do_not_have_to_be_good"), Error);
 }
+
+TEST_CASE("Process::Attach success", "[Process]")
+{
+    auto target = Process::Launch("targets/RunEndlessly", false);
+    auto process = Process::Attach(target->Pid());
+    REQUIRE(GetProcessStatus(target->Pid()) == 't');
+}
+
+TEST_CASE("Process::Attach invalid PID", "[Process]")
+{
+    REQUIRE_THROWS_AS(Process::Attach(0), Error);
+}

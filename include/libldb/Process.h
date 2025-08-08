@@ -29,7 +29,7 @@ namespace ldb
         Process& operator=(const Process&) = delete;
         ~Process();
 
-        static std::unique_ptr<Process> Launch(std::filesystem::path path);
+        static std::unique_ptr<Process> Launch(std::filesystem::path path, bool debug = true);
         static std::unique_ptr<Process> Attach(pid_t pid);
 
         void Resume();
@@ -46,12 +46,13 @@ namespace ldb
         }
 
     private:
-        Process(pid_t _pid, bool _terminateOnEnd) : pid(_pid), terminateOnEnd(_terminateOnEnd)
+        Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached) : pid(_pid), terminateOnEnd(_terminateOnEnd), isAttached(_isAttached)
         {
         }
 
         pid_t pid = 0;
         bool terminateOnEnd = true;
         ProcessState state = ProcessState::stopped;
+        bool isAttached = true;
     };
 } // namespace ldb
