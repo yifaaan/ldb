@@ -13,18 +13,27 @@ namespace ldb
         terminated,
     };
 
+    struct StopReason
+    {
+        StopReason(int waitStatus);
+
+        ProcessState reason;
+        std::uint8_t info;
+    };
+
     class Process
     {
     public:
         Process() = delete;
         Process(const Process&) = delete;
         Process& operator=(const Process&) = delete;
+        ~Process();
 
         static std::unique_ptr<Process> Launch(std::filesystem::path path);
         static std::unique_ptr<Process> Attach(pid_t pid);
 
         void Resume();
-        void WaitOnSignal();
+        StopReason WaitOnSignal();
 
         ProcessState State() const
         {

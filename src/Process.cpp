@@ -9,6 +9,28 @@
 
 namespace ldb
 {
+    StopReason::StopReason(int waitStatus)
+    {
+        if (WIFEXITED(waitStatus))
+        {
+            reason = ProcessState::exited;
+            info = WEXITSTATUS(waitStatus);
+        }
+        else if (WIFSIGNALED(waitStatus))
+        {
+            reason = ProcessState::terminated;
+            info = WTERMSIG(waitStatus);
+        }
+        else if (WIFSTOPPED(waitStatus))
+        {
+            reason = ProcessState::stopped;
+            info = WSTOPSIG(waitStatus);
+        }
+        else
+        {
+        }
+    }
+
     std::unique_ptr<Process> Process::Launch(std::filesystem::path path)
     {
         pid_t pid;
@@ -48,4 +70,49 @@ namespace ldb
         process->WaitOnSignal();
         return process;
     }
+
+    Process::~Process()
+    {
+        if (pid != 0)
+        {
+            int status;
+            if (state == ProcessState::running)
+            {
+                // Stop the process(The process must be stopped to detach)
+                kill(pid, SIGSTOP);
+                waitpid(pid, &status, 0);
+            }
+            ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+            kill(pid, SIGCONT);
+
+            if (terminateOnEnd)
+            {
+                kill(pid, SIGKILL);
+                waitpid(pid, &status, 0);
+            }
+        }
+    }
+
+    void Process::Resume()
+    {
+        if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) < 0)
+        {
+            Error::SendErrno("Could not resume");
+        }
+        state = ProcessState::running;
+    }
+
+    StopReason Process::WaitOnSignal()
+    {
+        int waitStatus;
+        int options = 0;
+        if (waitpid(pid, &waitStatus, options) < 0)
+        {
+            Error::SendErrno("waitpid failed");
+        }
+        StopReason reason(waitStatus);
+        state = reason.reason;
+        return reason;
+    }
+
 } // namespace ldb
