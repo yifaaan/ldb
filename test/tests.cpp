@@ -51,3 +51,31 @@ TEST_CASE("Process::Attach invalid PID", "[Process]")
 {
     REQUIRE_THROWS_AS(Process::Attach(0), Error);
 }
+
+TEST_CASE("Process:Resume success", "[Process]")
+{
+    {
+        auto process = Process::Launch("targets/RunEndlessly");
+        process->Resume();
+        auto status = GetProcessStatus(process->Pid());
+        auto success = status == 'R' || status == 'S';
+        REQUIRE(success);
+    }
+
+    {
+        auto target = Process::Launch("targets/RunEndlessly", false);
+        auto process = Process::Attach(target->Pid());
+        process->Resume();
+        auto status = GetProcessStatus(process->Pid());
+        auto success = status == 'R' || status == 'S';
+        REQUIRE(success);
+    }
+}
+
+TEST_CASE("Process::Resume already running", "[Process]")
+{
+    auto process = Process::Launch("targets/EndImmediately");
+    process->Resume();
+    process->WaitOnSignal();
+    REQUIRE_THROWS_AS(process->Resume(), Error);
+}

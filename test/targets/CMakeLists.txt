@@ -1,1 +1,2 @@
 add_executable(RunEndlessly RunEndlessly.cpp)
+add_executable(EndImmediately EndImmediately.cpp)
