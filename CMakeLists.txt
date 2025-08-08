@@ -1,17 +1,14 @@
 cmake_minimum_required(VERSION 3.28)
 set(CMAKE_CXX_STANDARD 20)
-# set(CMAKE_CXX_COMPILER clang++)
-# set(CMAKE_ASM_COMPILER /usr/bin/gcc)
-# set(CMAKE_ASM_COMPILER ${CMAKE_CXX_COMPILER})
 
 project(ldb LANGUAGES CXX ASM)
 
-set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
+# set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(readline REQUIRED IMPORTED_TARGET readline)
+pkg_check_modules(libedit REQUIRED IMPORTED_TARGET libedit)
 
 find_package(fmt CONFIG REQUIRED)
 find_package(zydis CONFIG REQUIRED)

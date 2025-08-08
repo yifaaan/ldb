@@ -1,51 +1,17 @@
-Language: Cpp
-BasedOnStyle: LLVM
-
-# 缩进
-UseTab: Always
-IndentWidth: 4
-TabWidth: 4
-
-# 大括号换行 (核心风格)
-# Allman 风格已经包含了在 else, catch, while 前换行的规则。
-BreakBeforeBraces: Allman
+AccessModifierOffset: -4
 AllowShortFunctionsOnASingleLine: None
-AllowShortBlocksOnASingleLine: false
-AllowShortCaseLabelsOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: false
 AllowShortLoopsOnASingleLine: false
-
-# 控制语句
-# 允许没有 else 的简短 if 语句在同一行，例如 'if (a) return;'
-AllowShortIfStatementsOnASingleLine: WithoutElse
-
-# 指针和引用
-PointerAlignment: Left
-
-# 函数声明
-AlignAfterOpenBracket: Align
-# 'Parameters' 用于函数声明，设置为 false 以便在换行时每个参数占一行。
-BinPackParameters: false
-# [新增] 'Arguments' 用于函数调用，设置为 true 以强制参数尽可能保持在同一行。
-BinPackArguments: true
-AllowAllParametersOfDeclarationOnNextLine: false
-
-
-# 空格
-SpaceAfterCStyleCast: true
-SpaceAfterTemplateKeyword: true
-SpaceBeforeAssignmentOperators: true
-SpaceBeforeCpp11BracedList: false
-SpaceBeforeParens: ControlStatements
-SpacesInAngles: false
-SpacesInCStyleCastParentheses: false
-SpacesInContainerLiterals: false
-SpacesInParentheses: false
-
-# 其他
-AlignConsecutiveAssignments: false
-AlignConsecutiveDeclarations: false
-ColumnLimit: 0
-FixNamespaceComments: true
-IndentCaseLabels: true
+AlwaysBreakTemplateDeclarations: true
+BreakBeforeBraces: Allman
+ColumnLimit: 140
+Cpp11BracedListStyle: true
+IndentWidth: 4
+Language: Cpp
+MaxEmptyLinesToKeep: 2
 NamespaceIndentation: All
-SortIncludes: false
+PointerAlignment: Left
+SpaceBeforeParens: ControlStatements
+Standard: Cpp11
+TabWidth: 4
+UseTab: Never

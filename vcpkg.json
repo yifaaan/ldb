@@ -1,6 +1,6 @@
 {
     "dependencies": [
-        "readline",
+        "libedit",
         "catch2",
         "fmt",
         "zydis"

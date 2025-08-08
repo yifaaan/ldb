@@ -1,5 +1,6 @@
 #pragma once
 
-namespace ldb {
-void SayHello();
+namespace ldb
+{
+    void SayHello();
 }
