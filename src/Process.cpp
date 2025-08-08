@@ -1,11 +1,22 @@
 #include <libldb/Process.h>
 
 #include <libldb/Error.h>
+#include <libldb/Pipe.h>
 
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+namespace
+{
+    void ExitWithPerror(ldb::Pipe& channel, const std::string& prefix)
+    {
+        auto message = prefix + ": " + strerror(errno);
+        channel.Write(reinterpret_cast<std::byte*>(message.data()), message.size());
+        exit(-1);
+    }
+}
 
 namespace ldb
 {
@@ -33,6 +44,7 @@ namespace ldb
 
     std::unique_ptr<Process> Process::Launch(std::filesystem::path path)
     {
+        Pipe channel(true);
         pid_t pid;
         if ((pid = fork()) < 0)
         {
@@ -40,15 +52,26 @@ namespace ldb
         }
         if (pid == 0)
         {
+            channel.CloseRead();
             if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
             {
-                Error::SendErrno("Tracing failed");
+                ExitWithPerror(channel, "Tracing failed");
             }
             if (execlp(path.c_str(), path.c_str(), nullptr) < 0)
             {
-                Error::SendErrno("exec failed");
+                ExitWithPerror(channel, "exec failed");
             }
         }
+        channel.CloseWrite();
+        auto data = channel.Read();
+        channel.CloseRead();
+        if (data.size() > 0)
+        {
+            waitpid(pid, nullptr, 0);
+            auto chars = reinterpret_cast<char*>(data.data());
+            Error::Send(std::string(chars, chars + data.size()));
+        }
+        
 
         std::unique_ptr<Process> process(new Process(pid, true));
         process->WaitOnSignal();

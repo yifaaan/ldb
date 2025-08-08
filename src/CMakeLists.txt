@@ -1,5 +1,7 @@
 add_library(libldb
-    Process.cpp)
+    Process.cpp
+    Pipe.cpp
+)
 add_library(ldb::libldb ALIAS libldb)
 
 set_target_properties(libldb
