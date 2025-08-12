@@ -4,6 +4,8 @@
 
 #include <libldb/Error.h>
 #include <libldb/Process.h>
+#include <libldb/Pipe.h>
+#include <libldb/bit.h>
 
 #include <signal.h>
 #include <sys/types.h>
@@ -78,4 +80,40 @@ TEST_CASE("Process::Resume already running", "[Process]")
     process->Resume();
     process->WaitOnSignal();
     REQUIRE_THROWS_AS(process->Resume(), Error);
+}
+
+TEST_CASE("Write register works", "[Register]")
+{
+    bool closeOnExec = false;
+    Pipe channel(closeOnExec);
+    auto process = Process::Launch("targets/RegWrite", true, channel.GetWrite());
+    channel.CloseWrite();
+    process->Resume();
+    process->WaitOnSignal();
+    auto& regs = process->GetRegisters();
+    regs.WriteById(RegisterId::rsi, 0xcafecafe);
+    process->Resume();
+    process->WaitOnSignal();
+    auto output = channel.Read();
+    REQUIRE(ToStringView(output) == "0xcafecafe");
+
+    regs.WriteById(RegisterId::mm0, 0xba5eba11);
+    process->Resume();
+    process->WaitOnSignal();
+    output = channel.Read();
+    REQUIRE(ToStringView(output) == "0xba5eba11");
+
+    regs.WriteById(RegisterId::xmm0, 42.24);
+    process->Resume();
+    process->WaitOnSignal();
+    output = channel.Read();
+    REQUIRE(ToStringView(output) == "42.24");
+
+    regs.WriteById(RegisterId::st0, 42.24l);
+    regs.WriteById(RegisterId::fsw, uint16_t(0b0011100000000000));
+    regs.WriteById(RegisterId::ftw, std::uint16_t{0b0011111111111111});
+    process->Resume();
+    process->WaitOnSignal();
+    output = channel.Read();
+    REQUIRE(ToStringView(output) == "42.24");
 }

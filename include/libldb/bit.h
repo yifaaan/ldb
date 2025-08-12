@@ -4,6 +4,8 @@
 
 #include <cstddef>
 #include <cstring>
+#include <string_view>
+#include <vector>
 
 namespace ldb
 {
@@ -42,6 +44,16 @@ namespace ldb
         Byte64 ret{};
         std::memcpy(&ret, &src, sizeof(From));
         return ret;
+    }
+
+    inline std::string_view ToStringView(const std::byte* data, size_t size)
+    {
+        return {reinterpret_cast<const char*>(data), size};
+    }
+
+    inline std::string_view ToStringView(const std::vector<std::byte>& data)
+    {
+        return ToStringView(data.data(), data.size());
     }
 
 } // namespace ldb

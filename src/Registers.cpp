@@ -103,7 +103,7 @@ namespace ldb
         }
         else
         {
-            auto alignedOffset = info.offset  & 0b111;
+            auto alignedOffset = info.offset  & ~0b111;
             process->WriteUserArea(alignedOffset, FromBytes<uint64_t>(bytes + info.offset));
         }
     }
