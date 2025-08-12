@@ -140,7 +140,61 @@ namespace ldb
         }
         StopReason reason(waitStatus);
         state = reason.reason;
+        if (isAttached && state == ProcessState::stopped)
+        {
+            ReadAllRegisters();
+        }
         return reason;
+    }
+
+    void Process::WriteUserArea(size_t offset, uint64_t data)
+    {
+        if (ptrace(PTRACE_POKEUSER, pid, offset, data) < 0)
+        {
+            Error::SendErrno("Could not write to user area");
+        }
+    }
+
+    void Process::ReadAllRegisters()
+    {
+        if (ptrace(PTRACE_GETREGS, pid, nullptr, &GetRegisters().data.regs) < 0)
+        {
+            Error::SendErrno("Could not read GPR registers");
+        }
+        if (ptrace(PTRACE_GETFPREGS, pid, nullptr, &GetRegisters().data.i387) < 0)
+        {
+            Error::SendErrno("Could not read FPR registers");
+        }
+
+        // Debug registers
+        for (int i = 0; i < 8; i++)
+        {
+            auto id = static_cast<int>(RegisterId::dr0) + i;
+            auto info = RegisterInfoById(static_cast<RegisterId>(id));
+            errno = 0;
+            int64_t data = ptrace(PTRACE_PEEKUSER, pid, info.offset, nullptr);
+            if (errno != 0)
+            {
+                Error::SendErrno("Could not read debug register");
+            }
+            GetRegisters().data.u_debugreg[i] = data;
+        }
+    }
+
+    void Process::WriteFPRs(const user_fpregs_struct& fpregs)
+    {
+        if (ptrace(PTRACE_SETFPREGS, pid, nullptr, &fpregs) < 0)
+        {
+            Error::SendErrno("Could not write FPR registers");
+        }
+    }
+
+    void Process::WriteGPRs(const user_regs_struct& regs)
+    {
+        if (ptrace(PTRACE_SETREGS, pid, nullptr, &regs) < 0)
+        {
+            Error::SendErrno("Could not write GPR registers");
+        }
     }
 
 } // namespace ldb

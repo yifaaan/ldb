@@ -1,6 +1,7 @@
 add_library(libldb
     Process.cpp
     Pipe.cpp
+    Registers.cpp
 )
 add_library(ldb::libldb ALIAS libldb)
 

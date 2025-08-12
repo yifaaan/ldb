@@ -3,6 +3,8 @@
 #include <filesystem>
 #include <memory>
 
+#include <libldb/Registers.h>
+
 namespace ldb
 {
     enum class ProcessState
@@ -45,14 +47,37 @@ namespace ldb
             return pid;
         }
 
+        Registers& GetRegisters()
+        {
+            return *registers;
+        }
+
+        const Registers& GetRegisters() const
+        {
+            return *registers;
+        }
+
+        void WriteUserArea(size_t offset, uint64_t data);
+
+        void WriteFPRs(const user_fpregs_struct& fpregs);
+        void WriteGPRs(const user_regs_struct& regs);
+
+
     private:
-        Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached) : pid(_pid), terminateOnEnd(_terminateOnEnd), isAttached(_isAttached)
+        Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
+            : pid(_pid),
+            terminateOnEnd(_terminateOnEnd),
+            isAttached(_isAttached),
+            registers(new Registers(*this))
         {
         }
+
+        void ReadAllRegisters();
 
         pid_t pid = 0;
         bool terminateOnEnd = true;
         ProcessState state = ProcessState::stopped;
         bool isAttached = true;
+        std::unique_ptr<Registers> registers;
     };
 } // namespace ldb

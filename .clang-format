@@ -4,7 +4,7 @@ AllowShortIfStatementsOnASingleLine: false
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakTemplateDeclarations: true
 BreakBeforeBraces: Allman
-ColumnLimit: 140
+ColumnLimit: 0
 Cpp11BracedListStyle: true
 IndentWidth: 4
 Language: Cpp
