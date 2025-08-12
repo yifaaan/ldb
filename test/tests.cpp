@@ -117,3 +117,30 @@ TEST_CASE("Write register works", "[Register]")
     output = channel.Read();
     REQUIRE(ToStringView(output) == "42.24");
 }
+
+TEST_CASE("Read register works", "[Register]")
+{
+    auto process = Process::Launch("targets/RegRead");
+    auto& regs = process->GetRegisters();
+    
+    process->Resume();
+    process->WaitOnSignal();
+    REQUIRE(regs.ReadByIdAs<uint64_t>(RegisterId::r13) == 0xcafecafe);
+
+    process->Resume();
+    process->WaitOnSignal();
+    REQUIRE(regs.ReadByIdAs<uint8_t>(RegisterId::r13b) == 42);
+    REQUIRE(regs.ReadByIdAs<uint64_t>(RegisterId::r13) == 0xcafeca2a);
+
+    process->Resume();
+    process->WaitOnSignal();
+    REQUIRE(regs.ReadByIdAs<Byte64>(RegisterId::mm0) == ToByte64(0xba5eba11ull));
+
+    process->Resume();
+    process->WaitOnSignal();
+    REQUIRE(regs.ReadByIdAs<Byte128>(RegisterId::xmm0) == ToByte128(64.125));
+
+    process->Resume();
+    process->WaitOnSignal();
+    REQUIRE(regs.ReadByIdAs<long double>(RegisterId::st0) == 64.125L);
+}
