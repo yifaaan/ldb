@@ -1,6 +1,6 @@
 #pragma once
 
-#include <libldb/types.h>
+#include <libldb/Types.h>
 
 #include <cstddef>
 #include <cstring>

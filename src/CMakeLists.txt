@@ -2,6 +2,7 @@ add_library(libldb
     Process.cpp
     Pipe.cpp
     Registers.cpp
+    BreakpointSite.cpp
 )
 add_library(ldb::libldb ALIAS libldb)
 

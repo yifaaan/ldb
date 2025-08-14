@@ -3,7 +3,7 @@
 #include <variant>
 
 #include <libldb/RegisterInfo.h>
-#include <libldb/types.h>
+#include <libldb/Types.h>
 
 #include <sys/user.h>
 

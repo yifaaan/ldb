@@ -5,7 +5,8 @@
 #include <optional>
 
 #include <libldb/Registers.h>
-
+#include <libldb/Types.h>
+#include <libldb/BreakpointSite.h>
 
 namespace ldb
 {
@@ -64,6 +65,12 @@ namespace ldb
         void WriteFPRs(const user_fpregs_struct& fpregs);
         void WriteGPRs(const user_regs_struct& regs);
 
+        VirtAddr GetPC() const
+        {
+            return VirtAddr(GetRegisters().ReadByIdAs<uint64_t>(RegisterId::rip));
+        }
+
+        BreakpointSite& CreateBreakpointSite(VirtAddr addr);
 
     private:
         Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)

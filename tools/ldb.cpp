@@ -11,6 +11,7 @@
 #include <libldb/libldb.hpp>
 #include <libldb/Error.h>
 #include <libldb/Parse.h>
+#include <libldb/Registers.h>
 
 #include <sys/ptrace.h>
 #include <sys/wait.h>
@@ -20,21 +21,21 @@ namespace
 
     void PrintStopReason(const ldb::Process& process, ldb::StopReason reason)
     {
-        std::cout << "Process " << process.Pid() << ' ';
+        std::string message;
         // Print the process stop reason
         switch (reason.reason)
         {
         case ldb::ProcessState::exited:
-            std::cout << "exited with status" << static_cast<int>(reason.info);
+            message = fmt::format("exited with status {}", static_cast<int>(reason.info));
             break;
         case ldb::ProcessState::terminated:
-            std::cout << "terminated with signal " << sigabbrev_np(reason.info);
+            message = fmt::format("terminated with signal {}", sigabbrev_np(reason.info));
             break;
         case ldb::ProcessState::stopped:
-            std::cout << "stopped with signal" << sigabbrev_np(reason.info);
+            message = fmt::format("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), process.GetPC().Address());
             break;
         }
-        std::cout << std::endl;
+        fmt::print("Process {} {}\n", process.Pid(), message);
     }
 
     std::unique_ptr<ldb::Process> Attach(int argc, const char** argv)
@@ -222,7 +223,7 @@ write <register> <value>
         }
         else if (IsPrefix(args[1], "write"))
         {
-            // HandleRegisterWrite(process, args);
+            HandleRegisterWrite(process, args);
         }
         else
         {
