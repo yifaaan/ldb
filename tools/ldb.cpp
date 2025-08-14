@@ -10,6 +10,7 @@
 #include <libldb/Process.h>
 #include <libldb/libldb.hpp>
 #include <libldb/Error.h>
+#include <libldb/Parse.h>
 
 #include <sys/ptrace.h>
 #include <sys/wait.h>
@@ -143,6 +144,67 @@ write <register> <value>
         else 
         {
             PrintHelp({"help", "register"});
+        }
+    }
+
+    ldb::Registers::Value ParseRegisterValue(ldb::RegisterInfo info, std::string_view text)
+    {
+        try
+        {
+            if (info.format == ldb::RegisterFormat::UInt)
+            {
+                switch (info.size)
+                {
+                case 1: return ldb::ToIntergral<uint8_t>(text, 16).value();
+                case 2: return ldb::ToIntergral<uint16_t>(text, 16).value();
+                case 4: return ldb::ToIntergral<uint32_t>(text, 16).value();
+                case 8: return ldb::ToIntergral<uint64_t>(text, 16).value();
+                }
+            }
+            else if (info.format == ldb::RegisterFormat::DoubleFloat)
+            {
+                return ldb::ToFloat<double>(text).value();
+            }
+            else if (info.format == ldb::RegisterFormat::LongDouble)
+            {
+                return ldb::ToFloat<long double>(text).value();
+            }
+            else if (info.format == ldb::RegisterFormat::Vector)
+            {
+                if (info.size == 8)
+                {
+                    return ldb::ParseVector<8>(text);
+                }
+                else if (info.size == 16)
+                {
+                    return ldb::ParseVector<16>(text);
+                }
+            }
+        }
+        catch (...)
+        {
+
+        }
+        ldb::Error::Send("Invalid format");
+    }
+
+    void HandleRegisterWrite(ldb::Process& process, const std::vector<std::string>& args)
+    {
+        if (args.size() != 4)
+        {
+            PrintHelp({"help", "register"});
+            return;
+        }
+        try
+        {
+            auto info = ldb::RegisterInfoByName(args[2]);
+            auto value = ParseRegisterValue(info, args[3]);
+            process.GetRegisters().Write(info, value);
+        }
+        catch (const ldb::Error& e)
+        {
+            std::cerr << e.what() << '\n';
+            return;
         }
     }
 
