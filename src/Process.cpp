@@ -1,7 +1,9 @@
-#include <libldb/Process.h>
+#include <string>
 
+#include <libldb/Process.h>
 #include <libldb/Error.h>
 #include <libldb/Pipe.h>
+
 
 #include <sys/ptrace.h>
 #include <sys/types.h>
@@ -203,6 +205,15 @@ namespace ldb
         {
             Error::SendErrno("Could not write GPR registers");
         }
+    }
+
+    BreakpointSite& Process::CreateBreakpointSite(VirtAddr address)
+    {
+        if (breakpointSites.ContainsAddress(address))
+        {
+            Error::Send("Breakpoint site already created at address " + std::to_string(address.Address()));
+        }
+        return breakpointSites.Push(std::unique_ptr<BreakpointSite>(new BreakpointSite(*this, address)));
     }
 
 } // namespace ldb

@@ -16,4 +16,6 @@ namespace ldb
     {
         id = GetNextId();
     }
+
+    
 } // namespace ldb

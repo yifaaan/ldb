@@ -3,8 +3,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <libldb/Error.h>
-#include <libldb/Process.h>
 #include <libldb/Pipe.h>
+#include <libldb/Process.h>
 #include <libldb/bit.h>
 
 #include <signal.h>
@@ -122,7 +122,7 @@ TEST_CASE("Read register works", "[Register]")
 {
     auto process = Process::Launch("targets/RegRead");
     auto& regs = process->GetRegisters();
-    
+
     process->Resume();
     process->WaitOnSignal();
     REQUIRE(regs.ReadByIdAs<uint64_t>(RegisterId::r13) == 0xcafecafe);
@@ -143,4 +143,75 @@ TEST_CASE("Read register works", "[Register]")
     process->Resume();
     process->WaitOnSignal();
     REQUIRE(regs.ReadByIdAs<long double>(RegisterId::st0) == 64.125L);
+}
+
+TEST_CASE("Can create breakpoint site", "[Breakpoint]")
+{
+    auto process = Process::Launch("targets/RunEndlessly");
+    auto& site = process->CreateBreakpointSite(VirtAddr(42));
+    REQUIRE(site.Address().Address() == 42);
+}
+
+TEST_CASE("Breakpoint site ids increase", "[Breakpoint]")
+{
+    auto process = Process::Launch("targets/RunEndlessly");
+    auto& s1 = process->CreateBreakpointSite(VirtAddr(42));
+    REQUIRE(s1.Address().Address() == 42);
+    auto& s2 = process->CreateBreakpointSite(VirtAddr(43));
+    REQUIRE(s2.Id() == s1.Id() + 1);
+    auto& s3 = process->CreateBreakpointSite(VirtAddr(44));
+    REQUIRE(s3.Id() == s2.Id() + 1);
+    auto& s4 = process->CreateBreakpointSite(VirtAddr(45));
+    REQUIRE(s4.Id() == s3.Id() + 1);
+}
+
+TEST_CASE("Can find breakpoint site", "[Breakpoint]")
+{
+    auto process = Process::Launch("targets/RunEndlessly");
+    const auto& cprocess = process;
+    process->CreateBreakpointSite(VirtAddr(42));
+    process->CreateBreakpointSite(VirtAddr(43));
+    process->CreateBreakpointSite(VirtAddr(44));
+    process->CreateBreakpointSite(VirtAddr(45));
+
+    auto& s1 = process->BreakpointSites().GetByAddress(VirtAddr(44));
+    REQUIRE(process->BreakpointSites().ContainsAddress(VirtAddr(44)));
+    REQUIRE(s1.Address().Address() == 44);
+
+    auto& cs1 = cprocess->BreakpointSites().GetByAddress(VirtAddr(44));
+    REQUIRE(cprocess->BreakpointSites().ContainsAddress(VirtAddr(44)));
+    REQUIRE(cs1.Address().Address() == 44);
+
+    auto& s2 = process->BreakpointSites().GetById(s1.Id() + 1);
+    REQUIRE(process->BreakpointSites().ContainsId(s1.Id() + 1));
+    REQUIRE(s2.Id() == s1.Id() + 1);
+    REQUIRE(s2.Address().Address() == 45);
+
+    auto& cs2 = process->BreakpointSites().GetById(cs1.Id() + 1);
+    REQUIRE(process->BreakpointSites().ContainsId(cs1.Id() + 1));
+    REQUIRE(cs2.Id() == cs1.Id() + 1);
+    REQUIRE(cs2.Address().Address() == 45);
+}
+
+TEST_CASE("Can iterate breakpoint sites", "[breakpoint]")
+{
+    auto process = Process::Launch("targets/RunEndlessly");
+    const auto& cprocess = process;
+
+    process->CreateBreakpointSite(VirtAddr(42));
+    process->CreateBreakpointSite(VirtAddr(43));
+    process->CreateBreakpointSite(VirtAddr(44));
+    process->CreateBreakpointSite(VirtAddr(45));
+
+    process->BreakpointSites().ForEach(
+    [addr = 42](auto& site) mutable
+    {
+        REQUIRE(site.Address().Address() == addr++);
+    });
+
+    cprocess->BreakpointSites().ForEach(
+    [addr = 42](auto& site) mutable
+    {
+        REQUIRE(site.Address().Address() == addr++);
+    });
 }

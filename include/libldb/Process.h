@@ -7,6 +7,7 @@
 #include <libldb/Registers.h>
 #include <libldb/Types.h>
 #include <libldb/BreakpointSite.h>
+#include <libldb/StoppointCollection.h>
 
 namespace ldb
 {
@@ -72,6 +73,9 @@ namespace ldb
 
         BreakpointSite& CreateBreakpointSite(VirtAddr addr);
 
+        StoppointCollection<BreakpointSite>& BreakpointSites() { return breakpointSites; }
+        const StoppointCollection<BreakpointSite>& BreakpointSites() const { return breakpointSites; }
+
     private:
         Process(pid_t _pid, bool _terminateOnEnd, bool _isAttached)
             : pid(_pid),
@@ -88,5 +92,6 @@ namespace ldb
         ProcessState state = ProcessState::stopped;
         bool isAttached = true;
         std::unique_ptr<Registers> registers;
+        StoppointCollection<BreakpointSite> breakpointSites;
     };
 } // namespace ldb
