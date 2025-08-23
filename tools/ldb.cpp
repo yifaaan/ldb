@@ -78,6 +78,7 @@ namespace
         if (args.size() == 1)
         {
             std::cerr << R"(Available command:
+breakpoint - Commands for operating on breakpoints
 continue - Resume the process
 register
 )";     
@@ -89,6 +90,16 @@ read
 read <register>
 read all
 write <register> <value>
+)";
+        }
+        else if (IsPrefix(args[1], "breakpoint"))
+        {
+            std::cerr << R"(Available commands:
+list
+delete <id>
+disable <id>
+enable <id>
+set <address>
 )";
         }
         else
@@ -266,11 +277,30 @@ write <register> <value>
             auto address = ldb::ToIntegral<uint64_t>(args[2], 16);
             if (!address)
             {
-                fmt::print(stderr, "Breakpoint command expects address in hexadecimal, prefixed with 0x\n");
+                std::cerr << "Breakpoint command expects address in hexadecimal, prefixed with 0x\n";
                 return;
             }
             process.CreateBreakpointSite(ldb::VirtAddr{*address}).Enable();
             return;
+        }
+
+        auto id = ldb::ToIntegral<ldb::BreakpointSite::IdType>(args[2], 10);
+        if (!id)
+        {
+            std::cerr << "Command expects breakpoint id as second argument\n";
+            return;
+        }
+        if (IsPrefix(command, "enable"))
+        {
+            process.BreakpointSites().GetById(*id).Enable();
+        }
+        else if (IsPrefix(command, "disable"))
+        {
+            process.BreakpointSites().GetById(*id).Disable();
+        }
+        else if (IsPrefix(command, "delete"))
+        {
+            process.BreakpointSites().RemoveById(*id);
         }
     }
 
