@@ -11,7 +11,7 @@
 namespace ldb
 {
     template <typename T>
-    std::optional<T> ToIntergral(std::string_view sv, int base)
+    std::optional<T> ToIntegral(std::string_view sv, int base)
     {
         auto begin = sv.begin();
         if (base == 16 && sv.size() > 1 && begin[0] == '0' && begin[1] == 'x')
@@ -28,9 +28,9 @@ namespace ldb
     }
     
     template <>
-    inline std::optional<std::byte> ToIntergral(std::string_view sv, int base)
+    inline std::optional<std::byte> ToIntegral(std::string_view sv, int base)
     {
-        auto uint8 = ToIntergral<uint8_t>(sv, base);
+        auto uint8 = ToIntegral<uint8_t>(sv, base);
         if (!uint8)
         {
             return std::nullopt;
@@ -62,14 +62,14 @@ namespace ldb
         }
         for (int i = 0; i < N - 1; i++)
         {
-            bytes[i] = ToIntergral<std::byte>({c, 4}, 16).value();
+            bytes[i] = ToIntegral<std::byte>({c, 4}, 16).value();
             c + 4;
             if (*c++ !=',') 
             {
                 invalid();
             }
         }
-        bytes[N - 1] = ToIntergral<std::byte>({c, 4}, 16).value();
+        bytes[N - 1] = ToIntegral<std::byte>({c, 4}, 16).value();
         if (*c++ != ']')
         {
             invalid();

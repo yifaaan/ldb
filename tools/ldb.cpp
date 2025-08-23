@@ -156,10 +156,10 @@ write <register> <value>
             {
                 switch (info.size)
                 {
-                case 1: return ldb::ToIntergral<uint8_t>(text, 16).value();
-                case 2: return ldb::ToIntergral<uint16_t>(text, 16).value();
-                case 4: return ldb::ToIntergral<uint32_t>(text, 16).value();
-                case 8: return ldb::ToIntergral<uint64_t>(text, 16).value();
+                case 1: return ldb::ToIntegral<uint8_t>(text, 16).value();
+                case 2: return ldb::ToIntegral<uint16_t>(text, 16).value();
+                case 4: return ldb::ToIntegral<uint32_t>(text, 16).value();
+                case 8: return ldb::ToIntegral<uint64_t>(text, 16).value();
                 }
             }
             else if (info.format == ldb::RegisterFormat::DoubleFloat)
@@ -231,6 +231,49 @@ write <register> <value>
         }
     }
 
+    void HandleBreakpointCommand(ldb::Process& process, const std::vector<std::string>& args)
+    {
+        if (args.size() < 2)
+        {
+            PrintHelp({"help", "breakpoint"});
+            return;
+        }
+        auto command = args[1];
+        if (IsPrefix(command, "list"))
+        {
+            if (process.BreakpointSites().Empty())
+            {
+                fmt::print("No breakpoints set\n");
+            }
+            else
+            {
+                fmt::print("Current breakpoints:\n");
+                process.BreakpointSites().ForEach([](auto& site)
+                {
+                    fmt::print("{}: address = {:#x}, {}\n", site.Id(), site.Address().Address(), site.IsEnabled() ? "enabled" : "disabled");
+                });
+            }
+            return;
+        }
+
+        if (args.size() < 3)
+        {
+            PrintHelp({"help", "breakpoint"});
+            return;
+        }
+        if (IsPrefix(command, "set"))
+        {
+            auto address = ldb::ToIntegral<uint64_t>(args[2], 16);
+            if (!address)
+            {
+                fmt::print(stderr, "Breakpoint command expects address in hexadecimal, prefixed with 0x\n");
+                return;
+            }
+            process.CreateBreakpointSite(ldb::VirtAddr{*address}).Enable();
+            return;
+        }
+    }
+
     void HandleCommand(std::unique_ptr<ldb::Process>& process, std::string_view line)
     {
         auto args = Split(line, ' ');
@@ -249,6 +292,10 @@ write <register> <value>
         else if (IsPrefix(command, "register"))
         {
             HandleRegisterCommand(*process, args);
+        }
+        else if (IsPrefix(command, "breakpoint"))
+        {
+            HandleBreakpointCommand(*process, args);
         }
         else
         {
