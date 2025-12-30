@@ -1,4 +1,9 @@
-#include <iostream>
-#include <libldb/libldb.hpp>
+#include <libldb/libldb.h>
 
-void ldb::SayHello() { std::cout << "Hello, ldb!\n"; }
+namespace ldb
+{
+    void f()
+    {
+        
+    }
+}

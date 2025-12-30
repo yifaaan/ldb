@@ -1,48 +1,9 @@
-add_library(libldb
-    Process.cpp
-    Pipe.cpp
-    Registers.cpp
-    BreakpointSite.cpp
-)
+add_library(libldb libldb.cpp)
 add_library(ldb::libldb ALIAS libldb)
 
-set_target_properties(libldb
-    PROPERTIES OUTPUT_NAME ldb)
-
+set_target_properties(libldb PROPERTIES OUTPUT_NAME ldb)
 target_compile_features(libldb PUBLIC cxx_std_20)
-
-
-
-message("src/{CMAKE_SOURCE_DIR}: ${CMAKE_SOURCE_DIR}")
-message("src/{CMAKE_CURRENT_SOURCE_DIR}: ${CMAKE_CURRENT_SOURCE_DIR}")
-message("src/{PROJECT_SOURCE_DIR}: ${PROJECT_SOURCE_DIR}")
-
-
 target_include_directories(libldb
-    PUBLIC
-        $<INSTALL_INTERFACE:include>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/include
-)
-
-include(GNUInstallDirs)
-install(TARGETS libldb
-    EXPORT ldb-targets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-install(
-    DIRECTORY ${PROJECT_SOURCE_DIR}/include/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-install(
-    EXPORT ldb-targets
-    FILE ldb-config.cmake
-    NAMESPACE ldb::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ldb
+    PRIVATE include
+    PUBLIC ${CMAKE_SOURCE_DIR}/include
 )

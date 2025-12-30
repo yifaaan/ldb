@@ -2,5 +2,5 @@
 
 namespace ldb
 {
-    void SayHello();
+    void f();
 }
